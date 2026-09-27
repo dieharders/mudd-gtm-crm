@@ -65,7 +65,7 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
           <Save size={15} /> {busy ? "Saving…" : linked ? "Save to file" : "Export .xlsx"}
         </Button>
         <Popover align="right" trigger={({ toggle }) => (
-          <Button variant="primary" className="rounded-l-none border-l border-clay-700 px-2" onClick={toggle} disabled={busy} aria-label="More export options">
+          <Button variant="primary" className="rounded-l-none border-l border-brand-700 px-2" onClick={toggle} disabled={busy} aria-label="More export options">
             <ChevronDown size={15} />
           </Button>
         )}>

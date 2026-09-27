@@ -52,7 +52,7 @@ export function TemplatesPanel({ schema, rows, templates, state, onClose, previe
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-stone-900/20 animate-fade-in" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-zinc-900/20 animate-fade-in" onMouseDown={onClose}>
       <div className="flex h-full w-[min(980px,100%)] flex-col bg-panel shadow-2xl animate-slide-in" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3 border-b border-line px-5 py-3">
           <div className="flex-1">
@@ -69,7 +69,7 @@ export function TemplatesPanel({ schema, rows, templates, state, onClose, previe
               <li key={t.id}>
                 <button
                   onClick={() => setSelected(t.id)}
-                  className={cn("w-full rounded-lg px-2.5 py-2 text-left", t.id === selected ? "bg-clay-50 text-clay-800" : "hover:bg-stone-100")}
+                  className={cn("w-full rounded-lg px-2.5 py-2 text-left", t.id === selected ? "bg-brand-50 text-brand-800" : "hover:bg-zinc-100")}
                 >
                   <div className="truncate text-sm font-medium">{t.name || "Untitled"}</div>
                   <div className="truncate text-xs text-ink-faint">{t.body.replace(/\s+/g, " ").slice(0, 60) || "Empty"}</div>
@@ -79,7 +79,7 @@ export function TemplatesPanel({ schema, rows, templates, state, onClose, previe
             {!templates.length && (
               <li className="px-2 py-6 text-center text-xs text-ink-faint">
                 No templates yet.
-                <button className="mt-2 block w-full text-clay-700 hover:underline" onClick={create}>Create your first</button>
+                <button className="mt-2 block w-full text-brand-700 hover:underline" onClick={create}>Create your first</button>
               </li>
             )}
           </ul>
@@ -193,7 +193,7 @@ function Editor({ tpl, schema, state, preview, previewSelect, onDelete, confirmi
           <p className="label flex items-center gap-1"><Braces size={12} /> Insert a placeholder</p>
           <div className="flex flex-wrap gap-1.5">
             {chips.map((h) => (
-              <button key={h} onClick={() => insert(h)} className="rounded-md border border-line bg-white px-1.5 py-0.5 text-xs text-ink-soft hover:border-clay-300 hover:bg-clay-50 hover:text-clay-800">
+              <button key={h} onClick={() => insert(h)} className="rounded-md border border-line bg-white px-1.5 py-0.5 text-xs text-ink-soft hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800">
                 {h}
               </button>
             ))}
@@ -202,7 +202,7 @@ function Editor({ tpl, schema, state, preview, previewSelect, onDelete, confirmi
         </div>
       </div>
 
-      <div className="flex w-[360px] shrink-0 flex-col border-l border-line bg-stone-50/60">
+      <div className="flex w-[360px] shrink-0 flex-col border-l border-line bg-zinc-50/60">
         <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
           <span className="text-xs font-semibold text-ink-soft">Preview for</span>
           {previewSelect}

@@ -1,33 +1,35 @@
 @import 'tailwindcss';
 
 @theme {
-  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  /* Canvas and ink: warm greys, so the app reads as paper rather than a dashboard. */
-  --color-canvas: #f7f5f2;
+  /* Canvas and ink: cool, clean greys. */
+  --color-canvas: #f5f5f8;
+  --color-sidebar: #eeeef3;
   --color-panel: #ffffff;
-  --color-line: #e7e2da;
-  --color-line-strong: #d6cfc4;
-  --color-ink: #1f1b16;
-  --color-ink-soft: #5b544b;
-  --color-ink-faint: #8f877c;
+  --color-line: #e4e4eb;
+  --color-line-strong: #d2d2dc;
+  --color-ink: #17161d;
+  --color-ink-soft: #55536a;
+  --color-ink-faint: #8e8ca3;
 
-  /* Clay: the one accent. */
-  --color-clay-50: #fbf5f1;
-  --color-clay-100: #f5e6dc;
-  --color-clay-200: #eaccb7;
-  --color-clay-300: #dba98a;
-  --color-clay-400: #c9805b;
-  --color-clay-500: #b8623c;
-  --color-clay-600: #9c4d2f;
-  --color-clay-700: #7e3d27;
-  --color-clay-800: #633223;
-  --color-clay-900: #4a261c;
+  /* Brand: electric violet. */
+  --color-brand-50: #f4f1ff;
+  --color-brand-100: #ebe5ff;
+  --color-brand-200: #d8ccff;
+  --color-brand-300: #bba8ff;
+  --color-brand-400: #9c80ff;
+  --color-brand-500: #7c5cff;
+  --color-brand-600: #6744f5;
+  --color-brand-700: #5633d8;
+  --color-brand-800: #4528ad;
+  --color-brand-900: #36218a;
 
-  --animate-slide-in: slide-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-slide-in: slide-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-fade-in: fade-in 140ms ease-out both;
-  --animate-pop: pop 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pop: pop 160ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-float: float 6s ease-in-out infinite;
 
   @keyframes slide-in {
     from { transform: translateX(24px); opacity: 0; }
@@ -38,8 +40,12 @@
     to { opacity: 1; }
   }
   @keyframes pop {
-    from { transform: translateY(4px) scale(0.98); opacity: 0; }
+    from { transform: translateY(6px) scale(0.97); opacity: 0; }
     to { transform: none; opacity: 1; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
   }
 }
 
@@ -49,20 +55,30 @@
     @apply bg-canvas text-ink font-sans antialiased;
     font-size: 14px;
   }
-  ::selection { background: var(--color-clay-200); }
+  ::selection { background: var(--color-brand-200); }
   button { cursor: pointer; }
   button:disabled { cursor: not-allowed; }
   input, textarea, select { font: inherit; color: inherit; }
-  :focus-visible { outline: 2px solid var(--color-clay-400); outline-offset: 1px; }
+  :focus-visible { outline: 2px solid var(--color-brand-400); outline-offset: 1px; }
 }
 
 @layer components {
   .field {
-    @apply w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink shadow-xs outline-none transition
-      placeholder:text-ink-faint focus:border-clay-400 focus:ring-2 focus:ring-clay-100;
+    @apply w-full rounded-lg border border-line-strong bg-white px-3 py-2 text-sm text-ink outline-none transition
+      placeholder:text-ink-faint focus:border-brand-400 focus:ring-3 focus:ring-brand-100;
   }
   .label {
     @apply mb-1 block text-xs font-medium text-ink-soft;
+  }
+  .eyebrow {
+    @apply text-[11px] font-semibold tracking-wider text-ink-faint uppercase;
+  }
+  /* Clay-style tag: pastel fill, darker text. */
+  .tag {
+    @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-panel shadow-[0_1px_2px_rgba(23,22,29,0.04),0_4px_16px_-8px_rgba(23,22,29,0.08)];
   }
   .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
 }

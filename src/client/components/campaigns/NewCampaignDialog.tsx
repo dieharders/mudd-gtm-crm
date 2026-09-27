@@ -68,7 +68,7 @@ export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean;
         </div>
         {layout === "generic" ? (
           <div className="flex flex-wrap gap-1.5">
-            {GENERIC.map((h) => <span key={h} className="rounded-md border border-line bg-stone-50 px-1.5 py-0.5 text-xs text-ink-soft">{h}</span>)}
+            {GENERIC.map((h) => <span key={h} className="rounded-md border border-line bg-zinc-50 px-1.5 py-0.5 text-xs text-ink-soft">{h}</span>)}
           </div>
         ) : (
           <div>
@@ -92,12 +92,12 @@ function Choice({ active, onClick, icon, title, desc, disabled }: { active: bool
       onClick={onClick}
       className={cn(
         "relative rounded-xl border p-3 text-left transition",
-        active ? "border-clay-400 bg-clay-50 ring-2 ring-clay-100" : "border-line hover:border-line-strong",
+        active ? "border-brand-400 bg-brand-50 ring-2 ring-brand-100" : "border-line hover:border-line-strong",
         disabled && "opacity-50",
       )}
     >
-      {active && <Check size={14} className="absolute top-3 right-3 text-clay-600" />}
-      <div className="flex items-center gap-2 text-sm font-medium"><span className="text-clay-500">{icon}</span>{title}</div>
+      {active && <Check size={14} className="absolute top-3 right-3 text-brand-600" />}
+      <div className="flex items-center gap-2 text-sm font-medium"><span className="text-brand-500">{icon}</span>{title}</div>
       <p className="mt-1 text-xs text-ink-soft">{desc}</p>
     </button>
   );

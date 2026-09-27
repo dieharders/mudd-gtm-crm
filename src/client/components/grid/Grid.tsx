@@ -237,12 +237,12 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
     >
       <div style={{ width: totalWidth, minWidth: "100%" }}>
         {/* header */}
-        <div className="sticky top-0 z-20 flex h-9 border-b border-line-strong bg-stone-50 text-xs font-semibold text-ink-soft" style={{ width: totalWidth, minWidth: "100%" }}>
-          <div className="sticky left-0 z-[3] flex shrink-0 items-center gap-2 border-r border-line bg-stone-50 pl-3" style={{ width: GUTTER }}>
+        <div className="sticky top-0 z-20 flex h-9 border-b border-line bg-white text-[11px] font-semibold tracking-wider text-ink-faint uppercase" style={{ width: totalWidth, minWidth: "100%" }}>
+          <div className="sticky left-0 z-[3] flex shrink-0 items-center gap-2 border-r border-line bg-white pl-3" style={{ width: GUTTER }}>
             <input
               type="checkbox"
               aria-label="Select all rows"
-              className="h-3.5 w-3.5 accent-clay-600"
+              className="h-3.5 w-3.5 accent-brand-600"
               checked={allSelected}
               ref={(el) => { if (el) el.indeterminate = someSelected; }}
               onChange={toggleAll}
@@ -255,7 +255,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                 key={col.key}
                 style={{ width: widthOf(col), ...pinnedStyle(i) }}
                 className={cn(
-                  "group relative flex shrink-0 items-center border-r border-line bg-stone-50 px-2",
+                  "group relative flex shrink-0 items-center border-r border-line/70 bg-white px-2.5",
                   i === p.pinned - 1 && "shadow-[1px_0_0_var(--color-line-strong)]",
                 )}
               >
@@ -265,12 +265,12 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                   title={`${col.header} — click to sort`}
                 >
                   <span className="truncate">{col.header}</span>
-                  {s === "asc" && <ArrowUp size={12} className="shrink-0 text-clay-600" />}
-                  {s === "desc" && <ArrowDown size={12} className="shrink-0 text-clay-600" />}
+                  {s === "asc" && <ArrowUp size={12} className="shrink-0 text-brand-600" />}
+                  {s === "desc" && <ArrowDown size={12} className="shrink-0 text-brand-600" />}
                 </button>
                 <div
                   onMouseDown={(e) => startResize(e, col)}
-                  className="absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize hover:bg-clay-300/60"
+                  className="absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize hover:bg-brand-300/60"
                 />
               </div>
             );
@@ -283,23 +283,23 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
             const row = p.rows[vr.index]!;
             const isSel = p.selected.has(row.id);
             const isOpen = p.openRowId === row.id;
-            const rowBg = isOpen ? "bg-clay-50" : isSel ? "bg-amber-50/70" : "bg-white group-hover/row:bg-stone-50";
+            const rowBg = isOpen ? "bg-brand-50" : isSel ? "bg-brand-50/60" : "bg-white group-hover/row:bg-zinc-50";
             return (
               <div
                 key={row.id}
-                className="group/row absolute left-0 flex border-b border-line/80"
+                className="group/row absolute left-0 flex border-b border-line/70"
                 style={{ top: 0, transform: `translateY(${vr.start}px)`, height: ROW_H, width: totalWidth, minWidth: "100%" }}
               >
                 <div className={cn("sticky left-0 z-[3] flex shrink-0 items-center gap-1.5 border-r border-line pl-3", rowBg)} style={{ width: GUTTER }}>
                   <input
                     type="checkbox"
                     aria-label="Select row"
-                    className="h-3.5 w-3.5 accent-clay-600"
+                    className="h-3.5 w-3.5 accent-brand-600"
                     checked={isSel}
                     onChange={() => toggleOne(row.id)}
                   />
                   <button
-                    className={cn("rounded p-1 text-ink-faint hover:bg-clay-100 hover:text-clay-700", !isOpen && "opacity-0 group-hover/row:opacity-100")}
+                    className={cn("rounded p-1 text-ink-faint hover:bg-brand-100 hover:text-brand-700", !isOpen && "opacity-0 group-hover/row:opacity-100")}
                     onClick={() => p.onOpenRow(row.id)}
                     title="Open prospect (Space)"
                   >
@@ -314,11 +314,11 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                       key={col.key}
                       style={{ width: widthOf(col), ...pinnedStyle(ci) }}
                       className={cn(
-                        "group/cell relative flex shrink-0 items-center border-r border-line/70 px-2 text-sm",
+                        "group/cell relative flex shrink-0 items-center border-r border-line/50 px-2.5 text-[13px]",
                         rowBg,
                         ci === p.pinned - 1 && "shadow-[1px_0_0_var(--color-line-strong)]",
                         ci === 0 && "font-medium",
-                        isActive && !isEditing && "ring-2 ring-clay-400 ring-inset",
+                        isActive && !isEditing && "ring-2 ring-brand-400 ring-inset",
                         isEditing && "z-[4] overflow-visible p-0",
                       )}
                       onMouseDown={(e) => {

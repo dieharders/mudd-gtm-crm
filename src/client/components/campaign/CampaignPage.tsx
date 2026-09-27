@@ -1,8 +1,8 @@
 import {
   ArchiveRestore, ArrowLeft, Ban, CheckCircle2, Columns3, FileSpreadsheet, Link2, Loader2, MessageSquareText, Plus,
-  Search, Trash2, TriangleAlert, Undo2, X,
+  Search, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { DEAD, stagesOf, type Bucket, type CampaignSchema, type Column, type Row } from "../../../shared/types";
@@ -10,7 +10,9 @@ import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
 import { stageEdits } from "../../lib/pipeline";
-import { toneFor } from "../../lib/stages";
+import { tileFor, toneFor } from "../../lib/stages";
+import { useCampaignList } from "../../lib/campaignList";
+import { Tile } from "../ui/Logo";
 import { display } from "../grid/cells";
 import { Grid, type GridHandle, type SortState } from "../grid/Grid";
 import { RowDrawer } from "../row/RowDrawer";
@@ -23,6 +25,7 @@ import { ExportMenu } from "./ExportMenu";
 import { ScreenOutButton } from "../row/ScreenOutButton";
 
 const NOT_SET = "\u0000none";
+const fileNameOf = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
 export function CampaignPage() {
   const { id } = useParams();
@@ -33,7 +36,7 @@ export function CampaignPage() {
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
         <TriangleAlert className="text-rose-500" />
         <p className="text-sm text-ink-soft">{error}</p>
-        <Link to="/" className="text-sm text-clay-700 hover:underline">Back to campaigns</Link>
+        <Link to="/" className="text-sm text-brand-700 hover:underline">Back to campaigns</Link>
       </div>
     );
   }
@@ -82,6 +85,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
   const grid = useRef<GridHandle>(null);
+  const { refresh: refreshList } = useCampaignList();
 
   useEffect(() => {
     if (initialRow) setParams({}, { replace: true });
@@ -153,44 +157,45 @@ function CampaignView({ state }: { state: CampaignState }) {
   return (
     <div className="flex h-full flex-col">
       {/* header */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2.5">
-        <Link to="/" className="rounded-md p-1.5 text-ink-faint hover:bg-stone-100 hover:text-ink" title="All campaigns"><ArrowLeft size={17} /></Link>
+      <div className="flex flex-wrap items-center gap-3 px-6 pt-5 pb-3">
+        <Link to="/" className="rounded-lg p-1.5 text-ink-faint hover:bg-zinc-900/5 hover:text-ink" title="All campaigns"><ArrowLeft size={17} /></Link>
+        <Tile size="lg" className={tileFor(campaign.id)}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
-          <NameInput value={campaign.name} onCommit={state.rename} />
-          <div className="flex items-center gap-2 truncate text-xs text-ink-faint">
-            {campaign.sourceName ? (
-              <span className="inline-flex items-center gap-1 truncate" title={campaign.sourcePath ?? "Not linked to a file on disk"}>
-                <FileSpreadsheet size={12} className="text-emerald-600" />
-                {campaign.sourcePath ? <>{campaign.sourcePath}<Link2 size={11} /></> : <>{campaign.sourceName} (not linked)</>}
+          <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />
+          <div className="flex items-center gap-2.5 truncate text-xs text-ink-faint">
+            {campaign.sourcePath ? (
+              <span className="tag max-w-md truncate bg-emerald-100 text-emerald-800" title={campaign.sourcePath}>
+                <FileSpreadsheet size={12} /> <span className="truncate">{fileNameOf(campaign.sourcePath)}</span> <Link2 size={11} />
               </span>
-            ) : campaign.sourcePath ? (
-              <span className="inline-flex items-center gap-1 truncate"><FileSpreadsheet size={12} className="text-emerald-600" />{campaign.sourcePath}</span>
+            ) : campaign.sourceName ? (
+              <span className="tag bg-zinc-100 text-zinc-600" title="Dropped files are not linked: use Save as to pick where it goes"><FileSpreadsheet size={12} /> {campaign.sourceName} · not linked</span>
             ) : (
-              <span>Created in Mudd</span>
+              <span className="tag bg-violet-100 text-violet-800">Created in Mudd</span>
             )}
             <SaveIndicator state={state} />
           </div>
         </div>
         <Button onClick={() => setShowTemplates(true)}>
           <MessageSquareText size={15} /> Templates
-          {state.templates.length > 0 && <span className="rounded-full bg-clay-100 px-1.5 text-[11px] text-clay-700">{state.templates.length}</span>}
+          {state.templates.length > 0 && <span className="rounded-md bg-brand-100 px-1.5 text-[11px] font-semibold text-brand-700">{state.templates.length}</span>}
         </Button>
         <Button onClick={() => setShowColumns(true)}><Columns3 size={15} /> Columns</Button>
         <ExportMenu campaign={campaign} state={state} />
       </div>
 
-      {/* buckets + toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 pt-2">
-        <BucketTab active={bucket === "prospects"} onClick={() => setBucket("prospects")} label="Prospects" count={prospectCount} />
-        <BucketTab active={bucket === "screened"} onClick={() => setBucket("screened")} label="Screened out" count={screenedCount} />
+      {/* buckets */}
+      <div className="flex flex-wrap items-end gap-1 border-b border-line px-6">
+        <BucketTab active={bucket === "prospects"} onClick={() => setBucket("prospects")} label="Prospects" count={prospectCount} icon={<Users size={14} />} />
+        <BucketTab active={bucket === "screened"} onClick={() => setBucket("screened")} label="Screened out" count={screenedCount} icon={<Ban size={14} />} />
         {passthrough.length > 0 && (
-          <span className="ml-auto pb-2 text-[11px] text-ink-faint" title="These tabs are written back to the file exactly as they were imported">
-            Also preserved on export: {passthrough.join(", ")}
+          <span className="ml-auto pb-2.5 text-[11px] text-ink-faint" title="These tabs are written back to the file exactly as they were imported">
+            Also kept on export: {passthrough.map((p) => <span key={p} className="tag ml-1 bg-zinc-100 text-zinc-600">{p}</span>)}
           </span>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-stone-50/70 px-4 py-2">
+      {/* toolbar */}
+      <div className="flex min-h-14 flex-wrap items-center gap-2 px-6 py-3">
         {selectedIds.length > 0 ? (
           <BulkBar
             ids={selectedIds}
@@ -213,29 +218,29 @@ function CampaignView({ state }: { state: CampaignState }) {
               {query && <button className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-faint hover:text-ink" onClick={() => setQuery("")}><X size={13} /></button>}
             </div>
             {bucket === "prospects" && schema.statusKey && (
-              <div className="flex flex-wrap items-center gap-1">
-                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} tone="bg-zinc-800 text-white" />
                 {[...stages, DEAD].map((s) => (counts[s] ? (
-                  <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts[s]!} dot={toneFor(s, stages).dot} />
+                  <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts[s]!} tone={toneFor(s, stages).pill} />
                 ) : null))}
                 {Object.keys(counts).filter((s) => s !== NOT_SET && ![...stages, DEAD].includes(s)).map((s) => (
-                  <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts[s]!} />
+                  <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts[s]!} tone={toneFor(s, stages).pill} />
                 ))}
-                {counts[NOT_SET] ? <Chip active={statusFilter === NOT_SET} onClick={() => setStatusFilter(statusFilter === NOT_SET ? null : NOT_SET)} label="No status" count={counts[NOT_SET]!} /> : null}
+                {counts[NOT_SET] ? <Chip active={statusFilter === NOT_SET} onClick={() => setStatusFilter(statusFilter === NOT_SET ? null : NOT_SET)} label="No status" count={counts[NOT_SET]!} tone="bg-zinc-100 text-zinc-600" /> : null}
               </div>
             )}
             <div className="ml-auto flex items-center gap-1.5">
               <Button size="sm" variant="ghost" disabled={!state.canUndo} onClick={() => { const l = state.undo(); if (l) toast(`Undid: ${l}`, { id: "undo" }); }} title="Undo (Ctrl+Z)">
                 <Undo2 size={13} /> Undo
               </Button>
-              <Button size="sm" onClick={addRow}><Plus size={13} /> Add {bucket === "prospects" ? "prospect" : "row"}</Button>
+              <Button size="sm" variant="primary" onClick={addRow}><Plus size={13} /> Add {bucket === "prospects" ? "prospect" : "row"}</Button>
             </div>
           </>
         )}
       </div>
 
       {/* grid + drawer */}
-      <div className="relative min-h-0 flex-1">
+      <div className="relative mx-6 mb-6 min-h-0 flex-1 overflow-hidden rounded-2xl border border-line bg-white shadow-[0_1px_2px_rgba(23,22,29,0.04)]">
         {bucketRows.length === 0 ? (
           <EmptyBucket bucket={bucket} onAdd={addRow} />
         ) : (
@@ -289,7 +294,7 @@ function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) =
   useEffect(() => setDraft(value), [value]);
   return (
     <input
-      className="-ml-1 w-full max-w-xl truncate rounded-md border border-transparent bg-transparent px-1 text-base font-semibold outline-none hover:border-line focus:border-clay-300 focus:bg-white"
+      className="-ml-1 w-full max-w-xl truncate rounded-md border border-transparent bg-transparent px-1 text-base font-semibold outline-none hover:border-line focus:border-brand-300 focus:bg-white"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => (draft.trim() ? onCommit(draft.trim()) : setDraft(value))}
@@ -315,33 +320,33 @@ function SaveIndicator({ state }: { state: CampaignState }) {
   return <span>Saved on this computer</span>;
 }
 
-function BucketTab({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count: number }) {
+function BucketTab({ active, onClick, label, count, icon }: { active: boolean; onClick: () => void; label: string; count: number; icon: ReactNode }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "-mb-px inline-flex items-center gap-2 border-b-2 px-3 pb-2 text-sm font-medium",
-        active ? "border-clay-500 text-ink" : "border-transparent text-ink-soft hover:text-ink",
+        "-mb-px inline-flex items-center gap-2 border-b-2 px-3 pt-1 pb-2.5 text-sm font-medium transition",
+        active ? "border-brand-500 text-brand-700" : "border-transparent text-ink-soft hover:text-ink",
       )}
     >
+      {icon}
       {label}
-      <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums", active ? "bg-clay-100 text-clay-700" : "bg-stone-100 text-ink-faint")}>{count}</span>
+      <span className={cn("rounded-md px-1.5 text-[11px] font-semibold tabular-nums", active ? "bg-brand-100 text-brand-700" : "bg-zinc-200/70 text-ink-faint")}>{count}</span>
     </button>
   );
 }
 
-function Chip({ active, onClick, label, count, dot }: { active: boolean; onClick: () => void; label: string; count: number; dot?: string }) {
+function Chip({ active, onClick, label, count, tone }: { active: boolean; onClick: () => void; label: string; count: number; tone: string }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs",
-        active ? "border-clay-300 bg-clay-50 font-medium text-clay-800" : "border-line bg-white text-ink-soft hover:border-line-strong",
+        "inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition",
+        active ? cn(tone, "shadow-[inset_0_0_0_1.5px_currentColor]") : "border border-line bg-white text-ink-soft hover:border-line-strong hover:text-ink",
       )}
     >
-      {dot && <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />}
       {label}
-      <span className="text-ink-faint tabular-nums">{count}</span>
+      <span className="opacity-60 tabular-nums">{count}</span>
     </button>
   );
 }
@@ -349,7 +354,7 @@ function Chip({ active, onClick, label, count, dot }: { active: boolean; onClick
 function EmptyBucket({ bucket, onAdd }: { bucket: Bucket; onAdd: () => void }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-      {bucket === "prospects" ? <FileSpreadsheet className="text-clay-300" size={32} /> : <Ban className="text-stone-300" size={32} />}
+      {bucket === "prospects" ? <FileSpreadsheet className="text-brand-300" size={32} /> : <Ban className="text-zinc-300" size={32} />}
       <p className="text-sm font-medium">{bucket === "prospects" ? "No prospects yet" : "Nobody screened out"}</p>
       <p className="max-w-sm text-xs text-ink-faint">
         {bucket === "prospects"

@@ -1,4 +1,4 @@
-/** Colours for pipeline stages. Known names get fixed colours; anything else cycles a palette. */
+/** Colours for pipeline stages: Clay-style pastel tags. Unknown stages cycle a palette. */
 import { DEAD } from "../../shared/types";
 
 export interface Tone {
@@ -10,21 +10,21 @@ export interface Tone {
 const T = (pill: string, dot: string, bar: string): Tone => ({ pill, dot, bar });
 
 const KNOWN: Record<string, Tone> = {
-  "not contacted": T("bg-stone-100 text-stone-600 ring-stone-200", "bg-stone-400", "bg-stone-300"),
-  contacted: T("bg-sky-50 text-sky-700 ring-sky-200", "bg-sky-500", "bg-sky-400"),
-  replied: T("bg-indigo-50 text-indigo-700 ring-indigo-200", "bg-indigo-500", "bg-indigo-400"),
-  "meeting booked": T("bg-amber-50 text-amber-800 ring-amber-200", "bg-amber-500", "bg-amber-400"),
-  "clinic held": T("bg-teal-50 text-teal-700 ring-teal-200", "bg-teal-500", "bg-teal-400"),
-  trial: T("bg-lime-50 text-lime-800 ring-lime-200", "bg-lime-500", "bg-lime-400"),
-  signed: T("bg-emerald-50 text-emerald-700 ring-emerald-200", "bg-emerald-500", "bg-emerald-500"),
-  [DEAD.toLowerCase()]: T("bg-rose-50 text-rose-700 ring-rose-200", "bg-rose-500", "bg-rose-400"),
+  "not contacted": T("bg-zinc-100 text-zinc-600", "bg-zinc-400", "bg-zinc-300"),
+  contacted: T("bg-sky-100 text-sky-800", "bg-sky-500", "bg-sky-400"),
+  replied: T("bg-violet-100 text-violet-800", "bg-violet-500", "bg-violet-400"),
+  "meeting booked": T("bg-yellow-100 text-yellow-800", "bg-yellow-400", "bg-yellow-300"),
+  "clinic held": T("bg-pink-100 text-pink-800", "bg-pink-500", "bg-pink-400"),
+  trial: T("bg-orange-100 text-orange-800", "bg-orange-500", "bg-orange-400"),
+  signed: T("bg-emerald-100 text-emerald-800", "bg-emerald-500", "bg-emerald-500"),
+  [DEAD.toLowerCase()]: T("bg-rose-100 text-rose-700", "bg-rose-500", "bg-rose-400"),
 };
 
 const CYCLE: Tone[] = [
-  T("bg-violet-50 text-violet-700 ring-violet-200", "bg-violet-500", "bg-violet-400"),
-  T("bg-cyan-50 text-cyan-700 ring-cyan-200", "bg-cyan-500", "bg-cyan-400"),
-  T("bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200", "bg-fuchsia-500", "bg-fuchsia-400"),
-  T("bg-orange-50 text-orange-700 ring-orange-200", "bg-orange-500", "bg-orange-400"),
+  T("bg-cyan-100 text-cyan-800", "bg-cyan-500", "bg-cyan-400"),
+  T("bg-fuchsia-100 text-fuchsia-800", "bg-fuchsia-500", "bg-fuchsia-400"),
+  T("bg-lime-100 text-lime-800", "bg-lime-500", "bg-lime-400"),
+  T("bg-indigo-100 text-indigo-800", "bg-indigo-500", "bg-indigo-400"),
 ];
 
 export function toneFor(stage: string | null | undefined, stages: string[] = []): Tone {
@@ -33,4 +33,19 @@ export function toneFor(stage: string | null | undefined, stages: string[] = [])
   if (k) return k;
   const i = stages.indexOf(stage);
   return CYCLE[(i < 0 ? stage.length : i) % CYCLE.length]!;
+}
+
+/** Icon tiles for campaigns: a pastel square per campaign, picked from its id. */
+const TILES = [
+  "bg-violet-100 text-violet-700",
+  "bg-sky-100 text-sky-700",
+  "bg-yellow-100 text-yellow-700",
+  "bg-pink-100 text-pink-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-orange-100 text-orange-700",
+];
+export function tileFor(id: string): string {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return TILES[h % TILES.length]!;
 }

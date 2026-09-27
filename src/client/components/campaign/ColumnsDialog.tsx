@@ -84,13 +84,13 @@ export function ColumnsDialog({ open, onClose, schema, onSave, inSheet }: {
               return (
                 <tr key={c.key} className={cn("border-t border-line", c.hidden && "opacity-55")}>
                   <td className="py-1.5">
-                    <button className="rounded p-1 text-ink-faint hover:bg-stone-100 hover:text-ink" onClick={() => patch(c.key, { hidden: !c.hidden })} title={c.hidden ? "Show in grid" : "Hide in grid"}>
+                    <button className="rounded p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink" onClick={() => patch(c.key, { hidden: !c.hidden })} title={c.hidden ? "Show in grid" : "Hide in grid"}>
                       {c.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </td>
                   <td className="py-1.5 pr-2">
                     <input className={cn("field h-8 py-0", dup && "border-rose-300")} value={c.header} onChange={(e) => patch(c.key, { header: e.target.value })} />
-                    {role(c.key) && <span className="mt-0.5 block text-[10px] text-clay-600">{role(c.key)}</span>}
+                    {role(c.key) && <span className="mt-0.5 block text-[10px] text-brand-600">{role(c.key)}</span>}
                   </td>
                   <td className="py-1.5 pr-2">
                     <select className="field h-8 py-0" value={c.type} disabled={c.key === schema.statusKey}

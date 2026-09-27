@@ -28,7 +28,7 @@ export function StatusPill({ value, stages, className }: { value: string; stages
   if (!value) return <span className="text-ink-faint">—</span>;
   const tone = toneFor(value, stages);
   return (
-    <span className={cn("inline-flex max-w-full items-center gap-1.5 truncate rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset", tone.pill, className)}>
+    <span className={cn("inline-flex max-w-full items-center gap-1.5 truncate rounded-md px-1.5 py-0.5 text-xs font-medium", tone.pill, className)}>
       <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone.dot)} />
       <span className="truncate">{value}</span>
     </span>
@@ -51,7 +51,7 @@ export function CellView({
 
   switch (col.type) {
     case "select":
-      return <span className="truncate rounded-md bg-stone-100 px-1.5 py-0.5 text-xs text-ink-soft">{text}</span>;
+      return <span className="truncate rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">{text}</span>;
     case "date":
       return (
         <span className={cn("truncate tabular-nums", cue && "font-medium text-rose-700")} title={cue ? CUE_LABEL[cue] : text}>
@@ -62,8 +62,8 @@ export function CellView({
       return (
         <span className="flex min-w-0 items-center gap-1.5">
           <span className={cn("truncate tabular-nums", cue === "past" && "text-ink-faint")}>{formatDateTime(text)}</span>
-          {cue === "today" && <span className="rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800 uppercase">Today</span>}
-          {cue === "upcoming" && <CalendarClock size={13} className="shrink-0 text-amber-600" />}
+          {cue === "today" && <span className="rounded bg-yellow-200 px-1 text-[10px] font-semibold text-yellow-900 uppercase">Today</span>}
+          {cue === "upcoming" && <CalendarClock size={13} className="shrink-0 text-yellow-600" />}
         </span>
       );
     case "url":
@@ -72,12 +72,12 @@ export function CellView({
       return (
         <span className="flex min-w-0 items-center gap-1">
           {cue === "unverified" && <AlertTriangle size={13} className="shrink-0 text-rose-500" aria-label={CUE_LABEL.unverified} />}
-          <span className={cn("truncate", cue === "unverified" ? "text-rose-700" : "text-sky-800")} title={cue ? CUE_LABEL[cue] : text}>
+          <span className={cn("truncate", cue === "unverified" ? "text-rose-700" : "text-brand-700")} title={cue ? CUE_LABEL[cue] : text}>
             {text.replace(/^https?:\/\/(www\.)?/, "")}
           </span>
           {href && (
             <button
-              className="shrink-0 rounded p-0.5 text-ink-faint opacity-0 group-hover/cell:opacity-100 hover:bg-stone-200 hover:text-ink"
+              className="shrink-0 rounded p-0.5 text-ink-faint opacity-0 group-hover/cell:opacity-100 hover:bg-zinc-200 hover:text-ink"
               title={`Open ${href}`}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
@@ -167,7 +167,7 @@ function InputEditor({ col, value, initial, onCommit, onCancel }: EditorProps) {
         else if (e.key === "Tab") { e.preventDefault(); commit(e.shiftKey ? "left" : "right"); }
         else if (e.key === "Escape") { e.preventDefault(); done.current = true; onCancel(); }
       }}
-      className="h-full w-full min-w-0 bg-white px-2 text-sm outline-none ring-2 ring-clay-400 ring-inset"
+      className="h-full w-full min-w-0 bg-white px-2 text-sm outline-none ring-2 ring-brand-400 ring-inset"
     />
   );
 }
@@ -188,7 +188,7 @@ function LongTextEditor({ value, initial, onCommit, onCancel, col }: EditorProps
     onCommit(coerce(draft, col), move);
   };
   return (
-    <div className="absolute top-0 left-0 z-30 w-[max(100%,380px)] rounded-lg bg-white shadow-xl ring-2 ring-clay-400">
+    <div className="absolute top-0 left-0 z-30 w-[max(100%,380px)] rounded-lg bg-white shadow-xl ring-2 ring-brand-400">
       <textarea
         ref={ref}
         value={draft}
@@ -227,7 +227,7 @@ function SelectEditor({ col, value, initial, onCommit, onCancel }: EditorProps) 
     onCommit(v, move);
   };
   return (
-    <div className="absolute top-0 left-0 z-30 w-[max(100%,220px)] overflow-hidden rounded-lg bg-white shadow-xl ring-2 ring-clay-400">
+    <div className="absolute top-0 left-0 z-30 w-[max(100%,220px)] overflow-hidden rounded-lg bg-white shadow-xl ring-2 ring-brand-400">
       <input
         ref={ref}
         value={filter}
@@ -252,7 +252,7 @@ function SelectEditor({ col, value, initial, onCommit, onCancel }: EditorProps) 
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pick(o)}
               onMouseEnter={() => setHi(i)}
-              className={cn("flex w-full items-center px-2.5 py-1 text-left text-sm", i === hi && "bg-clay-50", o === cur && "font-semibold")}
+              className={cn("flex w-full items-center px-2.5 py-1 text-left text-sm", i === hi && "bg-brand-50", o === cur && "font-semibold")}
             >
               {o}
             </button>
@@ -261,7 +261,7 @@ function SelectEditor({ col, value, initial, onCommit, onCancel }: EditorProps) 
         {!list.length && <li className="px-2.5 py-1.5 text-xs text-ink-faint">No matching option</li>}
         {cur && (
           <li className="border-t border-line">
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="w-full px-2.5 py-1.5 text-left text-xs text-ink-faint hover:bg-stone-50">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="w-full px-2.5 py-1.5 text-left text-xs text-ink-faint hover:bg-zinc-50">
               Clear
             </button>
           </li>

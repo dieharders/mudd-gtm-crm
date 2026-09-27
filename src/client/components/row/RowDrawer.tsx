@@ -56,13 +56,13 @@ export function RowDrawer({ row, schema, stages, templates, state, onClose, onPr
   }, [onClose, onNext, onPrev]);
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(460px,100%)] flex-col border-l border-line bg-panel shadow-2xl shadow-stone-900/10 animate-slide-in">
+    <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(460px,100%)] flex-col border-l border-line bg-panel shadow-2xl shadow-zinc-900/10 animate-slide-in">
       <div className="flex items-start gap-2 border-b border-line px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-base font-semibold">{title}</h2>
           <p className="truncate text-xs text-ink-soft">
             {subtitle || " "}
-            {screened && <span className="ml-2 rounded bg-stone-200 px-1.5 py-0.5 text-[10px] font-semibold text-stone-600 uppercase">Screened out</span>}
+            {screened && <span className="ml-2 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 uppercase">Screened out</span>}
           </p>
         </div>
         {!screened && (
@@ -111,7 +111,7 @@ function Field({ col, row, onEdit }: { col: Column; row: Row; onEdit: (e: CellEd
       <label className="label flex items-center gap-1">
         {col.header}
         {href && (
-          <button className="ml-auto rounded p-0.5 text-ink-faint hover:text-clay-700" onClick={() => openLink(href)} title={`Open ${href}`}>
+          <button className="ml-auto rounded p-0.5 text-ink-faint hover:text-brand-700" onClick={() => openLink(href)} title={`Open ${href}`}>
             <ExternalLink size={12} />
           </button>
         )}
@@ -164,14 +164,14 @@ function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSc
           const tone = toneFor(s, stages);
           return (
             <li key={s} className="relative flex min-w-0 flex-1 flex-col items-center">
-              {i > 0 && <span className={cn("absolute top-[9px] right-1/2 h-0.5 w-full", done ? tone.bar : "bg-stone-200")} />}
+              {i > 0 && <span className={cn("absolute top-[9px] right-1/2 h-0.5 w-full", done ? tone.bar : "bg-zinc-200")} />}
               <button
                 onClick={() => set(here ? "" : s)}
                 title={here ? `Clear ${s}` : `Set to ${s}`}
                 className={cn(
                   "relative z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 transition",
-                  done ? cn("border-transparent text-white", tone.dot) : "border-stone-300 bg-white hover:border-clay-400",
-                  here && "ring-4 ring-clay-100",
+                  done ? cn("border-transparent text-white", tone.dot) : "border-zinc-300 bg-white hover:border-brand-400",
+                  here && "ring-4 ring-brand-100",
                 )}
               >
                 {done && <Check size={11} strokeWidth={3} />}
@@ -200,9 +200,9 @@ function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSc
 function ScreenedBanner({ row, schema, state }: { row: Row; schema: CampaignSchema; state: CampaignState }) {
   const reasonCol = schema.columns.find((c) => c.key === schema.reasonKey);
   return (
-    <section className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+    <section className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
       <div className="flex items-center gap-2">
-        <Ban size={15} className="text-stone-500" />
+        <Ban size={15} className="text-zinc-500" />
         <h3 className="text-sm font-semibold">Screened out</h3>
         <Button size="sm" className="ml-auto" onClick={() => {
           state.moveRows([row.id], "prospects");
@@ -271,7 +271,7 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
     <section>
       <h3 className="mb-2 text-xs font-semibold tracking-wide text-ink-faint uppercase">Meeting</h3>
       {editing ? (
-        <div className="space-y-3 rounded-xl border border-clay-200 bg-clay-50/50 p-3">
+        <div className="space-y-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
           <div>
             <label className="label" htmlFor="m-url">Meeting link</label>
             <input id="m-url" className="field" placeholder="Zoom, Google Meet, Teams or Calendly link" value={draftUrl} onChange={(e) => setDraftUrl(e.target.value)} autoFocus />
@@ -286,9 +286,9 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
           </div>
         </div>
       ) : booked ? (
-        <div className={cn("rounded-xl border p-3", today ? "border-amber-200 bg-amber-50" : past ? "border-line bg-stone-50" : "border-line bg-white")}>
+        <div className={cn("rounded-xl border p-3", today ? "border-amber-200 bg-amber-50" : past ? "border-line bg-zinc-50" : "border-line bg-white")}>
           <div className="flex items-start gap-3">
-            <div className={cn("rounded-lg p-2", today ? "bg-amber-100 text-amber-700" : "bg-clay-50 text-clay-600")}><Video size={18} /></div>
+            <div className={cn("rounded-lg p-2", today ? "bg-amber-100 text-amber-700" : "bg-brand-50 text-brand-600")}><Video size={18} /></div>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold">{at ? formatDateTime(at) : "Time not set"}</div>
               <div className={cn("text-xs", today ? "font-medium text-amber-700" : "text-ink-soft")}>
@@ -361,7 +361,7 @@ function IntroSection({ row, schema, stages, templates, onEdit, onOpenTemplates 
     <section>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">{introCol.header}</h3>
-        <button className="text-xs text-clay-700 hover:underline" onClick={onOpenTemplates}>Manage templates</button>
+        <button className="text-xs text-brand-700 hover:underline" onClick={onOpenTemplates}>Manage templates</button>
       </div>
       {templates.length > 0 ? (
         <div className="mb-2 flex gap-2">
@@ -373,7 +373,7 @@ function IntroSection({ row, schema, stages, templates, onEdit, onOpenTemplates 
           </Button>
         </div>
       ) : (
-        <button onClick={onOpenTemplates} className="mb-2 w-full rounded-lg border border-dashed border-line-strong px-3 py-2 text-left text-xs text-ink-soft hover:border-clay-300 hover:text-clay-700">
+        <button onClick={onOpenTemplates} className="mb-2 w-full rounded-lg border border-dashed border-line-strong px-3 py-2 text-left text-xs text-ink-soft hover:border-brand-300 hover:text-brand-700">
           No templates yet — add your intro message templates to fill this in one click.
         </button>
       )}

@@ -116,9 +116,9 @@ export function ImportProvider({ children }: { children: ReactNode }) {
         }}
       />
       {dragging && (
-        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-clay-900/20 p-8 animate-fade-in">
-          <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-clay-400 bg-white/95 px-14 py-10 text-center shadow-2xl">
-            <Upload className="text-clay-500" size={32} />
+        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-brand-900/20 p-8 animate-fade-in">
+          <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-brand-400 bg-white/95 px-14 py-10 text-center shadow-2xl">
+            <Upload className="text-brand-500" size={32} />
             <p className="text-lg font-semibold">Drop to import</p>
             <p className="text-sm text-ink-soft">.xlsx or .csv · read on this computer, never uploaded</p>
           </div>
@@ -215,7 +215,7 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
         </div>
 
         {p && (
-          <div className="rounded-xl border border-line bg-stone-50 p-3">
+          <div className="rounded-xl border border-line bg-zinc-50 p-3">
             <p className="mb-2 text-xs font-medium text-ink-soft">
               {p.name}: {p.rows} prospects · {p.cols} columns{p.hasStatus ? " · Status column found" : " · no Status column (Mudd will add one)"}
             </p>
@@ -228,8 +228,8 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
           </div>
         )}
 
-        <div className="flex gap-2.5 rounded-xl bg-clay-50 p-3 text-sm text-clay-900">
-          <Info size={16} className="mt-0.5 shrink-0 text-clay-500" />
+        <div className="flex gap-2.5 rounded-xl bg-brand-50 p-3 text-sm text-brand-900">
+          <Info size={16} className="mt-0.5 shrink-0 text-brand-500" />
           <div className="space-y-1">
             {kept.length > 0 && (
               <p>
@@ -238,7 +238,7 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
             )}
             <p>Intro message, Meeting URL and Meeting at columns are added after your last column, so formulas that point at existing columns keep working.</p>
             {result.templates > 0 && <p>{result.templates} intro template{result.templates === 1 ? "" : "s"} found and will be restored.</p>}
-            {!result.path && <p className="text-clay-700">Dropped files can't be saved back in place — use <em>Save as</em> when exporting, or import with the Import button to link the file.</p>}
+            {!result.path && <p className="text-brand-700">Dropped files can't be saved back in place — use <em>Save as</em> when exporting, or import with the Import button to link the file.</p>}
           </div>
         </div>
       </div>
