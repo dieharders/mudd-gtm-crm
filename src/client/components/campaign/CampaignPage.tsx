@@ -1,6 +1,6 @@
 import {
   ArchiveRestore, ArrowLeft, Ban, CheckCircle2, Columns3, FileSpreadsheet, Link2, Loader2, MessageSquareText, Plus,
-  Search, Trash2, TriangleAlert, Undo2, Users, X,
+  Rows3, Search, Table2, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -15,7 +15,9 @@ import { useCampaignList } from "../../lib/campaignList";
 import { Tile } from "../ui/Logo";
 import { display } from "../grid/cells";
 import { Grid, type GridHandle, type SortState } from "../grid/Grid";
+import { ProspectList } from "../list/ProspectList";
 import { RowDrawer } from "../row/RowDrawer";
+import { cardLayout, groupableColumns } from "../../lib/listLayout";
 import { TemplatesPanel } from "../templates/TemplatesPanel";
 import { Button } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Menu";
@@ -86,6 +88,10 @@ function CampaignView({ state }: { state: CampaignState }) {
   const [showColumns, setShowColumns] = useState(false);
   const grid = useRef<GridHandle>(null);
   const { refresh: refreshList } = useCampaignList();
+  const [view, setView] = useStoredState<"table" | "reading">(`mudd:view:${campaign.id}`, "table");
+  const groupable = useMemo(() => groupableColumns(schema), [schema]);
+  const [groupBy, setGroupBy] = useStoredState<string>(`mudd:group:${campaign.id}`, cardLayout(schema).tierKey ?? "");
+  const groupKey = groupable.some((c) => c.key === groupBy) ? groupBy : null;
 
   useEffect(() => {
     if (initialRow) setParams({}, { replace: true });
@@ -148,7 +154,8 @@ function CampaignView({ state }: { state: CampaignState }) {
     const row = state.addRow(bucket, cells);
     setQuery("");
     setSort(null);
-    setTimeout(() => grid.current?.focusCell(row.id), 50);
+    if (view === "reading") setOpenRowId(row.id);
+    else setTimeout(() => grid.current?.focusCell(row.id), 50);
   };
 
   const inSheet = useMemo(() => new Set(campaign.sheets.flatMap((s) => Object.keys(s.colMap))), [campaign.sheets]);
@@ -230,6 +237,16 @@ function CampaignView({ state }: { state: CampaignState }) {
               </div>
             )}
             <div className="ml-auto flex items-center gap-1.5">
+              {view === "reading" && groupable.length > 0 && (
+                <label className="flex items-center gap-1.5 text-xs text-ink-faint">
+                  Group by
+                  <select className="field h-8 w-auto py-0 pr-7 text-xs" value={groupKey ?? ""} onChange={(e) => setGroupBy(e.target.value)}>
+                    <option value="">Nothing</option>
+                    {groupable.map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+                  </select>
+                </label>
+              )}
+              <ViewToggle view={view} onChange={setView} />
               <Button size="sm" variant="ghost" disabled={!state.canUndo} onClick={() => { const l = state.undo(); if (l) toast(`Undid: ${l}`, { id: "undo" }); }} title="Undo (Ctrl+Z)">
                 <Undo2 size={13} /> Undo
               </Button>
@@ -245,6 +262,9 @@ function CampaignView({ state }: { state: CampaignState }) {
           <EmptyBucket bucket={bucket} onAdd={addRow} />
         ) : (
           <>
+            {view === "reading" ? (
+              <ProspectList rows={filtered} schema={schema} stages={stages} groupBy={groupKey} openRowId={openRowId} onOpenRow={setOpenRowId} />
+            ) : (
             <Grid
               ref={grid}
               columns={columns}
@@ -261,6 +281,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               onSort={setSort}
               openRowId={openRowId}
             />
+            )}
             {filtered.length === 0 && (
               <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-sm text-ink-faint">No rows match.</div>
             )}
@@ -318,6 +339,47 @@ function SaveIndicator({ state }: { state: CampaignState }) {
   if (s === "error") return <span className="inline-flex items-center gap-1 text-rose-600"><TriangleAlert size={11} /> Not saved</span>;
   if (s === "saved" && at) return <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 size={11} /> Saved {timeAgo(at)}</span>;
   return <span>Saved on this computer</span>;
+}
+
+function ViewToggle({ view, onChange }: { view: "table" | "reading"; onChange: (v: "table" | "reading") => void }) {
+  const opt = (v: "table" | "reading", icon: ReactNode, label: string) => (
+    <button
+      onClick={() => onChange(v)}
+      title={`${label} view`}
+      className={cn(
+        "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition",
+        view === v ? "bg-white text-ink shadow-[0_1px_2px_rgba(23,22,29,0.12)]" : "text-ink-faint hover:text-ink",
+      )}
+    >
+      {icon} {label}
+    </button>
+  );
+  return (
+    <div className="flex rounded-lg bg-zinc-200/60 p-0.5">
+      {opt("table", <Table2 size={13} />, "Table")}
+      {opt("reading", <Rows3 size={13} />, "Reading")}
+    </div>
+  );
+}
+
+/** A per-browser preference (view, grouping). Storage may be unavailable; then it just resets. */
+function useStoredState<T extends string>(key: string, initial: T): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      return (localStorage.getItem(key) as T | null) ?? initial;
+    } catch {
+      return initial;
+    }
+  });
+  const set = (v: T) => {
+    setValue(v);
+    try {
+      localStorage.setItem(key, v);
+    } catch {
+      /* private mode: keep it for this session only */
+    }
+  };
+  return [value, set];
 }
 
 function BucketTab({ active, onClick, label, count, icon }: { active: boolean; onClick: () => void; label: string; count: number; icon: ReactNode }) {
