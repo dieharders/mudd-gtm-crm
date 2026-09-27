@@ -226,7 +226,7 @@ function CampaignView({ state }: { state: CampaignState }) {
             </div>
             {bucket === "prospects" && schema.statusKey && (
               <div className="flex flex-wrap items-center gap-1.5">
-                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} tone="bg-zinc-800 text-white" />
+                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} tone="bg-brand-100 text-brand-700" />
                 {[...stages, DEAD].map((s) => (counts[s] ? (
                   <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts[s]!} tone={toneFor(s, stages).pill} />
                 ) : null))}
