@@ -1,0 +1,93 @@
+/**
+ * Intro-message templates: `{{Column header}}` placeholders filled from a row.
+ *
+ *   {{Company}}              the row's Company cell
+ *   {{First name}}           first word of the row's name/contact column
+ *   {{Company|your team}}    falls back to "your team" when the cell is empty
+ *
+ * Header matching ignores case, spacing and punctuation, so {{primary contact}} finds
+ * "Primary contact". Anything that matches no column is left in place and reported, so the
+ * editor can highlight it rather than silently send "Hi {{Frist name}}".
+ */
+import type { CampaignSchema, CellValue } from "./types";
+
+const PLACEHOLDER = /\{\{\s*([^{}|]+?)\s*(?:\|\s*([^{}]*?)\s*)?\}\}/g;
+
+export const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+export interface MergeResult {
+  text: string;
+  unknown: string[];
+  missing: string[];
+}
+
+export function placeholdersFor(schema: CampaignSchema): string[] {
+  const names = schema.columns.filter((c) => !c.hidden || c.key === schema.nameKey).map((c) => c.header);
+  if (schema.nameKey) names.unshift("First name");
+  return [...new Set(names)];
+}
+
+function display(v: CellValue | undefined): string {
+  if (v === null || v === undefined) return "";
+  return String(v).trim();
+}
+
+export function firstNameOf(full: string): string {
+  // "Jenna Young, CF APMP" → "Jenna"; "Blair Tighe; Bob Nunnally" → "Blair"
+  const first = full.split(/[;,/]|\s+(?:and|&)\s+/)[0]?.trim() ?? "";
+  return first.split(/\s+/)[0] ?? "";
+}
+
+export function resolvePlaceholder(
+  name: string,
+  schema: CampaignSchema,
+  cells: Record<string, CellValue>,
+): { known: boolean; value: string } {
+  const n = norm(name);
+  if (n === "firstname") {
+    if (!schema.nameKey) return { known: false, value: "" };
+    return { known: true, value: firstNameOf(display(cells[schema.nameKey])) };
+  }
+  const col = schema.columns.find((c) => norm(c.header) === n);
+  if (!col) return { known: false, value: "" };
+  return { known: true, value: display(cells[col.key]) };
+}
+
+export function mergeTemplate(
+  body: string,
+  schema: CampaignSchema,
+  cells: Record<string, CellValue>,
+): MergeResult {
+  const unknown: string[] = [];
+  const missing: string[] = [];
+  const text = body.replace(PLACEHOLDER, (whole, name: string, fallback?: string) => {
+    const r = resolvePlaceholder(name, schema, cells);
+    if (!r.known) {
+      unknown.push(name);
+      return whole;
+    }
+    if (r.value) return r.value;
+    if (fallback !== undefined) return fallback;
+    missing.push(name);
+    return "";
+  });
+  return { text, unknown: [...new Set(unknown)], missing: [...new Set(missing)] };
+}
+
+/** Split a template into literal text and placeholder tokens, for highlighting in the editor. */
+export function tokenize(
+  body: string,
+  schema: CampaignSchema,
+): { text: string; placeholder?: { name: string; known: boolean } }[] {
+  const out: { text: string; placeholder?: { name: string; known: boolean } }[] = [];
+  let last = 0;
+  for (const m of body.matchAll(PLACEHOLDER)) {
+    if (m.index! > last) out.push({ text: body.slice(last, m.index) });
+    const name = m[1]!;
+    const known = resolvePlaceholder(name, schema, {}).known;
+    out.push({ text: m[0], placeholder: { name, known } });
+    last = m.index! + m[0].length;
+  }
+  if (last < body.length) out.push({ text: body.slice(last) });
+  return out;
+}

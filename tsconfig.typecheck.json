@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": { "webview-bun": ["./types/webview-bun.d.ts"] }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "mudd",
+  "version": "0.1.0",
+  "description": "Mudd.io: local-first prospect CRM with spreadsheet import/export.",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.0",
+  "scripts": {
+    "start": "bun run build:css && bun run main.ts",
+    "dev": "bun run --hot scripts/dev.ts",
+    "headless": "bun run build:css && bun run main.ts --headless",
+    "build:css": "bunx @tailwindcss/cli -i ./src/client/styles.css -o ./src/client/generated.css --minify",
+    "build": "bun run build:css && bun run build.ts",
+    "test": "bun test ./src/",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
+  },
+  "dependencies": {
+    "@tanstack/react-virtual": "^3.14.13",
+    "exceljs": "^4.4.0",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.48.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.6.1",
+    "react-router-dom": "^7",
+    "tailwind-merge": "^3.7.0",
+    "webview-bun": "^2.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "@types/bun": "^1.4.2",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  }
+}

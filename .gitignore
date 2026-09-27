@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.dev-workspace/
+src/client/generated.css
+*.xlsx
+*.xlsm
+*.csv
+!src/**/fixtures/*.generated.xlsx
