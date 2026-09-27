@@ -48,6 +48,30 @@ src/shared/             types and template merging (client + server)
 src/client/             React UI (Tailwind v4, lucide-react, react-hot-toast)
 ```
 
-## Phase 2 (not built yet)
+## AI: enrichment and intro messages
 
-Enrichment pipeline and AI provider CLIs (ported from motionbuff-native-app's `app/src/agent/cli/`), plus AI-written intro messages drawn from your templates. Columns already carry an `origin`/`recipeId` field so enriched columns export like any other.
+Mudd drives **your own signed-in agent CLI**, the same way motionbuff-native-app does. It never stores an API key, and research bills your plan.
+
+| Provider | Needs | Sign in |
+| --- | --- | --- |
+| Claude Code (default) | `npm install -g @anthropic-ai/claude-code` | `claude auth login` (or **Sign in** in AI settings) |
+| Codex | `npm install -g @openai/codex` | `codex login` |
+
+Open **AI settings** from the bottom of the sidebar to pick the provider, model and effort. It shows the signed-in account and whether usage bills your subscription or an API key. "Bill my Claude subscription only" removes `ANTHROPIC_API_KEY` from the CLI's environment. It is switched off automatically if that key is your only credential.
+
+**What a research turn can do.** Claude Code gets `WebSearch` and `WebFetch` and nothing else: no shell, no file access. It runs in an empty scratch folder, with your CLAUDE.md, hooks and MCP servers ignored, and with no saved session. Codex runs `exec` with a read-only sandbox. Nothing leaves the machine until you press Run, and the first run asks for consent.
+
+- **Enrich** (campaign toolbar): pick a preset or write a recipe.
+  - A recipe is what to find, which columns to send, and which columns to fill. It targets existing columns when the headers match, otherwise it appends new ones.
+  - Presets: Company snapshot, Recent news & trigger, Decision-maker, Published email (the domain's mail server is checked), Personalization hook.
+  - **Test on 3 rows**, then **Run** on the selection, on rows missing the fields, or on everything.
+  - Runs have pause, resume and stop, choose how many rows run at once, and retry failed rows automatically.
+- **Review**: every finding is a suggestion, with its source link and a confidence level.
+  - Accepting writes the cell (with undo) and adds the link to an `Enrichment sources` column.
+  - "Fill empty cells automatically" skips review only for cells that are empty.
+  - A violet dot on a cell means it has a suggestion waiting.
+- **Write with AI** (prospect panel → Intro message): let the AI pick the best-fitting template, or choose one.
+  - It fills the placeholders, researches 1–2 verifiable hooks and shows a draft with those sources. Use it, try again, or discard it.
+  - **Draft intros** in the bulk bar does the same for every selected row.
+
+Code: `src/server/ai/` (providers, discovery, environment, structured turns), `src/server/enrich/` (runner, prompts, storage, event stream), and `src/client/components/{ai,enrich}/`.

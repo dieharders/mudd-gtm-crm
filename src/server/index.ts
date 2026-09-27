@@ -9,7 +9,9 @@ import { exportCampaign } from "../xlsx/export";
 import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook } from "../xlsx/import";
 import { copySchema, genericSchema } from "../xlsx/layouts";
 import * as db from "./db";
+import { registerAiRoutes } from "./ai-routes";
 import { dialogsSupported, downloadsDir, openDialog, openExternal, saveDialog } from "./dialogs";
+import { markInterruptedRuns } from "./enrich/store";
 
 const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
@@ -276,7 +278,20 @@ on("POST", "/api/open-url", async (req) => {
 });
 on("GET", "/api/meetings", () => json(db.listMeetings()));
 
+registerAiRoutes(on, {
+  json,
+  body,
+  fail: (status, message) => {
+    throw new HttpError(status, message);
+  },
+});
+
 export function createFetchHandler() {
+  try {
+    markInterruptedRuns();
+  } catch (err) {
+    console.error("could not tidy interrupted runs:", err);
+  }
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     for (const [method, re, h] of routes) {

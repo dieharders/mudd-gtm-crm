@@ -1,4 +1,6 @@
 /** Typed calls to the local API. Every request is same-origin; nothing goes to the internet. */
+import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeOutput, RunKind, Suggestion, SuggestionStatus } from "../../shared/ai";
+import type { ColumnType } from "../../shared/types";
 import type {
   Bucket, Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, Row, Template,
 } from "../../shared/types";
@@ -83,4 +85,30 @@ export const api = {
   openDialog: () => call<DialogResult>("POST", "/api/dialog/open"),
   openUrl: (url: string) => call<{ ok: true }>("POST", "/api/open-url", { url }),
   meetings: () => call<Meeting[]>("GET", "/api/meetings"),
+
+  // ----- AI -----
+  aiStatus: (fresh = false) => call<{ settings: AiSettings; providers: ProviderStatus[] }>("GET", `/api/ai/status${fresh ? "?fresh=1" : ""}`),
+  aiSettings: (patch: Partial<AiSettings>) => call<AiSettings>("PATCH", "/api/ai/settings", patch),
+  aiSignIn: (provider: ProviderId) => call<{ ok: boolean; message?: string }>("POST", "/api/ai/signin", { provider }),
+
+  recipes: (id: string) => call<Recipe[]>("GET", `/api/campaigns/${id}/recipes`),
+  createRecipe: (id: string, r: RecipeDraft) => call<{ recipe: Recipe; campaign: Campaign }>("POST", `/api/campaigns/${id}/recipes`, r),
+  updateRecipe: (rid: string, r: Partial<RecipeDraft>) => call<{ recipe: Recipe; campaign: Campaign }>("PATCH", `/api/recipes/${rid}`, r),
+  deleteRecipe: (rid: string) => call<{ ok: true }>("DELETE", `/api/recipes/${rid}`),
+
+  runs: (id: string) => call<EnrichRun[]>("GET", `/api/campaigns/${id}/runs`),
+  startRun: (id: string, body: { kind: RunKind; recipeId?: string; rowIds: string[]; test?: boolean; autoFill?: boolean; concurrency?: number; intro?: IntroOptions }) =>
+    call<EnrichRun>("POST", `/api/campaigns/${id}/runs`, body),
+  runAction: (rid: string, action: "pause" | "resume" | "stop") => call<EnrichRun>("POST", `/api/runs/${rid}/${action}`),
+
+  suggestions: (id: string, status: SuggestionStatus = "pending") => call<Suggestion[]>("GET", `/api/campaigns/${id}/suggestions?status=${status}`),
+  setSuggestions: (id: string, ids: string[], status: SuggestionStatus) => call<Suggestion[]>("PATCH", `/api/campaigns/${id}/suggestions`, { ids, status }),
 };
+
+export interface RecipeDraft {
+  name: string;
+  instructions: string;
+  inputKeys: string[];
+  outputs: (Partial<RecipeOutput> & { header: string; type?: ColumnType; options?: string[] })[];
+  webSearch: boolean;
+}

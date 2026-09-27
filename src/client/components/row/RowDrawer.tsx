@@ -5,7 +5,7 @@ import {
   ArchiveRestore, Ban, CalendarPlus, Check, ChevronDown, ChevronUp, ClipboardCopy, Copy, ExternalLink, MoreHorizontal,
   Pencil, Send, Trash2, Undo2, Video, X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { mergeTemplate } from "../../../shared/merge";
 import { DEAD, MEETING_STAGE, type CampaignSchema, type CellEdit, type Column, type Row, type Template } from "../../../shared/types";
@@ -14,6 +14,8 @@ import { formatDateTime, isSameDay, parseLocal, relative } from "../../lib/forma
 import { contactedStage, rowTitle, shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
 import { toneFor } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
+import type { EnrichmentState } from "../../hooks/useEnrichment";
+import { AiIntro, RowSuggestions } from "./AiSections";
 import { hrefOf, openLink } from "../grid/cells";
 import { Button } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Menu";
@@ -31,9 +33,10 @@ interface Props {
   onPrev?: () => void;
   onNext?: () => void;
   onOpenTemplates: () => void;
+  enrich: EnrichmentState;
 }
 
-export function RowDrawer({ row, schema, stages, templates, state, onClose, onPrev, onNext, onOpenTemplates }: Props) {
+export function RowDrawer({ row, schema, stages, templates, state, onClose, onPrev, onNext, onOpenTemplates, enrich }: Props) {
   const { title, subtitle } = rowTitle(row, schema);
   const screened = row.bucket === "screened";
   const special = new Set([schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey].filter(Boolean));
@@ -78,6 +81,7 @@ export function RowDrawer({ row, schema, stages, templates, state, onClose, onPr
       </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 scroll-thin">
+        <RowSuggestions row={row} schema={schema} enrich={enrich} />
         {screened ? (
           <ScreenedBanner row={row} schema={schema} state={state} />
         ) : (
@@ -87,7 +91,8 @@ export function RowDrawer({ row, schema, stages, templates, state, onClose, onPr
         {!screened && schema.meetingAtKey && <MeetingSection key={row.id} row={row} schema={schema} stages={stages} onEdit={edit} />}
 
         {schema.introKey && (
-          <IntroSection key={row.id} row={row} schema={schema} stages={stages} templates={templates} onEdit={edit} onOpenTemplates={onOpenTemplates} />
+          <IntroSection key={row.id} row={row} schema={schema} stages={stages} templates={templates} onEdit={edit} onOpenTemplates={onOpenTemplates}
+            ai={<AiIntro key={row.id} row={row} schema={schema} templates={templates} enrich={enrich} />} />
         )}
 
         <section>
@@ -329,9 +334,9 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
 
 // ---------- intro message ----------
 
-function IntroSection({ row, schema, stages, templates, onEdit, onOpenTemplates }: {
+function IntroSection({ row, schema, stages, templates, onEdit, onOpenTemplates, ai }: {
   row: Row; schema: CampaignSchema; stages: string[]; templates: Template[];
-  onEdit: (e: CellEdit[], l: string, t?: string) => void; onOpenTemplates: () => void;
+  onEdit: (e: CellEdit[], l: string, t?: string) => void; onOpenTemplates: () => void; ai?: ReactNode;
 }) {
   const introCol = schema.columns.find((c) => c.key === schema.introKey)!;
   const intro = String(row.cells[introCol.key] ?? "");
@@ -363,6 +368,7 @@ function IntroSection({ row, schema, stages, templates, onEdit, onOpenTemplates 
         <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">{introCol.header}</h3>
         <button className="text-xs text-brand-700 hover:underline" onClick={onOpenTemplates}>Manage templates</button>
       </div>
+      {ai}
       {templates.length > 0 ? (
         <div className="mb-2 flex gap-2">
           <select className="field h-8 py-0 text-xs" value={pick} onChange={(e) => setPick(e.target.value)}>

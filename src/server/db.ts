@@ -12,7 +12,7 @@ import path from "node:path";
 import type {
   Bucket, Campaign, CampaignSchema, CampaignSummary, CellEdit, CellValue, Meeting, Row, SheetMeta, Template,
 } from "../shared/types";
-import { DEAD, MEETING_STAGE, stagesOf } from "../shared/types";
+import { DEAD, stagesOf } from "../shared/types";
 
 export function dataDir(): string {
   if (process.env.MUDD_DATA_DIR) return process.env.MUDD_DATA_DIR;
@@ -60,6 +60,32 @@ export function getDb(): Database {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS templates_campaign ON templates(campaign_id);
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS recipes (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS runs (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      json TEXT NOT NULL,
+      started_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS suggestions (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      run_id TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS suggestions_campaign ON suggestions(campaign_id, status);
   `);
   return db;
 }
@@ -381,4 +407,18 @@ export function listMeetings(): Meeting[] {
   return out.sort((a, b) => a.at.localeCompare(b.at));
 }
 
-export { MEETING_STAGE };
+// ---------- settings ----------
+
+export function getSetting<T>(key: string, fallback: T): T {
+  const r = getDb().query("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | null;
+  if (!r) return fallback;
+  try {
+    return JSON.parse(r.value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+export function setSetting(key: string, value: unknown): void {
+  getDb().query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, JSON.stringify(value));
+}

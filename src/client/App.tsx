@@ -6,6 +6,8 @@ import { ImportProvider } from "./components/campaigns/ImportFlow";
 import { NewCampaignDialog } from "./components/campaigns/NewCampaignDialog";
 import { Sidebar } from "./components/ui/Sidebar";
 import { AppToaster } from "./components/ui/Toaster";
+import { AiSettingsDialog } from "./components/ai/AiSettings";
+import { AiProvider } from "./lib/aiStatus";
 import { CampaignListProvider, useCampaignList } from "./lib/campaignList";
 
 function Shell() {
@@ -23,6 +25,7 @@ function Shell() {
         </Routes>
       </main>
       <NewCampaignDialog open={creating} onClose={() => setCreating(false)} campaigns={campaigns ?? []} />
+      <AiSettingsDialog />
     </div>
   );
 }
@@ -31,10 +34,12 @@ export function App() {
   return (
     <BrowserRouter>
       <CampaignListProvider>
-        <ImportProvider>
-          <Shell />
-          <AppToaster />
-        </ImportProvider>
+        <AiProvider>
+          <ImportProvider>
+            <Shell />
+            <AppToaster />
+          </ImportProvider>
+        </AiProvider>
       </CampaignListProvider>
     </BrowserRouter>
   );

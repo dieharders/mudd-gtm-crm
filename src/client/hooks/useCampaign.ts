@@ -291,6 +291,16 @@ export function useCampaign(id: string) {
     void enqueue(() => api.deleteTemplate(tid));
   }, [enqueue]);
 
+  /** Cells changed on the server (auto-filled by a run): shown, but not an undo step. */
+  const applyRemote = useCallback((edits: CellEdit[]) => {
+    applyLocal(edits);
+  }, []);
+
+  /** A campaign the server already saved (a recipe added columns): take it as it is. */
+  const replaceCampaign = useCallback((c: Campaign) => {
+    setCampaign(c);
+  }, []);
+
   const setSource = useCallback((sourcePath: string) => {
     const c = campaignRef.current;
     if (c) setCampaign({ ...c, sourcePath });
@@ -301,7 +311,7 @@ export function useCampaign(id: string) {
   return {
     campaign, rows: sorted, templates, error, save, canUndo: undoCount > 0,
     reload: load, edit, addRow, duplicateRow, deleteRows, moveRows, setSchema, rename, undo, flush,
-    addTemplate, updateTemplate, removeTemplate, setSource,
+    addTemplate, updateTemplate, removeTemplate, setSource, applyRemote, replaceCampaign,
   };
 }
 

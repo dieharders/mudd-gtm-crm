@@ -21,9 +21,10 @@ interface Props {
   groupBy: string | null;
   openRowId: string | null;
   onOpenRow: (id: string) => void;
+  pending?: Map<string, Set<string>>;
 }
 
-export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenRow }: Props) {
+export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenRow, pending }: Props) {
   const layout = useMemo(() => cardLayout(schema), [schema]);
   const groups = useMemo(() => groupRows(rows, schema, stages, groupBy), [rows, schema, stages, groupBy]);
   const groupCol = schema.columns.find((c) => c.key === groupBy);
@@ -55,6 +56,7 @@ export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenR
                   active={row.id === openRowId}
                   onOpen={() => onOpenRow(row.id)}
                   hideTier={groupBy === layout.tierKey}
+                  pendingCount={pending?.get(row.id)?.size ?? 0}
                 />
               ))}
             </div>
@@ -87,8 +89,8 @@ function groupRows(rows: Row[], schema: CampaignSchema, stages: string[], key: s
     .map(([v, rs], index) => ({ label: v || "Not set", value: v, index, rows: rs }));
 }
 
-function ProspectCard({ row, schema, stages, layout, active, onOpen, hideTier }: {
-  row: Row; schema: CampaignSchema; stages: string[]; layout: CardLayout; active: boolean; onOpen: () => void; hideTier: boolean;
+function ProspectCard({ row, schema, stages, layout, active, onOpen, hideTier, pendingCount }: {
+  row: Row; schema: CampaignSchema; stages: string[]; layout: CardLayout; active: boolean; onOpen: () => void; hideTier: boolean; pendingCount: number;
 }) {
   const c = row.cells;
   const txt = (k?: string) => (k ? display(c[k]) : "");
@@ -130,6 +132,7 @@ function ProspectCard({ row, schema, stages, layout, active, onOpen, hideTier }:
           </span>
         )}
         {intro && <span className="tag bg-violet-100 text-violet-800"><MessageSquareText size={12} /> Intro drafted</span>}
+        {pendingCount > 0 && <span className="tag bg-brand-500 text-white">✨ {pendingCount} to review</span>}
       </div>
 
       <div className="min-w-0">

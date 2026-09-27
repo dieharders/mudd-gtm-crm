@@ -1,12 +1,16 @@
 import {
   ArchiveRestore, ArrowLeft, Ban, CheckCircle2, Columns3, FileSpreadsheet, Link2, Loader2, MessageSquareText, Plus,
-  Rows3, Search, Table2, Trash2, TriangleAlert, Undo2, Users, X,
+  Loader2 as Spinner, MessageSquarePlus, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { DEAD, stagesOf, type Bucket, type CampaignSchema, type Column, type Row } from "../../../shared/types";
 import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
+import { useEnrichment, type EnrichmentState } from "../../hooks/useEnrichment";
+import { ConsentDialog } from "../enrich/ConsentDialog";
+import { EnrichPanel } from "../enrich/EnrichPanel";
+import { ReviewPanel } from "../enrich/ReviewPanel";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
 import { stageEdits } from "../../lib/pipeline";
@@ -86,6 +90,15 @@ function CampaignView({ state }: { state: CampaignState }) {
   const [openRowId, setOpenRowId] = useState<string | null>(initialRow);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
+  const [showEnrich, setShowEnrich] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const enrich = useEnrichment(state);
+  const pendingKeys = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const s of enrich.suggestions) m.set(s.rowId, new Set([...(m.get(s.rowId) ?? []), s.key]));
+    return m;
+  }, [enrich.suggestions]);
+  const liveRun = enrich.activeRuns[0];
   const grid = useRef<GridHandle>(null);
   const { refresh: refreshList } = useCampaignList();
   const [view, setView] = useStoredState<"table" | "reading">(`mudd:view:${campaign.id}`, "table");
@@ -182,6 +195,20 @@ function CampaignView({ state }: { state: CampaignState }) {
             <SaveIndicator state={state} />
           </div>
         </div>
+        {liveRun && (
+          <button onClick={() => setShowEnrich(true)} className="tag h-8 rounded-lg bg-sky-100 px-2.5 text-sky-800 hover:bg-sky-200" title="Open the running enrichment">
+            <Spinner size={12} className={liveRun.status === "running" ? "animate-spin" : ""} />
+            {liveRun.label}: {liveRun.completed + liveRun.failed}/{liveRun.total}{liveRun.status === "paused" ? " · paused" : ""}
+          </button>
+        )}
+        {enrich.suggestions.length > 0 && (
+          <Button onClick={() => setShowReview(true)} className="border-yellow-300 bg-yellow-50 hover:bg-yellow-100">
+            Review <span className="rounded-md bg-yellow-300 px-1.5 text-[11px] font-bold text-yellow-900">{enrich.suggestions.length}</span>
+          </Button>
+        )}
+        <Button variant="subtle" onClick={() => setShowEnrich(true)}>
+          <Sparkles size={15} /> Enrich
+        </Button>
         <Button onClick={() => setShowTemplates(true)}>
           <MessageSquareText size={15} /> Templates
           {state.templates.length > 0 && <span className="rounded-md bg-brand-100 px-1.5 text-[11px] font-semibold text-brand-700">{state.templates.length}</span>}
@@ -210,6 +237,8 @@ function CampaignView({ state }: { state: CampaignState }) {
             schema={schema}
             stages={stages}
             state={state}
+            enrich={enrich}
+            onEnrich={() => setShowEnrich(true)}
             onDone={() => setSelected(new Set())}
           />
         ) : (
@@ -263,7 +292,7 @@ function CampaignView({ state }: { state: CampaignState }) {
         ) : (
           <>
             {view === "reading" ? (
-              <ProspectList rows={filtered} schema={schema} stages={stages} groupBy={groupKey} openRowId={openRowId} onOpenRow={setOpenRowId} />
+              <ProspectList rows={filtered} schema={schema} stages={stages} groupBy={groupKey} openRowId={openRowId} onOpenRow={setOpenRowId} pending={pendingKeys} />
             ) : (
             <Grid
               ref={grid}
@@ -280,6 +309,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               sort={sort}
               onSort={setSort}
               openRowId={openRowId}
+              pending={pendingKeys}
             />
             )}
             {filtered.length === 0 && (
@@ -298,6 +328,7 @@ function CampaignView({ state }: { state: CampaignState }) {
             onPrev={openIdx > 0 ? () => setOpenRowId(filtered[openIdx - 1]!.id) : undefined}
             onNext={openIdx >= 0 && openIdx < filtered.length - 1 ? () => setOpenRowId(filtered[openIdx + 1]!.id) : undefined}
             onOpenTemplates={() => setShowTemplates(true)}
+            enrich={enrich}
           />
         )}
       </div>
@@ -305,6 +336,12 @@ function CampaignView({ state }: { state: CampaignState }) {
       {showTemplates && (
         <TemplatesPanel schema={schema} rows={state.rows} templates={state.templates} state={state} previewRowId={openRowId} onClose={() => setShowTemplates(false)} />
       )}
+      {showEnrich && (
+        <EnrichPanel state={state} enrich={enrich} selectedIds={selectedIds} filteredIds={filtered.filter((r) => r.bucket === "prospects").map((r) => r.id)}
+          onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }} onOpenRow={(id) => { setShowEnrich(false); setOpenRowId(id); }} />
+      )}
+      {showReview && <ReviewPanel state={state} enrich={enrich} onClose={() => setShowReview(false)} onOpenRow={setOpenRowId} />}
+      <ConsentDialog open={!!enrich.needsConsent} onConfirm={() => enrich.needsConsent?.confirm()} onCancel={() => enrich.needsConsent?.cancel()} />
       <ColumnsDialog open={showColumns} onClose={() => setShowColumns(false)} schema={schema} inSheet={inSheet} onSave={(s) => state.setSchema(s)} />
     </div>
   );
@@ -428,8 +465,8 @@ function EmptyBucket({ bucket, onAdd }: { bucket: Bucket; onAdd: () => void }) {
   );
 }
 
-function BulkBar({ ids, bucket, schema, stages, state, onDone }: {
-  ids: string[]; bucket: Bucket; schema: CampaignSchema; stages: string[]; state: CampaignState; onDone: () => void;
+function BulkBar({ ids, bucket, schema, stages, state, enrich, onEnrich, onDone }: {
+  ids: string[]; bucket: Bucket; schema: CampaignSchema; stages: string[]; state: CampaignState; enrich: EnrichmentState; onEnrich: () => void; onDone: () => void;
 }) {
   const n = ids.length;
   const label = `${n} ${n === 1 ? "row" : "rows"}`;
@@ -448,6 +485,16 @@ function BulkBar({ ids, bucket, schema, stages, state, onDone }: {
             onDone();
             undoToast(`Screened out ${label}`, () => state.undo());
           }} />
+          <Button size="sm" variant="subtle" onClick={onEnrich}><Sparkles size={13} /> Enrich</Button>
+          {schema.introKey && (
+            <Button size="sm" variant="subtle" disabled={!state.templates.length} title={state.templates.length ? "Write an intro for each selected prospect from your templates" : "Add an intro template first"}
+              onClick={async () => {
+                const run = await enrich.start({ kind: "intro", rowIds: ids, intro: { templateId: "auto" }, concurrency: 2 });
+                if (run) toast.success(`Drafting ${ids.length} intro${ids.length === 1 ? "" : "s"}. They'll appear under Review.`);
+              }}>
+              <MessageSquarePlus size={13} /> Draft intros
+            </Button>
+          )}
           {schema.statusKey && (
             <Popover trigger={({ toggle }) => <Button size="sm" onClick={toggle}>Set status</Button>}>
               {(close) => (

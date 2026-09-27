@@ -1,5 +1,7 @@
 /** The left rail: brand, primary actions, and every campaign one click away. */
-import { CalendarClock, FolderOpen, Home, Lock, Plus } from "lucide-react";
+import { CalendarClock, FolderOpen, Home, Lock, Plus, Sparkles } from "lucide-react";
+import { PROVIDERS } from "../../../shared/ai";
+import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/cn";
 import { useCampaignList } from "../../lib/campaignList";
@@ -11,6 +13,8 @@ import { Logo, Tile } from "./Logo";
 export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
   const { campaigns, meetings } = useCampaignList();
   const { startImport, busy } = useImport();
+  const ai = useAi();
+  const { status: aiStatus, ready: aiReady } = useActiveProvider();
   const upcoming = meetings.filter((m) => m.at.slice(0, 10) >= todayString()).length;
 
   const item = ({ isActive }: { isActive: boolean }) =>
@@ -68,6 +72,22 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
         ))}
         {campaigns && campaigns.length === 0 && <p className="px-2 py-1 text-xs text-ink-faint">No campaigns yet</p>}
       </nav>
+
+      <div className="px-3 pb-2">
+        <button
+          onClick={() => ai.setOpen(true)}
+          className="flex w-full items-center gap-2.5 rounded-xl border border-line bg-white px-2.5 py-2 text-left shadow-[0_1px_0_rgba(23,22,29,0.05)] transition hover:border-brand-200"
+        >
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700"><Sparkles size={14} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-medium">{ai.settings ? PROVIDERS[ai.settings.provider].label : "AI"}</span>
+            <span className="block truncate text-[11px] text-ink-faint">
+              {ai.loading && !aiStatus ? "Checking…" : aiReady ? `${aiStatus?.auth.plan ? `${aiStatus.auth.plan[0]!.toUpperCase()}${aiStatus.auth.plan.slice(1)} · ` : ""}ready` : !aiStatus?.installed ? "Not set up" : "Sign in needed"}
+            </span>
+          </span>
+          <span className={cn("h-2 w-2 shrink-0 rounded-full", aiReady ? "bg-emerald-500" : "bg-yellow-400")} />
+        </button>
+      </div>
 
       <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-[11px] text-ink-faint">
         <Lock size={12} /> Local only · private to this computer

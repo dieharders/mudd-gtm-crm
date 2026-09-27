@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.283",
     "@tanstack/react-virtual": "^3.14.13",
     "exceljs": "^4.4.0",
     "jszip": "^3.10.2",
@@ -24,7 +25,8 @@
     "react-hot-toast": "^2.6.1",
     "react-router-dom": "^7",
     "tailwind-merge": "^3.7.0",
-    "webview-bun": "^2.4.0"
+    "webview-bun": "^2.4.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",

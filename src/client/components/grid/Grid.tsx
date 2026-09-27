@@ -37,6 +37,8 @@ interface Props {
   onSort: (s: SortState | null) => void;
   openRowId: string | null;
   readOnly?: boolean;
+  /** Cells with an AI suggestion waiting: row id → column keys. */
+  pending?: Map<string, Set<string>>;
 }
 
 const ROW_H = 36;
@@ -342,6 +344,9 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                       ) : (
                         <div className="flex min-w-0 flex-1 items-center overflow-hidden">
                           <CellView col={col} cells={row.cells} schema={p.schema} stages={p.stages} />
+                          {p.pending?.get(row.id)?.has(col.key) && (
+                            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" title="AI suggestion waiting for review" />
+                          )}
                         </div>
                       )}
                     </div>
