@@ -5,11 +5,12 @@
 import { Braces, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { mergeTemplate, placeholdersFor, tokenize } from "../../../shared/merge";
-import type { CampaignSchema, Row, Template } from "../../../shared/types";
+import { isScreened, type CampaignSchema, type Row, type Template } from "../../../shared/types";
 import type { CampaignState } from "../../hooks/useCampaign";
 import { cn } from "../../lib/cn";
 import { rowTitle } from "../../lib/pipeline";
 import { Button } from "../ui/Button";
+import { fire } from "../../lib/fire";
 
 const STARTER = `Hi {{First name}},
 
@@ -32,7 +33,8 @@ export function TemplatesPanel({ schema, rows, templates, state, onClose, previe
 }) {
   const [selected, setSelected] = useState<string | null>(templates[0]?.id ?? null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const prospects = rows.filter((r) => r.bucket === "prospects");
+  // Preview against prospects still in play: nobody writes an intro to a screened-out one.
+  const prospects = useMemo(() => rows.filter((r) => !isScreened(r, schema)), [rows, schema]);
   const [previewId, setPreviewId] = useState<string>(previewRowId ?? prospects[0]?.id ?? "");
   const tpl = templates.find((t) => t.id === selected) ?? null;
 
@@ -59,7 +61,7 @@ export function TemplatesPanel({ schema, rows, templates, state, onClose, previe
             <h2 className="text-base font-semibold">Intro message templates</h2>
             <p className="text-xs text-ink-soft">Write it once; each prospect's panel fills in the placeholders from that row.</p>
           </div>
-          <Button variant="primary" size="sm" onClick={create}><Plus size={14} /> New template</Button>
+          <Button variant="primary" size="sm" onClick={() => fire(create())}><Plus size={14} /> New template</Button>
           <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close templates"><X size={16} /></Button>
         </div>
 
@@ -79,7 +81,7 @@ export function TemplatesPanel({ schema, rows, templates, state, onClose, previe
             {!templates.length && (
               <li className="px-2 py-6 text-center text-xs text-ink-faint">
                 No templates yet.
-                <button className="mt-2 block w-full text-brand-700 hover:underline" onClick={create}>Create your first</button>
+                <button className="mt-2 block w-full text-brand-700 hover:underline" onClick={() => fire(create())}>Create your first</button>
               </li>
             )}
           </ul>
@@ -232,7 +234,7 @@ function Highlighted({ text }: { text: string }) {
   return (
     <>
       {parts.map((p, i) =>
-        /^\{\{.*\}\}$/.test(p) ? <mark key={i} className="rounded bg-amber-100 px-0.5 text-amber-900">{p}</mark> : <span key={i}>{p}</span>,
+        /^\{\{.*\}\}$/.test(p) ? <mark key={i} className="rounded-sm bg-amber-100 px-0.5 text-amber-900">{p}</mark> : <span key={i}>{p}</span>,
       )}
     </>
   );

@@ -1,302 +1,671 @@
 /**
- * Campaign → spreadsheet, patched INTO the workbook it came from.
+ * Campaign → spreadsheet.
  *
- * The rule the whole file follows: change as little as possible. The original workbook is
- * loaded, and only the two bucket sheets and the templates sheet are rewritten; every other
- * tab (Summary and its formulas, a second prospect tab that belongs to a different campaign)
- * is carried through as ExcelJS read it.
+ * With the workbook it was imported from, export PATCHES that workbook: it opens the package,
+ * rewrites the Prospects tab's XML (and the Intro templates tab), and every other part reaches
+ * the saved file byte for byte — other tabs and their formulas, charts, notes, cell formats,
+ * SharePoint properties.
  *
- * On a bucket sheet:
- *   - every existing column keeps its letter, so formulas elsewhere keep pointing at the right
- *     data; new columns are appended after the last one
- *   - a row keeps the cell styles of the row it was read from (tier-1 beige, yellow "yours"
- *     cells); a new row takes the styles of the first empty row under the original data
- *   - a cell the user did not edit keeps its original value object, so rich text, hyperlinks and
- *     formulas survive; an edited cell is written with a real type (Date, number, hyperlink)
+ * On the Prospects tab:
+ *   - a row is written back to the sheet row it came from, and only the cells whose value changed
+ *     since import are rewritten, each keeping its own format. Nothing moves, so formulas on
+ *     other tabs, notes, merges and hidden rows stay with the right prospect.
+ *   - a deleted prospect's row is blanked (its formats stay), never removed
+ *   - new prospects go in the rows under the data; a footnote under the data moves down
+ *   - columns the sheet lacks are appended after its last used column
+ *   - dropdown lists follow the options set in the app
  *
- * ExcelJS mangles two things on write, and ./postprocess.ts puts them back from the original
- * XML: the <cols> width list (it drops a width equal to its own default) and the
- * <dataValidations> block (it re-splits each range into overlapping pieces).
+ * A campaign with no workbook of its own (a CSV, or created in Mudd) gets a new one in the
+ * base-tracker look instead, built with ExcelJS.
  */
 import ExcelJS from "exceljs";
-import type { Campaign, CampaignSchema, Column, Row, SheetMeta, Template } from "../shared/types";
-import { cloneStyle, colLetter, colNumber, numFmtFor, readCellValue, sameValue, toExcelValue } from "./cells";
+import JSZip from "jszip";
+import type { Campaign, CampaignSchema, CellValue, Column, Row, SheetMeta, Template } from "../shared/types";
+import { parseFlag, sameValue } from "../shared/values";
+import { colLetter, hrefFor, numFmtFor, parseAppDate, toExcelValue, toNumber } from "./cells";
 import { TEMPLATES_SHEET } from "./import";
-import { dataStyle, listFormula, pxToChars, STYLE, styleGeneratedSheet, validations, VALIDATION_ROWS } from "./layouts";
-import { restoreSheetXml, type SheetPatch } from "./postprocess";
+import {
+  dataStyle, isYours, LIST_FORMULA_MAX, listFormula, pxToChars, STYLE, styleGeneratedSheet, VALIDATION_ROWS, YOURS_FILL,
+} from "./layouts";
+import {
+  addRels, cellHasValue, cellRef, cellStyle, decodeXml, escapeXml, findBlock, followersOf, getAttr, inlineListOptions,
+  insertBefore, makeCell, parseListValidations, parseRange, parseRels, parseSheet, putCell, rangesOf, rangeText, readText,
+  relIds, relsPathOf, REL_TYPE, renumberRow, replaceAt, resolvePart, serializeSheet, setAttr, sheetParts, sheetRefName,
+  startTag, StyleBook, toSerial, withStart, workbookPath, type Range, type Rel, type SheetDoc, type SheetPart, type XRow,
+  type XValue,
+} from "./ooxml";
 
-type Style = Partial<ExcelJS.Style>;
-interface Snap {
-  height?: number;
-  values: ExcelJS.CellValue[];
-  styles: Style[];
-}
-
-const nonEmpty = (v: unknown) => v !== null && v !== undefined && v !== "";
-
-function snapshotRow(ws: ExcelJS.Worksheet, r: number, width: number): Snap {
-  const row = ws.getRow(r);
-  const values: ExcelJS.CellValue[] = [];
-  const styles: Style[] = [];
-  for (let c = 1; c <= width; c++) {
-    const cell = row.getCell(c);
-    values.push(cell.value);
-    styles.push(cloneStyle(cell.style ?? {}));
-  }
-  return { height: row.height, values, styles };
-}
-
-/** Which campaign columns a bucket sheet carries on export, and at which column index. */
-function planColumns(meta: SheetMeta, schema: CampaignSchema, rows: Row[]) {
-  const colMap: Record<string, number> = {};
-  for (const [key, idx] of Object.entries(meta.colMap)) {
-    if (schema.columns.some((c) => c.key === key)) colMap[key] = idx;
-  }
-  const appended: Column[] = [];
-  let next = Math.max(meta.lastCol, ...Object.values(meta.colMap), 0) + 1;
-  for (const col of schema.columns) {
-    if (col.key in colMap) continue;
-    const hasData = rows.some((r) => nonEmpty(r.cells[col.key]));
-    // Prospects carries every column except the screening reason. Screened out carries the
-    // rest only when a row in it has something there, so screening a prospect out keeps every
-    // field without widening the tab with twenty empty columns.
-    const include = meta.role === "prospects" ? col.key !== schema.reasonKey : hasData;
-    if (!include) continue;
-    colMap[col.key] = next++;
-    appended.push(col);
-  }
-  return { colMap, appended, lastCol: next - 1 };
-}
-
-function writeBucket(
-  ws: ExcelJS.Worksheet,
-  meta: SheetMeta,
-  schema: CampaignSchema,
-  rows: Row[],
-  opts: { generated: boolean; blank?: Style[] },
-): SheetPatch {
-  const { colMap, appended, lastCol } = planColumns(meta, schema, rows);
-  const origWidth = Math.max(meta.lastCol, 1);
-
-  const snaps = new Map<number, Snap>();
-  for (let r = 2; r <= meta.lastDataRow; r++) snaps.set(r, snapshotRow(ws, r, origWidth));
-  const blankSnap = opts.blank
-    ? { values: [], styles: opts.blank, height: undefined }
-    : snapshotRow(ws, meta.lastDataRow + 1, origWidth);
-  const headerStyle = cloneStyle(ws.getCell(1, 1).style ?? STYLE.header);
-  const trailer: Snap[] = [];
-  if (meta.trailer) for (let r = meta.trailer.from; r <= meta.trailer.to; r++) trailer.push(snapshotRow(ws, r, origWidth));
-
-  // Header: renamed columns, and the appended ones in the sheet's own header style.
-  for (const col of schema.columns) {
-    const idx = colMap[col.key];
-    if (!idx) continue;
-    const cell = ws.getCell(1, idx);
-    if (idx > meta.lastCol) {
-      cell.value = col.header;
-      cell.style = cloneStyle(headerStyle);
-      ws.getColumn(idx).width = pxToChars(col.width, col.type);
-    } else if (col.importedHeader !== undefined && col.header !== col.importedHeader) {
-      cell.value = col.header;
-    }
-  }
-
-  const colsByKey = new Map(schema.columns.map((c) => [c.key, c]));
-  const styleFor = (base: Snap, col: Column, idx: number): Style => {
-    if (idx <= origWidth && base.styles[idx - 1]) return cloneStyle(base.styles[idx - 1]!);
-    // An appended column: this row's look (its fill and border), with the column's own format.
-    const neighbour = cloneStyle(base.styles[origWidth - 1] ?? STYLE.cell) as Style;
-    const own = dataStyle(col, schema);
-    return {
-      ...neighbour,
-      numFmt: own.numFmt,
-      alignment: col.type === "longtext" ? { vertical: "top", wrapText: true } : neighbour.alignment,
-      fill: own.fill ?? neighbour.fill,
-    };
-  };
-
-  const ordered = [...rows].sort((a, b) => a.position - b.position);
-  ordered.forEach((row, i) => {
-    const r = i + 2;
-    const src = row.sourceSheet === meta.name && row.sourceRow ? snaps.get(row.sourceRow) : undefined;
-    const base = src ?? blankSnap;
-    const xrow = ws.getRow(r);
-    if (base.height !== undefined || xrow.height !== undefined) xrow.height = base.height as number;
-    for (let c = 1; c <= origWidth; c++) {
-      const cell = xrow.getCell(c);
-      cell.style = cloneStyle(base.styles[c - 1] ?? {});
-      cell.value = src ? src.values[c - 1] ?? null : null;
-    }
-    for (const [key, idx] of Object.entries(colMap)) {
-      const col = colsByKey.get(key)!;
-      const cell = xrow.getCell(idx);
-      const v = row.cells[key] ?? null;
-      if (idx > origWidth) cell.style = styleFor(base, col, idx);
-      if (src && idx <= origWidth && sameValue(readCellValue(src.values[idx - 1] ?? null, col.type), v)) continue;
-      cell.value = toExcelValue(v, col);
-      // A typed value in a cell with no format of its own gets the column's (a date should not
-      // show as 46291). A cell that already has a format keeps it: that is the sheet's choice.
-      const fmt = numFmtFor(col.type);
-      const typed = cell.value instanceof Date || typeof cell.value === "number";
-      if (fmt && typed && (!cell.numFmt || cell.numFmt === "General")) cell.numFmt = fmt;
-      if (col.type === "datetime" && cell.value instanceof Date) cell.numFmt = "yyyy-mm-dd hh:mm";
-    }
-  });
-
-  // Rows the data no longer reaches: empty, in the empty-row style.
-  const firstUnused = ordered.length + 2;
-  const oldEnd = Math.max(meta.lastDataRow, meta.trailer?.to ?? 0);
-  for (let r = firstUnused; r <= oldEnd; r++) {
-    const xrow = ws.getRow(r);
-    xrow.height = blankSnap.height as number;
-    for (let c = 1; c <= lastCol; c++) {
-      const cell = xrow.getCell(c);
-      cell.value = null;
-      if (c <= origWidth) cell.style = cloneStyle(blankSnap.styles[c - 1] ?? {});
-      else cell.style = {};
-    }
-  }
-
-  // The footnote goes back under the data, with the same blank gap above it.
-  if (meta.trailer && trailer.length) {
-    const gap = Math.max(1, meta.trailer.from - meta.lastDataRow - 1);
-    const start = ordered.length + 1 + gap + 1;
-    trailer.forEach((snap, i) => {
-      const xrow = ws.getRow(start + i);
-      if (snap.height !== undefined) xrow.height = snap.height;
-      for (let c = 1; c <= origWidth; c++) {
-        const cell = xrow.getCell(c);
-        cell.style = cloneStyle(snap.styles[c - 1] ?? {});
-        cell.value = snap.values[c - 1] ?? null;
-      }
-    });
-  }
-
-  // Autofilter: same top-left, stretched over any appended column and every row of data.
-  const af = ws.autoFilter;
-  if (af && typeof af === "string") {
-    const m = /^\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)$/.exec(af);
-    if (m) {
-      const endRow = Math.max(+m[4]!, ordered.length + 1);
-      ws.autoFilter = `${m[1]}${m[2]}:${colLetter(Math.max(lastCol, colNumber(m[3]!)))}${endRow}`;
-    }
-  }
-
-  const newSelects = appended.filter((c) => c.type === "select" && c.options?.length);
-  if (opts.generated) {
-    for (const col of newSelects) {
-      const L = colLetter(colMap[col.key]!);
-      validations(ws).add(`${L}2:${L}${VALIDATION_ROWS}`, { type: "list", allowBlank: true, formulae: [listFormula(col.options!)] });
-    }
-  }
-
-  return {
-    sheet: meta.name,
-    newCols: appended.map((c) => ({ index: colMap[c.key]!, width: pxToChars(c.width, c.type) })),
-    newValidations: newSelects.map((c) => {
-      const L = colLetter(colMap[c.key]!);
-      return { sqref: `${L}2:${L}${VALIDATION_ROWS}`, formula: listFormula(c.options!) };
-    }),
-  };
-}
-
-function writeTemplates(wb: ExcelJS.Workbook, templates: Template[], headerStyle: Style): void {
-  const existing = wb.getWorksheet(TEMPLATES_SHEET);
-  if (existing) wb.removeWorksheet(existing.id);
-  if (!templates.length) return;
-  const ws = wb.addWorksheet(TEMPLATES_SHEET);
-  ws.getColumn(1).width = 28;
-  ws.getColumn(2).width = 100;
-  const h = ws.getRow(1);
-  h.height = 21.75;
-  ["Name", "Template"].forEach((t, i) => {
-    const cell = h.getCell(i + 1);
-    cell.value = t;
-    cell.style = cloneStyle(headerStyle);
-  });
-  [...templates].sort((a, b) => a.position - b.position).forEach((t, i) => {
-    const row = ws.getRow(i + 2);
-    row.getCell(1).value = t.name;
-    row.getCell(2).value = t.body;
-    for (const c of [1, 2]) {
-      row.getCell(c).style = { ...cloneStyle(STYLE.cell), alignment: { vertical: "top", wrapText: true } };
-    }
-  });
-}
-
-/** A workbook in the base-tracker look, for a campaign that has none of its own. */
-function generatedWorkbook(schema: CampaignSchema): { wb: ExcelJS.Workbook; sheets: SheetMeta[]; blanks: Record<string, Style[]> } {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "Mudd.io";
-  const pCols = schema.columns.filter((c) => c.key !== schema.reasonKey);
-  const lead = [schema.companyKey, schema.nameKey].filter(Boolean) as string[];
-  const sCols = [
-    ...lead.map((k) => schema.columns.find((c) => c.key === k)!),
-    ...(schema.reasonKey ? [schema.columns.find((c) => c.key === schema.reasonKey)!] : []),
-  ].filter(Boolean);
-  if (!sCols.length) sCols.push(schema.columns[0]!);
-
-  const make = (name: string, role: "prospects" | "screened", cols: Column[]) => {
-    const ws = wb.addWorksheet(name);
-    styleGeneratedSheet(ws, cols, schema);
-    const colMap: Record<string, number> = {};
-    cols.forEach((c, i) => (colMap[c.key] = i + 1));
-    const meta: SheetMeta = { name, role, colMap, lastDataRow: 1, lastCol: cols.length };
-    return { meta, blank: cols.map((c) => dataStyle(c, schema)) };
-  };
-  const p = make("Prospects", "prospects", pCols);
-  const s = make("Screened out", "screened", sCols);
-  return { wb, sheets: [p.meta, s.meta], blanks: { Prospects: p.blank, "Screened out": s.blank } };
-}
+/** A row to export, with its cells as imported (`orig`) when it came from the sheet. */
+export type ExportRow = Row & { orig?: Record<string, CellValue> | null };
 
 export async function exportCampaign(
   campaign: Campaign,
   original: Uint8Array | null,
-  rows: Row[],
+  rows: ExportRow[],
   templates: Template[],
 ): Promise<Uint8Array> {
-  const schema = campaign.schema;
-  let wb: ExcelJS.Workbook;
-  let sheets: SheetMeta[];
-  let blanks: Record<string, Style[]> = {};
-  const generated = !original;
+  const ordered = [...rows].sort((a, b) => a.position - b.position);
+  const tpls = [...templates].sort((a, b) => a.position - b.position);
+  if (!original) return generatedWorkbook(campaign.schema, ordered, tpls);
+  return patchWorkbook(campaign, original, ordered, tpls);
+}
 
-  if (original) {
-    wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(original as unknown as ArrayBuffer);
-    sheets = campaign.sheets;
-  } else {
-    ({ wb, sheets, blanks } = generatedWorkbook(schema));
+// ---------- patching the imported workbook ----------
+
+const RELS_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+/** The prefix a part uses for the relationships namespace (r:id), declaring `r` if it has none. */
+function relsPrefix(xml: string, root: string): { xml: string; prefix: string } {
+  const m = new RegExp(`xmlns:([\\w.-]+)="${RELS_NS.replace(/[/.]/g, "\\$&")}"`).exec(xml);
+  if (m) return { xml, prefix: m[1]! };
+  const open = new RegExp(`<((?:[\\w.-]+:)?)${root}\\b[^>]*?(/?)>`).exec(xml)!;
+  return { xml: xml.replace(open[0], setAttr(open[0], "xmlns:r", RELS_NS)), prefix: "r" };
+}
+
+async function patchWorkbook(campaign: Campaign, original: Uint8Array, rows: ExportRow[], templates: Template[]): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(original);
+  const parts = await sheetParts(zip);
+  const wbPath = await workbookPath(zip);
+  let wbXml = (await readText(zip, wbPath))!;
+  const wbRels = parseRels(await readText(zip, relsPathOf(wbPath)));
+  const stylesRel = wbRels.find((r) => r.type.endsWith("/styles"));
+  const stylesPath = stylesRel ? resolvePart(wbPath, stylesRel.target) : "xl/styles.xml";
+  const book = new StyleBook(await readText(zip, stylesPath));
+  const date1904 = /<(?:[\w.-]+:)?workbookPr\b[^>]*\bdate1904\s*=\s*"(?:1|true)"/.test(wbXml);
+
+  const meta = campaign.sheets.find((s) => s.role === "prospects");
+  if (!meta) throw new Error("This campaign has no Prospects tab to write to.");
+  const part = parts.find((p) => p.name === meta.name);
+  if (!part) throw new Error(`The tab "${meta.name}" is missing from the stored workbook.`);
+
+  const res = await patchProspects(zip, part, meta, campaign.schema, rows, book, date1904);
+  if (res.filter) wbXml = setFilterName(wbXml, part, res.filter);
+  wbXml = await writeTemplatesTab(zip, wbPath, wbXml, parts, campaign.sheets, templates, book, res.headerStyle);
+  wbXml = forceRecalc(wbXml);
+  zip.file(wbPath, wbXml);
+  if (book.changed) zip.file(stylesPath, book.toXml());
+  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE", compressionOptions: { level: 6 } });
+}
+
+/** Most-used style of the cells in each column over some rows; cells holding a value count first. */
+function typicalStyles(rows: XRow[], from: number, to: number): Map<number, string> {
+  const valued = new Map<number, Map<string, number>>();
+  const any = new Map<number, Map<string, number>>();
+  for (const r of rows) {
+    if (r.num < from || r.num > to) continue;
+    for (const c of r.cells) {
+      const s = cellStyle(c);
+      if (s === null) continue;
+      const target = cellHasValue(c) ? valued : any;
+      let m = target.get(c.col);
+      if (!m) target.set(c.col, (m = new Map()));
+      m.set(s, (m.get(s) ?? 0) + 1);
+    }
+  }
+  const best = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+  const out = new Map<number, string>();
+  for (const [col, m] of any) out.set(col, best(m));
+  for (const [col, m] of valued) out.set(col, best(m));
+  return out;
+}
+
+/** Column default styles from <cols>, for the columns up to `upTo`. */
+function colDefaults(head: string, prefix: string, upTo: number): Map<number, string> {
+  const out = new Map<number, string>();
+  const cols = findBlock(head, "cols", prefix);
+  if (!cols) return out;
+  for (const m of cols.text.matchAll(/<(?:[\w.-]+:)?col\b[^>]*>/g)) {
+    const style = getAttr(m[0], "style");
+    if (style === null) continue;
+    const min = Number(getAttr(m[0], "min"));
+    const max = Math.min(Number(getAttr(m[0], "max")), upTo);
+    for (let c = min; c <= max; c++) out.set(c, style);
+  }
+  return out;
+}
+
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x.trim() === b[i]!.trim());
+
+interface ProspectsResult {
+  /** The prospects header style, for the Intro templates tab's header. */
+  headerStyle: string | null;
+  /** The autofilter's new range, when it changed. */
+  filter: Range | null;
+}
+
+async function patchProspects(
+  zip: JSZip,
+  part: SheetPart,
+  meta: SheetMeta,
+  schema: CampaignSchema,
+  rows: ExportRow[],
+  book: StyleBook,
+  date1904: boolean,
+): Promise<ProspectsResult> {
+  const doc = parseSheet((await readText(zip, part.path))!);
+  const p = doc.prefix;
+  const relsPath = relsPathOf(part.path);
+  const relsXml = await readText(zip, relsPath);
+  const rels = parseRels(relsXml);
+
+  const byNum = new Map(doc.rows.map((r) => [r.num, r]));
+  const rowAt = (num: number): XRow => {
+    let r = byNum.get(num);
+    if (!r) byNum.set(num, (r = { num, attrs: "", cells: [], extra: "", raw: null }));
+    return r;
+  };
+  const cellAt = (row: XRow | undefined, col: number) => row?.cells.find((c) => c.col === col);
+
+  // Where each column goes: its own column, or appended after the last used one.
+  const placed: { col: Column; idx: number; inSheet: boolean }[] = [];
+  let next = meta.lastCol + 1;
+  for (const col of schema.columns) {
+    const idx = meta.colMap[col.key];
+    placed.push(idx ? { col, idx, inSheet: true } : { col, idx: next++, inSheet: false });
+  }
+  const appended = placed.filter((x) => !x.inSheet);
+  const lastCol = Math.max(meta.lastCol, next - 1);
+
+  const typical = typicalStyles(doc.rows, 2, Math.max(2, meta.lastDataRow));
+  const defaults = colDefaults(doc.head, p, lastCol);
+  const rowStyle = (row: XRow) => {
+    const tag = `<x${row.attrs}>`;
+    return getAttr(tag, "customFormat") === "1" || getAttr(tag, "customFormat") === "true" ? getAttr(tag, "s") : null;
+  };
+  const baseStyle = (row: XRow, idx: number) => typical.get(idx) ?? defaults.get(idx) ?? rowStyle(row) ?? null;
+
+  // A column the sheet lacks: this row's look (fill, border) from its last column, with the
+  // column's own number format, wrapping for long text and the "yours" fill.
+  const appendedStyle = (row: XRow, col: Column) => {
+    const neighbour = cellStyle(cellAt(row, meta.lastCol)) ?? typical.get(meta.lastCol) ?? null;
+    const want = { numFmt: numFmtFor(col.type), wrap: col.type === "longtext", fill: isYours(col, schema) ? YOURS_FILL : undefined };
+    return want.numFmt || want.wrap || want.fill ? book.derive(neighbour, want) : neighbour;
+  };
+
+  // ----- hyperlinks -----
+  const links = new Map<string, string>(); // ref → <hyperlink> XML kept from the sheet
+  const hlBlock = findBlock(doc.tail, "hyperlinks", p);
+  if (hlBlock) for (const m of hlBlock.text.matchAll(/<(?:[\w.-]+:)?hyperlink\b[^>]*?(?:\/>|>[\s\S]*?<\/(?:[\w.-]+:)?hyperlink>)/g)) {
+    const ref = getAttr(startTag(m[0]), "ref");
+    if (ref) links.set(ref.toUpperCase(), m[0]);
+  }
+  const newLinks = new Map<string, string>(); // ref → URL to add
+  let linksChanged = false;
+  const setLink = (ref: string, url: string | null) => {
+    if (links.delete(ref)) linksChanged = true;
+    if (newLinks.delete(ref)) linksChanged = true;
+    if (url) {
+      newLinks.set(ref, url);
+      linksChanged = true;
+    }
+  };
+
+  // ----- writing cells -----
+  const toX = (v: CellValue, col: Column): XValue => {
+    if (v === null || v === "") return null;
+    switch (col.type) {
+      case "number":
+      case "currency": {
+        const n = toNumber(v);
+        return n !== null ? { n } : { s: String(v) };
+      }
+      case "select":
+        if (col.numeric) {
+          const n = toNumber(v);
+          if (n !== null) return { n };
+        }
+        return { s: String(v) };
+      case "checkbox":
+        return parseFlag(v) ? { b: true } : null;
+      case "date":
+      case "datetime": {
+        const d = parseAppDate(v);
+        if (!d) return { s: String(v) };
+        const t = col.type === "datetime";
+        return { n: toSerial(d.y, d.m, d.d, t ? d.hh : 0, t ? d.mm : 0, date1904) };
+      }
+      default:
+        return typeof v === "number" ? { n: v } : { s: String(v) };
+    }
+  };
+
+  const writeCell = (row: XRow, idx: number, col: Column, v: CellValue, fallbackStyle: string | null) => {
+    const existing = cellAt(row, idx);
+    let style = existing ? cellStyle(existing) : fallbackStyle;
+    const x = toX(v, col);
+    if (x && "n" in x && (col.type === "date" || col.type === "datetime") && parseAppDate(v)) {
+      // A date in a cell with no date format shows as 46291. A cell that has one keeps it (the
+      // sheet's own "d mmm yyyy"), unless it would hide a meeting's time.
+      const ok = book.isDate(style) && (col.type === "date" || /h/i.test(book.formatOf(style)));
+      if (!ok) style = book.derive(style, { numFmt: numFmtFor(col.type) });
+    }
+    putCell(row, idx, makeCell(p, idx, row.num, style, x));
+    const ref = cellRef(idx, row.num);
+    const url = col.type === "url" && typeof v === "string" ? hrefFor(v) : null;
+    if (url || links.has(ref) || newLinks.has(ref)) setLink(ref, url);
+  };
+
+  // ----- header row -----
+  const header = rowAt(1);
+  const headerStyle =
+    cellStyle(cellAt(header, meta.lastCol)) ??
+    cellStyle([...header.cells].reverse().find((c) => cellStyle(c) !== null)) ??
+    null;
+  for (const { col, idx, inSheet } of placed) {
+    if (inSheet) {
+      if (col.importedHeader !== undefined && col.header !== col.importedHeader) {
+        putCell(header, idx, makeCell(p, idx, 1, cellStyle(cellAt(header, idx)), { s: col.header }));
+      }
+    } else {
+      putCell(header, idx, makeCell(p, idx, 1, cellStyle(cellAt(header, idx)) ?? headerStyle, { s: col.header }));
+    }
   }
 
-  const patches: SheetPatch[] = [];
-  let headerStyle: Style = STYLE.header;
-  for (const meta of sheets) {
-    if (meta.role !== "prospects" && meta.role !== "screened") continue;
-    const ws = wb.getWorksheet(meta.name);
-    if (!ws) throw new Error(`The tab "${meta.name}" is missing from the stored workbook.`);
-    if (meta.role === "prospects") headerStyle = cloneStyle(ws.getCell(1, 1).style ?? STYLE.header);
-    const bucketRows = rows.filter((r) => r.bucket === meta.role);
-    patches.push(writeBucket(ws, meta, schema, bucketRows, { generated, blank: blanks[meta.name] }));
+  // ----- rows read from the sheet -----
+  const anchored = new Map<number, ExportRow>();
+  const fresh: ExportRow[] = [];
+  for (const r of rows) {
+    const n = r.sourceRow;
+    if (n && r.sourceSheet === meta.name && n >= 2 && n <= meta.lastDataRow && !anchored.has(n)) anchored.set(n, r);
+    else fresh.push(r);
   }
-  // A campaign imported without a Screened-out tab gets one, so screened rows are not lost.
-  if (!sheets.some((s) => s.role === "screened") && rows.some((r) => r.bucket === "screened")) {
-    let name = "Screened out";
-    for (let i = 2; wb.getWorksheet(name); i++) name = `Screened out ${i}`;
-    const ws = wb.addWorksheet(name);
-    const lead = [schema.companyKey, schema.nameKey, schema.reasonKey].filter(Boolean) as string[];
-    const cols = lead.map((k) => schema.columns.find((c) => c.key === k)!).filter(Boolean);
-    styleGeneratedSheet(ws, cols, schema);
-    const colMap: Record<string, number> = {};
-    cols.forEach((c, i) => (colMap[c.key] = i + 1));
-    writeBucket(ws, { name, role: "screened", colMap, lastDataRow: 1, lastCol: cols.length }, schema,
-      rows.filter((r) => r.bucket === "screened"), { generated: true, blank: cols.map((c) => dataStyle(c, schema)) });
+  const dataRows = meta.dataRows ?? Array.from({ length: Math.max(0, meta.lastDataRow - 1) }, (_, i) => i + 2);
+  for (const n of dataRows) {
+    const r = anchored.get(n);
+    if (!r) {
+      // Deleted in the app: the row is blanked, its formats kept, nothing below it moves.
+      const row = byNum.get(n);
+      if (!row) continue;
+      for (const c of [...row.cells]) {
+        if (c.col > lastCol || !cellHasValue(c)) continue;
+        putCell(row, c.col, makeCell(p, c.col, n, cellStyle(c), null));
+        const ref = cellRef(c.col, n);
+        if (links.has(ref)) setLink(ref, null);
+      }
+      continue;
+    }
+    const row = rowAt(n);
+    for (const { col, idx, inSheet } of placed) {
+      const cur = r.cells[col.key] ?? null;
+      if (inSheet) {
+        // Unchanged since import: the cell is left exactly as it is (rich text, links, format).
+        if (r.orig && sameValue(r.orig[col.key] ?? null, cur)) continue;
+        // A row from before Mudd kept import-time values: rewrite what it holds.
+        if (!r.orig && cur === null && !cellHasValue(cellAt(row, idx))) continue;
+        writeCell(row, idx, col, cur, baseStyle(row, idx));
+      } else if (cur !== null) {
+        writeCell(row, idx, col, cur, appendedStyle(row, col));
+      }
+    }
   }
 
-  writeTemplates(wb, templates, headerStyle);
-  wb.calcProperties = { ...(wb.calcProperties ?? {}), fullCalcOnLoad: true };
+  // ----- new prospects -----
+  const start = meta.lastDataRow + 1;
+  let shifted: { from: number; by: number } | null = null;
+  if (fresh.length && meta.trailer) {
+    // The footnote (and the blank row above it) moves down to make room.
+    shifted = { from: start, by: fresh.length };
+    const moving = [...byNum.values()].filter((r) => r.num >= start).sort((a, b) => b.num - a.num);
+    for (const r of moving) byNum.delete(r.num);
+    for (const r of moving) {
+      renumberRow(r, r.num + fresh.length);
+      byNum.set(r.num, r);
+    }
+    for (const [ref, xml] of [...links]) {
+      const rg = parseRange(ref);
+      if (!rg || rg.r1 < start) continue;
+      links.delete(ref);
+      const moved = rangeText({ ...rg, r1: rg.r1 + fresh.length, r2: rg.r2 + fresh.length });
+      links.set(moved, withStart(xml, (t) => setAttr(t, "ref", moved)));
+      linksChanged = true;
+    }
+  }
+  fresh.forEach((r, i) => {
+    const row = rowAt(start + i);
+    for (const { col, idx, inSheet } of placed) {
+      const cur = r.cells[col.key] ?? null;
+      if (cur === null) continue;
+      writeCell(row, idx, col, cur, inSheet ? baseStyle(row, idx) : appendedStyle(row, col));
+    }
+  });
+  const lastRow = Math.max(meta.lastDataRow, start + fresh.length - 1);
 
-  const out = new Uint8Array(await wb.xlsx.writeBuffer());
-  if (!original) return out;
-  return restoreSheetXml(out, original, patches);
+  doc.rows = [...byNum.values()].sort((a, b) => a.num - b.num);
+  let xml = serializeSheet(doc);
+
+  // ----- the blocks around the data -----
+  const maxRow = doc.rows.at(-1)?.num ?? lastRow;
+  const dim = findBlock(xml, "dimension", p);
+  if (dim) {
+    const rg = parseRange(getAttr(dim.text, "ref") ?? "");
+    const ref = rangeText({ c1: 1, r1: 1, c2: Math.max(rg?.c2 ?? 1, lastCol), r2: Math.max(rg?.r2 ?? 1, maxRow) });
+    xml = replaceAt(xml, dim, withStart(dim.text, (t) => setAttr(t, "ref", ref)));
+  }
+
+  xml = addColWidths(xml, p, appended.map((a) => ({ index: a.idx, width: pxToChars(a.col.width, a.col.type) })));
+
+  let filter: Range | null = null;
+  const af = findBlock(xml, "autoFilter", p);
+  if (af) {
+    const rg = parseRange(getAttr(startTag(af.text), "ref") ?? "");
+    if (rg && rg.r1 === 1) {
+      const next: Range = { ...rg, c2: Math.max(rg.c2, lastCol), r2: Math.max(rg.r2, lastRow) };
+      if (next.c2 !== rg.c2 || next.r2 !== rg.r2) {
+        xml = replaceAt(xml, af, withStart(af.text, (t) => setAttr(t, "ref", rangeText(next))));
+        filter = next;
+      }
+    }
+  }
+
+  if (shifted) {
+    const merges = findBlock(xml, "mergeCells", p);
+    if (merges) {
+      const moved = merges.text.replace(/<(?:[\w.-]+:)?mergeCell\b[^>]*>/g, (tag) => {
+        const rg = parseRange(getAttr(tag, "ref") ?? "");
+        if (!rg || rg.r1 < shifted!.from) return tag;
+        return setAttr(tag, "ref", rangeText({ ...rg, r1: rg.r1 + shifted!.by, r2: rg.r2 + shifted!.by }));
+      });
+      xml = replaceAt(xml, merges, moved);
+    }
+  }
+
+  const newRels: Rel[] = [];
+  if (linksChanged) {
+    const ns = relsPrefix(xml, "worksheet");
+    xml = ns.xml;
+    const nextId = relIds(rels.map((r) => r.id));
+    const pieces = [...links.values()];
+    for (const [ref, url] of newLinks) {
+      const id = nextId();
+      newRels.push({ id, type: REL_TYPE.hyperlink, target: url, external: true });
+      pieces.push(`<${p}hyperlink ref="${ref}" ${ns.prefix}:id="${id}"/>`);
+    }
+    const cur = findBlock(xml, "hyperlinks", p);
+    const block = pieces.length ? `<${p}hyperlinks>${pieces.join("")}</${p}hyperlinks>` : "";
+    xml = cur ? replaceAt(xml, cur, block) : block ? insertBefore(xml, block, followersOf("hyperlinks"), p, "worksheet") : xml;
+  }
+
+  xml = syncDropdowns(xml, p, placed, lastRow);
+  zip.file(part.path, xml);
+  if (newRels.length) zip.file(relsPath, addRels(relsXml, newRels));
+
+  await patchTables(zip, part, rels, meta, placed, appended, lastCol, lastRow);
+  return { headerStyle, filter };
+}
+
+/** Add <col> widths for appended columns, splitting any original span they land inside. */
+function addColWidths(xml: string, p: string, added: { index: number; width: number }[]): string {
+  if (!added.length) return xml;
+  const cols = findBlock(xml, "cols", p);
+  const inner = cols && startTag(cols.text) !== cols.text
+    ? cols.text.slice(startTag(cols.text).length, cols.text.lastIndexOf("<"))
+    : "";
+  const cuts = added.map((c) => c.index).sort((a, b) => a - b);
+  const spans: { min: number; tag: string }[] = [];
+  const span = (tag: string, min: number, max: number) => ({ min, tag: setAttr(setAttr(tag, "min", String(min)), "max", String(max)) });
+  for (const m of inner.matchAll(/<(?:[\w.-]+:)?col\b[^>]*\/>/g)) {
+    const tag = m[0];
+    const min = Number(getAttr(tag, "min") ?? 0);
+    const max = Number(getAttr(tag, "max") ?? 0);
+    // Excel wants spans sorted and disjoint; a sheet may style empty columns past its data
+    // (T:Z as one span), and appended columns land inside such a span: split it around them.
+    let from = min;
+    for (const cut of cuts) {
+      if (cut < min || cut > max) continue;
+      if (cut > from) spans.push(span(tag, from, cut - 1));
+      from = cut + 1;
+    }
+    if (from === min) spans.push({ min, tag });
+    else if (from <= max) spans.push(span(tag, from, max));
+  }
+  for (const c of added) spans.push({ min: c.index, tag: `<${p}col min="${c.index}" max="${c.index}" width="${c.width}" customWidth="1"/>` });
+  spans.sort((a, b) => a.min - b.min);
+  const block = `<${p}cols>${spans.map((s) => s.tag).join("")}</${p}cols>`;
+  return cols ? replaceAt(xml, cols, block) : insertBefore(xml, block, followersOf("cols"), p, "worksheet");
+}
+
+/**
+ * Dropdowns follow the app's options: a typed list the sheet already has for a column is updated
+ * when its options changed, and a Dropdown column without one (new, or retyped) gets one. A list
+ * drawn from a range or a name is the sheet's own, and is left alone.
+ */
+function syncDropdowns(xml: string, p: string, placed: { col: Column; idx: number }[], lastRow: number): string {
+  const selects = placed.filter((x) => x.col.type === "select" && x.col.options?.length);
+  if (!selects.length) return xml;
+  const block = findBlock(xml, "dataValidations", p);
+  const items = block
+    ? [...block.text.matchAll(/<((?:[\w.-]+:)?)dataValidation\b[^>]*?(?:\/>|>[\s\S]*?<\/\1dataValidation>)/g)].map((m) => m[0])
+    : [];
+  const all = parseListValidations(xml); // includes the Excel 2010 lists kept in extLst
+  let changed = false;
+  for (const { col, idx } of selects) {
+    const formula = listFormula(col.options!);
+    if (formula.length > LIST_FORMULA_MAX) continue;
+    const covers = (sqref: string) => rangesOf(sqref).some((rg) => rg.c1 <= idx && idx <= rg.c2 && rg.r2 >= 2);
+    const i = items.findIndex((it) => getAttr(startTag(it), "type") === "list" && covers(getAttr(startTag(it), "sqref") ?? ""));
+    if (i >= 0) {
+      const f = /<((?:[\w.-]+:)?)formula1>([\s\S]*?)<\/\1formula1>/.exec(items[i]!);
+      const opts = f ? inlineListOptions(decodeXml(f[2]!)) : null;
+      if (!f || !opts || sameList(opts, col.options!)) continue;
+      items[i] = items[i]!.replace(f[0], `<${f[1]}formula1>${escapeXml(formula)}</${f[1]}formula1>`);
+      changed = true;
+    } else if (!all.some((v) => covers(v.sqref))) {
+      const L = colLetter(idx);
+      items.push(
+        `<${p}dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="${L}2:${L}${Math.max(VALIDATION_ROWS, lastRow)}"><${p}formula1>${escapeXml(formula)}</${p}formula1></${p}dataValidation>`,
+      );
+      changed = true;
+    }
+  }
+  if (!changed) return xml;
+  const next = `<${p}dataValidations count="${items.length}">${items.join("")}</${p}dataValidations>`;
+  return block ? replaceAt(xml, block, next) : insertBefore(xml, next, followersOf("dataValidations"), p, "worksheet");
+}
+
+/**
+ * An Excel Table over the prospects keeps covering them: it grows over new rows and over the
+ * appended columns next to it, and a renamed header renames its table column (Excel repairs a
+ * table whose column names don't match the header cells).
+ */
+async function patchTables(
+  zip: JSZip,
+  part: SheetPart,
+  rels: Rel[],
+  meta: SheetMeta,
+  placed: { col: Column; idx: number; inSheet: boolean }[],
+  appended: { col: Column; idx: number }[],
+  lastCol: number,
+  lastRow: number,
+): Promise<void> {
+  for (const rel of rels.filter((r) => r.type.endsWith("/table"))) {
+    const path = resolvePart(part.path, rel.target);
+    let xml = await readText(zip, path);
+    if (!xml) continue;
+    const root = /<((?:[\w.-]+:)?)table\b[^>]*>/.exec(xml);
+    if (!root) continue;
+    const tp = root[1]!;
+    const rg = parseRange(getAttr(root[0], "ref") ?? "");
+    if (!rg || rg.r1 !== 1 || Number(getAttr(root[0], "totalsRowCount") ?? 0) > 0) continue;
+    const colsBlock = findBlock(xml, "tableColumns", tp);
+    if (!colsBlock) continue;
+    const cols = [...colsBlock.text.matchAll(/<((?:[\w.-]+:)?)tableColumn\b[^>]*?(?:\/>|>[\s\S]*?<\/\1tableColumn>)/g)].map((m) => m[0]);
+    const next: Range = { ...rg };
+    let changed = false;
+    if (lastRow > rg.r2 && rg.r2 >= meta.lastDataRow) {
+      next.r2 = lastRow;
+      changed = true;
+    }
+    for (const { col, idx, inSheet } of placed) {
+      if (!inSheet || idx < rg.c1 || idx > rg.c2 || col.importedHeader === undefined || col.header === col.importedHeader) continue;
+      const i = idx - rg.c1;
+      if (cols[i]) {
+        cols[i] = withStart(cols[i]!, (t) => setAttr(t, "name", col.header));
+        changed = true;
+      }
+    }
+    if (rg.c2 === meta.lastCol && appended.length) {
+      let id = Math.max(0, ...cols.map((c) => Number(getAttr(startTag(c), "id")) || 0));
+      for (const a of appended) cols.push(`<${tp}tableColumn id="${++id}" name="${escapeXml(a.col.header)}"/>`);
+      next.c2 = lastCol;
+      changed = true;
+    }
+    if (!changed) continue;
+    xml = xml.replace(root[0], setAttr(root[0], "ref", rangeText(next)));
+    const af = findBlock(xml, "autoFilter", tp);
+    if (af) xml = replaceAt(xml, af, withStart(af.text, (t) => setAttr(t, "ref", rangeText(next))));
+    const cb = findBlock(xml, "tableColumns", tp)!;
+    xml = replaceAt(xml, cb, `${setAttr(startTag(cb.text), "count", String(cols.length))}${cols.join("")}</${tp}tableColumns>`);
+    zip.file(path, xml);
+  }
+}
+
+/** The autofilter's hidden defined name must describe the same range. */
+function setFilterName(wbXml: string, part: SheetPart, rg: Range): string {
+  const abs = `$${colLetter(rg.c1)}$${rg.r1}:$${colLetter(rg.c2)}$${rg.r2}`;
+  return wbXml.replace(/<((?:[\w.-]+:)?)definedName\b([^>]*)>([\s\S]*?)<\/\1definedName>/g, (m, pfx: string, attrs: string) => {
+    const tag = `<x${attrs}>`;
+    if (getAttr(tag, "name") !== "_xlnm._FilterDatabase" || getAttr(tag, "localSheetId") !== String(part.index)) return m;
+    return `<${pfx}definedName${attrs}>${escapeXml(`${sheetRefName(part.name)}!${abs}`)}</${pfx}definedName>`;
+  });
+}
+
+/** Excel recalculates on open, so other tabs' formulas see the new values. */
+function forceRecalc(wbXml: string): string {
+  const calc = /<((?:[\w.-]+:)?)calcPr\b[^>]*?\/?>/.exec(wbXml);
+  if (calc) return wbXml.replace(calc[0], setAttr(calc[0], "fullCalcOnLoad", "1"));
+  const p = /<((?:[\w.-]+:)?)workbook\b/.exec(wbXml)?.[1] ?? "";
+  const after = ["oleSize", "customWorkbookViews", "pivotCaches", "smartTagPr", "smartTagTypes", "webPublishing", "fileRecoveryPr", "webPublishObjects", "extLst"];
+  return insertBefore(wbXml, `<${p}calcPr fullCalcOnLoad="1"/>`, after, p, "workbook");
+}
+
+// ---------- the Intro templates tab ----------
+
+async function writeTemplatesTab(
+  zip: JSZip,
+  wbPath: string,
+  wbXml: string,
+  parts: SheetPart[],
+  sheets: SheetMeta[],
+  templates: Template[],
+  book: StyleBook,
+  headerStyle: string | null,
+): Promise<string> {
+  const meta = sheets.find((s) => s.role === "templates");
+  const part = meta ? parts.find((x) => x.name === meta.name) : undefined;
+  if (meta && part) {
+    // The tab Mudd read the templates from: rewrite its Name and Template cells, row by row.
+    const doc: SheetDoc = parseSheet((await readText(zip, part.path))!);
+    const p = doc.prefix;
+    const byNum = new Map(doc.rows.map((r) => [r.num, r]));
+    const typical = typicalStyles(doc.rows, 2, Math.max(2, meta.lastDataRow));
+    // Only a cell the tab has no format for yet needs a new (wrapped) one.
+    let wrap: string | null | undefined;
+    const wrapped = () => (wrap === undefined ? (wrap = book.derive(typical.get(meta.colMap.body!) ?? null, { wrap: true })) : wrap);
+    const last = Math.max(meta.lastDataRow, templates.length + 1);
+    for (let n = 2; n <= last; n++) {
+      const t = templates[n - 2];
+      let row = byNum.get(n);
+      if (!row && !t) continue;
+      if (!row) byNum.set(n, (row = { num: n, attrs: "", cells: [], extra: "", raw: null }));
+      for (const [key, value] of [["name", t?.name], ["body", t?.body]] as const) {
+        const idx = meta.colMap[key];
+        if (!idx) continue;
+        const cell = row.cells.find((c) => c.col === idx);
+        const style = cell ? cellStyle(cell) : typical.get(idx) ?? wrapped();
+        putCell(row, idx, makeCell(p, idx, n, style, value ? { s: value } : null));
+      }
+    }
+    doc.rows = [...byNum.values()].sort((a, b) => a.num - b.num);
+    let xml = serializeSheet(doc);
+    const dim = findBlock(xml, "dimension", p);
+    if (dim) {
+      const rg = parseRange(getAttr(dim.text, "ref") ?? "");
+      const ref = rangeText({ c1: 1, r1: 1, c2: Math.max(rg?.c2 ?? 2, 2), r2: Math.max(rg?.r2 ?? 1, last) });
+      xml = replaceAt(xml, dim, withStart(dim.text, (t) => setAttr(t, "ref", ref)));
+    }
+    zip.file(part.path, xml);
+    return wbXml;
+  }
+  if (!templates.length) return wbXml;
+
+  // A new tab. Its name must not clash with any tab, whatever the case (Excel's rule).
+  const names = new Set(parts.map((x) => x.name.toLowerCase()));
+  let name = TEMPLATES_SHEET;
+  for (let i = 2; names.has(name.toLowerCase()); i++) name = `${TEMPLATES_SHEET} ${i}`;
+  let n = parts.length + 1;
+  while (zip.file(`xl/worksheets/sheet${n}.xml`)) n++;
+  const path = `xl/worksheets/sheet${n}.xml`;
+  const wrap = book.derive(null, { wrap: true });
+  const cell = (col: number, row: number, style: string | null, text: string) => makeCell("", col, row, style, { s: text });
+  const rows = [
+    `<row r="1" ht="21.75" customHeight="1">${cell(1, 1, headerStyle, "Name")}${cell(2, 1, headerStyle, "Template")}</row>`,
+    ...templates.map((t, i) => `<row r="${i + 2}">${cell(1, i + 2, wrap, t.name)}${cell(2, i + 2, wrap, t.body)}</row>`),
+  ];
+  const sheet =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${RELS_NS}">` +
+    `<dimension ref="A1:B${templates.length + 1}"/><sheetViews><sheetView workbookViewId="0"/></sheetViews>` +
+    '<sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="100" customWidth="1"/></cols>' +
+    `<sheetData>${rows.join("")}</sheetData>` +
+    '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>';
+  zip.file(path, sheet);
+
+  const wbRelsPath = relsPathOf(wbPath);
+  const wbRelsXml = await readText(zip, wbRelsPath);
+  const rid = relIds(parseRels(wbRelsXml).map((r) => r.id))();
+  const dir = wbPath.slice(0, wbPath.lastIndexOf("/") + 1);
+  const target = path.startsWith(dir) ? path.slice(dir.length) : `/${path}`;
+  zip.file(wbRelsPath, addRels(wbRelsXml, [{ id: rid, type: REL_TYPE.worksheet, target, external: false }]));
+
+  const ct = (await readText(zip, "[Content_Types].xml"))!;
+  zip.file(
+    "[Content_Types].xml",
+    ct.replace(/<\/((?:[\w.-]+:)?)Types>/, `<$1Override PartName="/${path}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></$1Types>`),
+  );
+
+  const ns = relsPrefix(wbXml, "workbook");
+  const ids = [...ns.xml.matchAll(/<(?:[\w.-]+:)?sheet\b[^>]*>/g)].map((m) => Number(getAttr(m[0], "sheetId")) || 0);
+  return ns.xml.replace(
+    /<\/((?:[\w.-]+:)?)sheets>/,
+    `<$1sheet name="${escapeXml(name)}" sheetId="${Math.max(0, ...ids) + 1}" ${ns.prefix}:id="${rid}"/></$1sheets>`,
+  );
+}
+
+// ---------- a new workbook ----------
+
+/** A workbook in the base-tracker look, for a campaign that has none of its own. */
+async function generatedWorkbook(schema: CampaignSchema, rows: ExportRow[], templates: Template[]): Promise<Uint8Array> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Mudd.io";
+  const ws = wb.addWorksheet("Prospects");
+  const cols = schema.columns;
+  styleGeneratedSheet(ws, cols, schema);
+  const styles = cols.map((c) => dataStyle(c, schema));
+  rows.forEach((r, i) => {
+    const xrow = ws.getRow(i + 2);
+    cols.forEach((col, j) => {
+      const cell = xrow.getCell(j + 1);
+      cell.style = JSON.parse(JSON.stringify(styles[j]));
+      cell.value = toExcelValue(r.cells[col.key] ?? null, col);
+    });
+  });
+  ws.autoFilter = `A1:${colLetter(Math.max(1, cols.length))}${Math.max(1, rows.length + 1)}`;
+  if (templates.length) {
+    const t = wb.addWorksheet(TEMPLATES_SHEET);
+    t.getColumn(1).width = 28;
+    t.getColumn(2).width = 100;
+    const h = t.getRow(1);
+    h.height = 21.75;
+    ["Name", "Template"].forEach((text, i) => {
+      h.getCell(i + 1).value = text;
+      h.getCell(i + 1).style = JSON.parse(JSON.stringify(STYLE.header));
+    });
+    templates.forEach((tpl, i) => {
+      const row = t.getRow(i + 2);
+      row.getCell(1).value = tpl.name;
+      row.getCell(2).value = tpl.body;
+      for (const c of [1, 2]) row.getCell(c).style = { ...JSON.parse(JSON.stringify(STYLE.cell)), alignment: { vertical: "top", wrapText: true } };
+    });
+  }
+  return new Uint8Array(await wb.xlsx.writeBuffer());
 }

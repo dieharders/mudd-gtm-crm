@@ -1,10 +1,12 @@
 /**
  * The reading view: each prospect as a card you can read top to bottom, grouped by tier (or
- * status, or any dropdown). Same rows, filters and prospect panel as the grid.
+ * status, or any dropdown). Same rows, filters and prospect panel as the grid. A screened-out
+ * prospect's card is greyed out, with the reason, and still opens.
  */
-import { AlertTriangle, CalendarClock, ExternalLink, Mail, MessageSquareText, Phone, Users } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
-import { DEAD, type CampaignSchema, type CellValue, type Column, type Row } from "../../../shared/types";
+import { AlertTriangle, Ban, CalendarClock, ExternalLink, Mail, MessageSquareText, Phone, Users } from "lucide-react";
+import { memo, useMemo, type ReactNode } from "react";
+import { DEAD, isScreened, type CampaignSchema, type CellValue, type Column, type Row } from "../../../shared/types";
+import { toNumber } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { cueFor } from "../../lib/cues";
 import { formatDate, formatDateTime, relative } from "../../lib/format";
@@ -35,7 +37,7 @@ export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenR
         {groups.map((g) => (
           <section key={g.label} className="mb-8 last:mb-2">
             {groupCol && (
-              <div className="sticky top-0 z-10 -mx-2 mb-3 flex items-center gap-2 bg-white/90 px-2 py-2 backdrop-blur">
+              <div className="sticky top-0 z-10 -mx-2 mb-3 flex items-center gap-2 bg-white/90 px-2 py-2 backdrop-blur-sm">
                 <span className="eyebrow">{groupCol.header}</span>
                 {groupCol.key === schema.statusKey ? (
                   <StatusPill value={g.value} stages={stages} />
@@ -54,7 +56,7 @@ export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenR
                   stages={stages}
                   layout={layout}
                   active={row.id === openRowId}
-                  onOpen={() => onOpenRow(row.id)}
+                  onOpenRow={onOpenRow}
                   hideTier={groupBy === layout.tierKey}
                   pendingCount={pending?.get(row.id)?.size ?? 0}
                 />
@@ -73,25 +75,31 @@ const groupTone = (i: number) => GROUP_TONES[i % GROUP_TONES.length]!;
 function groupRows(rows: Row[], schema: CampaignSchema, stages: string[], key: string | null) {
   if (!key) return [{ label: "all", value: "", index: 0, rows }];
   const col = schema.columns.find((c) => c.key === key);
-  const order = key === schema.statusKey ? [...stages, DEAD] : col?.options ?? [];
+  const order = (key === schema.statusKey ? [...stages, DEAD] : col?.options ?? []).map((o) => o.toLowerCase());
   const map = new Map<string, Row[]>();
   for (const r of rows) {
     const v = display(r.cells[key]);
-    map.set(v, [...(map.get(v) ?? []), r]);
+    const group = map.get(v);
+    if (group) group.push(r);
+    else map.set(v, [r]);
   }
-  const rank = (v: string) => {
-    if (!v) return Number.MAX_SAFE_INTEGER;
-    const i = order.findIndex((o) => o.toLowerCase() === v.toLowerCase());
-    return i < 0 ? order.length + [...map.keys()].indexOf(v) : i;
-  };
-  return [...map.entries()]
-    .sort(([a], [b]) => rank(a) - rank(b))
-    .map(([v, rs], index) => ({ label: v || "Not set", value: v, index, rows: rs }));
+  // The dropdown's order first, then values it doesn't list as they come, and "Not set" last.
+  const values = [...map.keys()];
+  const rank = new Map<string, number>();
+  values.forEach((v, seen) => {
+    const i = order.indexOf(v.toLowerCase());
+    rank.set(v, !v ? Number.MAX_SAFE_INTEGER : i < 0 ? order.length + seen : i);
+  });
+  return values
+    .sort((a, b) => rank.get(a)! - rank.get(b)!)
+    .map((v, index) => ({ label: v || "Not set", value: v, index, rows: map.get(v)! }));
 }
 
-function ProspectCard({ row, schema, stages, layout, active, onOpen, hideTier, pendingCount }: {
-  row: Row; schema: CampaignSchema; stages: string[]; layout: CardLayout; active: boolean; onOpen: () => void; hideTier: boolean; pendingCount: number;
+// Memoized, with a stable onOpenRow: an edit re-renders only the card whose row changed.
+const ProspectCard = memo(function ProspectCard({ row, schema, stages, layout, active, onOpenRow, hideTier, pendingCount }: {
+  row: Row; schema: CampaignSchema; stages: string[]; layout: CardLayout; active: boolean; onOpenRow: (id: string) => void; hideTier: boolean; pendingCount: number;
 }) {
+  const onOpen = () => onOpenRow(row.id);
   const c = row.cells;
   const txt = (k?: string) => (k ? display(c[k]) : "");
   const title = txt(layout.titleKey) || "Untitled prospect";
@@ -107,7 +115,8 @@ function ProspectCard({ row, schema, stages, layout, active, onOpen, hideTier, p
   const facts = layout.facts.map((col) => ({ col, v: txt(col.key) })).filter((f) => f.v);
   const meetingAt = txt(schema.meetingAtKey);
   const intro = txt(schema.introKey);
-  const reason = row.bucket === "screened" ? txt(schema.reasonKey) : "";
+  const screened = isScreened(row, schema);
+  const reason = screened ? txt(schema.reasonKey) : "";
   const dead = status === DEAD;
 
   return (
@@ -120,10 +129,11 @@ function ProspectCard({ row, schema, stages, layout, active, onOpen, hideTier, p
       className={cn(
         "group grid cursor-pointer gap-5 rounded-2xl border bg-white p-5 transition sm:grid-cols-[124px_1fr]",
         active ? "border-brand-300 shadow-[0_0_0_3px_var(--color-brand-100)]" : "border-line hover:border-brand-200 hover:shadow-[0_8px_30px_-14px_rgba(103,68,245,0.35)]",
-        dead && "opacity-70",
+        screened ? "bg-zinc-50 opacity-60 hover:opacity-80" : dead && "opacity-70",
       )}
     >
       <div className="flex flex-row flex-wrap items-start gap-2 sm:flex-col">
+        {screened && <span className="tag bg-zinc-200 text-zinc-700"><Ban size={12} /> Screened out</span>}
         {schema.statusKey && <StatusPill value={status || "No status"} stages={stages} />}
         {tier && !hideTier && <span className="tag bg-zinc-100 text-zinc-700">{schema.columns.find((x) => x.key === layout.tierKey)?.header ?? "Tier"} {tier}</span>}
         {meetingAt && (
@@ -217,16 +227,17 @@ function ProspectCard({ row, schema, stages, layout, active, onOpen, hideTier, p
       </div>
     </article>
   );
-}
+});
 
 function Fact({ col, v, cells, schema }: { col: Column; v: string; cells: Record<string, CellValue>; schema: CampaignSchema }) {
   const cue = cueFor(col, cells, schema);
-  const value = col.type === "date" && /^\d{4}-\d{2}-\d{2}/.test(v) ? formatDate(v) : col.type === "datetime" ? formatDateTime(v) : col.type === "currency" && !Number.isNaN(Number(v)) ? `$${Number(v).toLocaleString()}` : v;
+  const amount = col.type === "currency" ? toNumber(v) : null;
+  const value = col.type === "date" && /^\d{4}-\d{2}-\d{2}/.test(v) ? formatDate(v) : col.type === "datetime" ? formatDateTime(v) : amount !== null ? `$${amount.toLocaleString()}` : v;
   const tone = col.type === "select" && col.key !== schema.statusKey ? toneFor(v, col.options ?? []).pill : "";
   return (
     <div className={cn("inline-flex max-w-full items-baseline gap-1.5 rounded-lg border px-2 py-1 text-xs", cue === "overdue" || cue === "expired" ? "border-rose-200 bg-rose-50" : "border-line bg-white")}>
       <dt className="shrink-0 text-ink-faint">{col.header}</dt>
-      <dd className={cn("min-w-0 truncate font-medium", cue === "overdue" || cue === "expired" ? "text-rose-700" : "text-ink", tone && "rounded px-1", tone)} title={v}>
+      <dd className={cn("min-w-0 truncate font-medium", cue === "overdue" || cue === "expired" ? "text-rose-700" : "text-ink", tone && "rounded-sm px-1", tone)} title={v}>
         {value.length > 60 ? `${value.slice(0, 58)}…` : value}
       </dd>
     </div>

@@ -1,10 +1,11 @@
 /**
  * The data model shared by the server and the client.
  *
- * A campaign is ONE schema (column list) and two buckets of rows: Prospects and Screened out.
- * The spreadsheet it came from is remembered separately, as `sheets`, so export can write each
- * bucket back to the sheet it was read from without moving any existing column letter — the
- * Summary tab's formulas point at fixed letters, so a moved column is a broken formula.
+ * A campaign is ONE schema (column list) and one list of rows, read from one tab of a workbook.
+ * Screening a prospect out only ticks its "Screened out" column, so a row never moves between
+ * lists. The workbook is remembered separately, as `sheets`, so export can write each row back
+ * to the sheet row it was read from without moving any existing column letter: formulas on
+ * other tabs point at fixed letters, so a moved column is a broken formula.
  */
 
 export type ColumnType =
@@ -17,7 +18,8 @@ export type ColumnType =
   | "select"
   | "url"
   | "email"
-  | "phone";
+  | "phone"
+  | "checkbox";
 
 export const COLUMN_TYPES: { value: ColumnType; label: string }[] = [
   { value: "text", label: "Text" },
@@ -30,6 +32,7 @@ export const COLUMN_TYPES: { value: ColumnType; label: string }[] = [
   { value: "url", label: "Link" },
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone" },
+  { value: "checkbox", label: "Checkbox" },
 ];
 
 export interface Column {
@@ -56,6 +59,9 @@ export interface Column {
 export interface CampaignSchema {
   columns: Column[];
   statusKey?: string;
+  /** Checkbox column: ticked when the prospect is screened out (disabled in the app). */
+  screenedKey?: string;
+  /** Why the prospect was screened out. */
   reasonKey?: string;
   introKey?: string;
   meetingUrlKey?: string;
@@ -64,39 +70,43 @@ export interface CampaignSchema {
   companyKey?: string;
 }
 
-export type Bucket = "prospects" | "screened";
-
 /**
  * A cell value as the app stores it.
  *   date      "YYYY-MM-DD"
  *   datetime  "YYYY-MM-DDTHH:mm"   (wall-clock time, no time zone)
+ *   checkbox  "TRUE" when ticked, empty otherwise
  *   number / currency → number when the cell held one, else the text as typed
  */
 export type CellValue = string | number | null;
 
+/** A ticked checkbox cell. */
+export const CHECKED = "TRUE";
+
 export interface Row {
   id: string;
-  bucket: Bucket;
   position: number;
   cells: Record<string, CellValue>;
-  /** Where the row was read from, so export can reuse that row's cell styles. */
+  /** The sheet and row this was read from: export writes the row back to that same row. */
   sourceSheet?: string | null;
   sourceRow?: number | null;
 }
 
-export type SheetRole = "prospects" | "screened" | "passthrough" | "templates";
+export type SheetRole = "prospects" | "passthrough" | "templates";
 
 export interface SheetMeta {
   name: string;
   role: SheetRole;
-  /** Column key → 1-based column index in this sheet. */
+  /** Column key → 1-based column index in this sheet. For `templates`: `name` and `body`. */
   colMap: Record<string, number>;
   /** Last row holding data when imported (1 = header only). */
   lastDataRow: number;
-  /** Last used column when imported. New columns go after it. */
+  /** Last used column when imported (data, merges, dropdowns, conditional formats). New
+   *  columns go after it. */
   lastCol: number;
   /** Footnote rows under the data, kept below it on export. */
   trailer?: { from: number; to: number };
+  /** The sheet rows that were imported as prospects. A deleted prospect's row is blanked. */
+  dataRows?: number[];
 }
 
 export interface Campaign {
@@ -125,6 +135,7 @@ export interface CampaignSummary {
   name: string;
   updatedAt: number;
   sourceName: string | null;
+  /** Prospects still in play (not screened out). */
   prospects: number;
   screened: number;
   byStatus: Record<string, number>;
@@ -156,6 +167,8 @@ export interface InspectSheet {
   hasStatus: boolean;
   hasFormulas: boolean;
   guess: SheetRole;
+  /** One-cell note rows under the data (after a blank row): kept in the file, not imported. */
+  footnotes: number;
 }
 
 export interface InspectResult {
@@ -172,6 +185,9 @@ export interface CellEdit {
   key: string;
   value: CellValue;
 }
+
+/** The file types import accepts. Macro workbooks (.xlsm) are refused: saving would drop the macros. */
+export const IMPORT_EXTENSIONS = [".xlsx", ".csv", ".tsv", ".txt"];
 
 /** The Status column's stages when the sheet does not supply its own. */
 export const DEFAULT_STAGES = [
@@ -191,4 +207,14 @@ export function stagesOf(schema: CampaignSchema): string[] {
   const col = schema.columns.find((c) => c.key === schema.statusKey);
   const opts = col?.options?.filter((o) => o.toLowerCase() !== DEAD.toLowerCase());
   return opts && opts.length > 1 ? opts : DEFAULT_STAGES;
+}
+
+/** A checkbox cell is ticked. */
+export function isChecked(v: CellValue | undefined): boolean {
+  return v === CHECKED;
+}
+
+/** The prospect is screened out: still in the list, but disabled. */
+export function isScreened(row: Pick<Row, "cells">, schema: CampaignSchema): boolean {
+  return !!schema.screenedKey && isChecked(row.cells[schema.screenedKey]);
 }

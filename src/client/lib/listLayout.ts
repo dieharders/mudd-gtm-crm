@@ -39,7 +39,7 @@ export function cardLayout(schema: CampaignSchema): CardLayout {
 
   const used = new Set(
     [titleKey, schema.nameKey, rankKey, tierKey, subtitleKey, roleKey, otherContactsKey, schema.statusKey, schema.introKey,
-      schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey].filter(Boolean) as string[],
+      schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean) as string[],
   );
   const emailKeys: string[] = [];
   const phoneKeys: string[] = [];

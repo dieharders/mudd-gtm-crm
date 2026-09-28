@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mergeSources } from "../../shared/ai";
-import { genericSchema } from "../../xlsx/layouts";
+import { genericSchema } from "../../shared/schema";
 import { enrichRequest, introRequest } from "../enrich/prompts";
 import { parseAuthStatus } from "./claude";
 import { buildArgs } from "./codex";

@@ -1,15 +1,16 @@
 /**
- * Export: Save back to the linked file, Save as…, or Download a copy.
+ * Save file: write the campaign back over the file it was imported from, with no dialog. When
+ * Mudd does not know where that file is, it goes to Downloads, and later saves go there too.
  * Waits for pending edits first, so the file always has the latest change.
  */
-import { ChevronDown, Download, FileDown, Save } from "lucide-react";
+import { ChevronDown, CloudUpload, Save } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import type { Campaign } from "../../../shared/types";
 import { ApiError, api } from "../../lib/api";
 import type { CampaignState } from "../../hooks/useCampaign";
 import { Button } from "../ui/Button";
-import { MenuItem, MenuSeparator, Popover } from "../ui/Menu";
+import { MenuItem, Popover } from "../ui/Menu";
 import { Modal } from "../ui/Modal";
 
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
@@ -18,33 +19,17 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
   const [busy, setBusy] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
 
-  const download = async () => {
-    const { blob, name } = await api.exportDownload(campaign.id);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    toast.success(`Downloaded ${name}`);
-  };
-
-  const run = async (target: "original" | "saveAs" | "download", force = false) => {
+  const save = async (opts: { force?: boolean; copy?: boolean } = {}) => {
     setBusy(true);
     try {
       await state.flush();
-      if (target === "download") return await download();
-      const r = await api.exportTo(campaign.id, target, force);
-      if (r.cancelled) return;
-      if (r.path) {
-        state.setSource(r.path);
-        toast.success(r.linked ? `Saved and linked ${baseName(r.path)} — next time just Save` : `Saved ${baseName(r.path)}`);
-      }
+      const r = await api.saveFile(campaign.id, opts);
+      if (r.linked) state.setSource(r.path);
+      if (opts.copy) toast.success(`Saved a copy: ${baseName(r.path)} in Downloads`);
+      else if (r.path === campaign.sourcePath) toast.success(`Saved ${baseName(r.path)}`);
+      else toast.success(`Saved ${baseName(r.path)} in Downloads. Save file keeps saving there.`, { duration: 6000 });
     } catch (err) {
       if (err instanceof ApiError && err.code === "changed") setConflict(err.message);
-      else if (err instanceof ApiError && err.code === "unsupported") await download();
       else toast.error((err as Error).message, { duration: 8000 });
     } finally {
       setBusy(false);
@@ -59,27 +44,23 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
           variant="primary"
           className="rounded-r-none"
           disabled={busy}
-          onClick={() => run(linked ? "original" : "saveAs")}
-          title={linked ? `Save to ${linked}` : "Choose where to save the .xlsx"}
+          onClick={() => void save()}
+          title={linked ? `Save to ${linked}` : "Save the .xlsx to your Downloads folder"}
         >
-          <Save size={15} /> {busy ? "Saving…" : linked ? "Save to file" : "Export .xlsx"}
+          <Save size={15} /> {busy ? "Saving…" : "Save file"}
         </Button>
         <Popover align="right" trigger={({ toggle }) => (
-          <Button variant="primary" className="rounded-l-none border-l border-brand-700 px-2" onClick={toggle} disabled={busy} aria-label="More export options">
+          <Button variant="primary" className="rounded-l-none border-l border-brand-700 px-2" onClick={toggle} disabled={busy} aria-label="More save options">
             <ChevronDown size={15} />
           </Button>
         )}>
           {(close) => (
             <>
-              <MenuItem icon={<Save size={15} />} disabled={!linked} onClick={() => { close(); void run("original"); }} hint={linked ? baseName(linked) : "Not linked to a file yet"}>
-                Save to linked file
+              <MenuItem icon={<Save size={15} />} onClick={() => { close(); void save(); }} hint={linked ? baseName(linked) : "To Downloads"}>
+                Save file
               </MenuItem>
-              <MenuItem icon={<FileDown size={15} />} onClick={() => { close(); void run("saveAs"); }} hint="Choose a location">
-                Save as…
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem icon={<Download size={15} />} onClick={() => { close(); void run("download"); }} hint="To your Downloads folder">
-                Download a copy
+              <MenuItem icon={<CloudUpload size={15} />} disabled onClick={() => {}} hint="SharePoint · coming soon">
+                Save to cloud
               </MenuItem>
             </>
           )}
@@ -93,12 +74,12 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
         footer={
           <>
             <Button variant="ghost" onClick={() => setConflict(null)}>Cancel</Button>
-            <Button onClick={() => { setConflict(null); void run("saveAs"); }}>Save as a new file</Button>
-            <Button variant="primary" onClick={() => { setConflict(null); void run("original", true); }}>Replace it</Button>
+            <Button onClick={() => { setConflict(null); void save({ copy: true }); }}>Save a copy to Downloads</Button>
+            <Button variant="primary" onClick={() => { setConflict(null); void save({ force: true }); }}>Replace it</Button>
           </>
         }
       >
-        <p className="text-sm text-ink-soft">Mudd rebuilds the file from what it imported plus your edits here. Edits made to the file in Excel since then would be replaced; the previous version is kept next to it as a <code>.bak.xlsx</code>.</p>
+        <p className="text-sm text-ink-soft">Mudd writes your edits into the file as it was imported. Changes made to it in Excel since then would be replaced; the previous version is kept next to it as a <code>.bak.xlsx</code>.</p>
       </Modal>
     </>
   );

@@ -2,7 +2,7 @@
 import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeOutput, RunKind, Suggestion, SuggestionStatus } from "../../shared/ai";
 import type { ColumnType } from "../../shared/types";
 import type {
-  Bucket, Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, Row, Template,
+  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, Row, Template,
 } from "../../shared/types";
 
 export class ApiError extends Error {
@@ -36,6 +36,13 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
 
 export type DialogResult = { path: string } | { cancelled: true } | { unsupported: true };
 
+export interface SaveResult {
+  /** Where the file was written. */
+  path: string;
+  /** The campaign is (now) linked to `path`: the next Save file writes there again. */
+  linked: boolean;
+}
+
 export const api = {
   env: () => call<{ platform: string; dialogs: boolean; dataDir: string }>("GET", "/api/env"),
 
@@ -47,12 +54,10 @@ export const api = {
     call<Campaign>("PATCH", `/api/campaigns/${id}`, patch),
   deleteCampaign: (id: string) => call<{ ok: true }>("DELETE", `/api/campaigns/${id}`),
 
-  insertRows: (id: string, rows: (Partial<Row> & { bucket: Bucket })[]) =>
+  insertRows: (id: string, rows: Partial<Row>[]) =>
     call<Row[]>("POST", `/api/campaigns/${id}/rows`, { rows }),
   editRows: (id: string, edits: CellEdit[]) => call<{ updatedAt: number }>("PATCH", `/api/campaigns/${id}/rows`, { edits }),
   deleteRows: (id: string, ids: string[]) => call<{ ok: true }>("DELETE", `/api/campaigns/${id}/rows`, { ids }),
-  moveRows: (id: string, ids: string[], bucket: Bucket, positions?: Record<string, number>) =>
-    call<{ ok: true }>("POST", `/api/campaigns/${id}/rows/move`, { ids, bucket, positions }),
 
   createTemplate: (id: string, name: string, body: string) =>
     call<Template>("POST", `/api/campaigns/${id}/templates`, { name, body }),
@@ -65,22 +70,16 @@ export const api = {
     return call<InspectResult>("POST", "/api/import/inspect", fd);
   },
   inspectPath: (path: string) => call<InspectResult>("POST", "/api/import/inspect", { path }),
-  importFile: (token: string, prospects: string, screened: string | null, name?: string) =>
-    call<Campaign>("POST", "/api/import", { token, prospects, screened, name }),
+  importFile: (token: string, prospects: string, name?: string) =>
+    call<Campaign>("POST", "/api/import", { token, prospects, name }),
 
-  exportTo: (id: string, target: "original" | "saveAs", force = false) =>
-    call<{ path?: string; cancelled?: boolean; linked?: boolean }>("POST", `/api/campaigns/${id}/export`, { target, force }),
-  exportDownload: async (id: string): Promise<{ blob: Blob; name: string }> => {
-    const res = await fetch(`/api/campaigns/${id}/export`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target: "download" }),
-    });
-    if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => ({}))).error ?? "Export failed");
-    const disp = res.headers.get("content-disposition") ?? "";
-    const name = /filename="([^"]+)"/.exec(disp)?.[1] ?? "campaign.xlsx";
-    return { blob: await res.blob(), name };
-  },
+  /**
+   * Save file: write the campaign over the file it was imported from, or, when Mudd does not know
+   * where that is, into Downloads (and keep saving there). `copy` always writes a new file in
+   * Downloads and leaves the link alone; `force` replaces a file that changed outside Mudd.
+   */
+  saveFile: (id: string, opts: { force?: boolean; copy?: boolean } = {}) =>
+    call<SaveResult>("POST", `/api/campaigns/${id}/save`, opts),
 
   openDialog: () => call<DialogResult>("POST", "/api/dialog/open"),
   openUrl: (url: string) => call<{ ok: true }>("POST", "/api/open-url", { url }),

@@ -1,6 +1,6 @@
 {
   "name": "mudd",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Mudd.io: local-first prospect CRM with spreadsheet import/export.",
   "private": true,
   "type": "module",
@@ -12,7 +12,9 @@
     "build:css": "bunx @tailwindcss/cli -i ./src/client/styles.css -o ./src/client/generated.css --minify",
     "build": "bun run build:css && bun run build.ts",
     "test": "bun test ./src/",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "lint": "eslint .",
+    "check": "bun run typecheck && bun run lint && bun test ./src/"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.283",
@@ -29,11 +31,19 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/cli": "^4.3.3",
     "@types/bun": "^1.4.2",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^10.11.0",
+    "eslint-plugin-better-tailwindcss": "^4.7.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "happy-dom": "^20.14.5",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.71.0"
   }
 }

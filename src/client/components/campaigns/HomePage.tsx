@@ -15,6 +15,7 @@ import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
 import { Modal } from "../ui/Modal";
 import { useImport } from "./ImportFlow";
+import { fire } from "../../lib/fire";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -87,7 +88,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
         footer={
           <>
             <Button variant="ghost" onClick={() => setDeleting(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => deleting && remove(deleting)}><Trash2 size={15} /> Delete</Button>
+            <Button variant="danger" onClick={() => { if (deleting) fire(remove(deleting)); }}><Trash2 size={15} /> Delete</Button>
           </>
         }
       >
@@ -172,8 +173,8 @@ function CampaignCard({ c, onDelete }: { c: CampaignSummary; onDelete: () => voi
     <div
       role="link"
       tabIndex={0}
-      onClick={() => navigate(`/c/${c.id}`)}
-      onKeyDown={(e) => e.key === "Enter" && navigate(`/c/${c.id}`)}
+      onClick={() => void navigate(`/c/${c.id}`)}
+      onKeyDown={(e) => { if (e.key === "Enter") void navigate(`/c/${c.id}`); }}
       className="card group cursor-pointer p-5 transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-[0_8px_30px_-12px_rgba(103,68,245,0.35)]"
     >
       <div className="flex items-start gap-3">
@@ -270,7 +271,7 @@ function MeetingItem({ m, past }: { m: Meeting; past?: boolean }) {
         {m.url && !past && (
           <button
             className="ml-auto inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-0.5 text-xs font-medium text-white shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)] hover:bg-brand-600"
-            onClick={() => api.openUrl(m.url!).catch((e) => toast.error(e.message))}
+            onClick={() => fire(api.openUrl(m.url!))}
           >
             <Video size={12} /> Join
           </button>

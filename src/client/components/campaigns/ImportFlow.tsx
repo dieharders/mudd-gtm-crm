@@ -1,19 +1,21 @@
 /**
  * Importing a spreadsheet, from anywhere in the app.
  *
- *   1. Pick a file: the native Open dialog (which remembers the path, so the campaign can later
- *      save straight back to it), a drop anywhere on the window, or a plain file input.
- *   2. Map its tabs: one Prospects tab, optionally one Screened-out tab. Every other tab is kept
- *      untouched and written back on export.
+ *   1. Pick a file: the native Open dialog (which remembers the path, so Save file can later
+ *      write straight back to it), a drop anywhere on the window, or a plain file input.
+ *   2. Choose the tab that holds the prospects, when the workbook has more than one. Every other
+ *      tab stays in the file untouched.
  */
 import { FileSpreadsheet, Info, Upload } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
-import type { InspectResult } from "../../../shared/types";
+import { looksLikeScreenedTab } from "../../../shared/schema";
+import { IMPORT_EXTENSIONS, type InspectResult } from "../../../shared/types";
 import { api } from "../../lib/api";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
+import { fire } from "../../lib/fire";
 
 interface ImportApi {
   startImport: () => void;
@@ -102,12 +104,12 @@ export function ImportProvider({ children }: { children: ReactNode }) {
   }, [inspect]);
 
   return (
-    <Ctx.Provider value={{ startImport, busy }}>
+    <Ctx.Provider value={{ startImport: () => fire(startImport()), busy }}>
       {children}
       <input
         ref={fileInput}
         type="file"
-        accept=".xlsx,.xlsm,.csv,.tsv"
+        accept={IMPORT_EXTENSIONS.join(",")}
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -131,32 +133,31 @@ export function ImportProvider({ children }: { children: ReactNode }) {
 
 function MappingDialog({ result, onClose }: { result: InspectResult; onClose: () => void }) {
   const navigate = useNavigate();
-  const initialP = result.sheets.find((s) => s.guess === "prospects")?.name ?? result.sheets[0]?.name ?? "";
-  const initialS = result.sheets.find((s) => s.guess === "screened")?.name ?? null;
+  // An old Screened-out list is never offered, and never shown.
+  const candidates = result.sheets.filter((s) => s.guess !== "templates" && !looksLikeScreenedTab(s.name));
+  const usable = candidates.filter((s) => !s.hasFormulas);
+  const initialP = result.sheets.find((s) => s.guess === "prospects")?.name ?? usable[0]?.name ?? "";
   const [prospects, setProspects] = useState(initialP);
-  const [screened, setScreened] = useState<string | null>(initialS);
   const base = result.fileName.replace(/\.[^.]+$/, "");
-  const multi = result.sheets.filter((s) => !s.hasFormulas && s.guess !== "templates").length > 2;
+  const multi = usable.length > 1;
   const [name, setName] = useState(multi ? `${base} · ${initialP}` : base);
   const [nameTouched, setNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const candidates = result.sheets.filter((s) => s.guess !== "templates");
-  const kept = result.sheets.filter((s) => s.name !== prospects && s.name !== screened && s.guess !== "templates");
+  const kept = candidates.filter((s) => s.name !== prospects);
 
   const chooseProspects = (n: string) => {
     setProspects(n);
-    if (screened === n) setScreened(null);
     if (!nameTouched && multi) setName(`${base} · ${n}`);
   };
 
   const submit = async () => {
     setSaving(true);
     try {
-      const c = await api.importFile(result.token, prospects, screened, name);
+      const c = await api.importFile(result.token, prospects, name);
       toast.success(`Imported ${c.name}`);
       onClose();
-      navigate(`/c/${c.id}`);
+      void navigate(`/c/${c.id}`);
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -177,11 +178,11 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
           <FileSpreadsheet size={18} className="text-emerald-600" /> Import {result.fileName}
         </span>
       }
-      subtitle="Choose which tab holds your prospects, and which (if any) holds the screened-out list."
+      subtitle={candidates.length > 1 ? "Choose the tab that holds your prospects." : undefined}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={submit} disabled={!prospects || !name.trim() || saving}>
+          <Button variant="primary" onClick={() => fire(submit())} disabled={!prospects || !name.trim() || saving}>
             {saving ? "Importing…" : "Import campaign"}
           </Button>
         </>
@@ -192,33 +193,35 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
           <label className="label" htmlFor="imp-name">Campaign name</label>
           <input id="imp-name" className="field" value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true); }} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        {candidates.length > 1 && (
           <div>
-            <label className="label">Prospects tab</label>
-            <select className="field" value={prospects} onChange={(e) => chooseProspects(e.target.value)}>
+            <label className="label" htmlFor="imp-tab">Prospects tab</label>
+            <select id="imp-tab" className="field" value={prospects} onChange={(e) => chooseProspects(e.target.value)}>
+              {!prospects && <option value="">Choose a tab</option>}
               {candidates.map((s) => (
                 <option key={s.name} value={s.name} disabled={s.hasFormulas}>
-                  {s.name} — {s.rows} rows{s.hasFormulas ? " (formulas)" : ""}
+                  {s.name} — {s.rows} rows{s.hasFormulas ? " (has formulas, can't be imported)" : ""}
                 </option>
               ))}
             </select>
           </div>
-          <div>
-            <label className="label">Screened-out tab</label>
-            <select className="field" value={screened ?? ""} onChange={(e) => setScreened(e.target.value || null)}>
-              <option value="">None — start empty</option>
-              {candidates.filter((s) => s.name !== prospects && !s.hasFormulas).map((s) => (
-                <option key={s.name} value={s.name}>{s.name} — {s.rows} rows</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        )}
+        {!usable.length && (
+          <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">
+            Every tab in this file has formulas, and Mudd can't write into a tab with formulas without breaking them. Save a copy of the prospects tab without formulas and import that.
+          </p>
+        )}
 
         {p && (
           <div className="rounded-xl border border-line bg-zinc-50 p-3">
             <p className="mb-2 text-xs font-medium text-ink-soft">
               {p.name}: {p.rows} prospects · {p.cols} columns{p.hasStatus ? " · Status column found" : " · no Status column (Mudd will add one)"}
             </p>
+            {p.footnotes > 0 && (
+              <p className="mb-2 text-xs text-ink-faint">
+                {p.footnotes === 1 ? "1 note row" : `${p.footnotes} note rows`} under the data (after a blank row) stay in the file but aren't imported as prospects.
+              </p>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {p.headers.map((h) => (
                 <span key={h} className="rounded-md border border-line bg-white px-1.5 py-0.5 text-xs text-ink-soft">{h}</span>
@@ -233,12 +236,16 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
           <div className="space-y-1">
             {kept.length > 0 && (
               <p>
-                Kept as-is and written back on export: <strong>{kept.map((s) => s.name).join(", ")}</strong>.
+                Left as they are in the file: <strong>{kept.map((s) => s.name).join(", ")}</strong>.
               </p>
             )}
-            <p>Intro message, Meeting URL and Meeting at columns are added after your last column, so formulas that point at existing columns keep working.</p>
+            <p>Meeting, Intro message and Screened out columns are added after your last column, so formulas that point at existing columns keep working.</p>
             {result.templates > 0 && <p>{result.templates} intro template{result.templates === 1 ? "" : "s"} found and will be restored.</p>}
-            {!result.path && <p className="text-brand-700">Dropped files can't be saved back in place — use <em>Save as</em> when exporting, or import with the Import button to link the file.</p>}
+            {!result.path && (
+              <p className="text-brand-700">
+                This file was dropped in, so Mudd doesn't know where it lives: <em>Save file</em> will put a copy in Downloads and keep saving there. To save straight back to this file, import it with the Import button instead.
+              </p>
+            )}
           </div>
         </div>
       </div>

@@ -53,10 +53,4 @@ export function contactedStage(stages: string[]): string | undefined {
   return stages.find((s) => s.toLowerCase() === "contacted") ?? stages[1];
 }
 
-export function rowTitle(row: Row, schema: CampaignSchema): { title: string; subtitle: string } {
-  const name = schema.nameKey ? String(row.cells[schema.nameKey] ?? "").trim() : "";
-  const company = schema.companyKey ? String(row.cells[schema.companyKey] ?? "").trim() : "";
-  const first = schema.columns[0] ? String(row.cells[schema.columns[0].key] ?? "").trim() : "";
-  if (company && name) return { title: company, subtitle: name };
-  return { title: company || name || first || "Untitled prospect", subtitle: "" };
-}
+export { rowTitle } from "../../shared/values";

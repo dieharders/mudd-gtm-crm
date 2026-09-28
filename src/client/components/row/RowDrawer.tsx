@@ -1,5 +1,7 @@
 /**
  * The prospect panel: the pipeline stepper, the meeting, the intro message, and every field.
+ * A screened-out prospect shows only why it was screened out, with Restore, and its fields
+ * read-only.
  */
 import {
   ArchiveRestore, Ban, CalendarPlus, Check, ChevronDown, ChevronUp, ClipboardCopy, Copy, ExternalLink, MoreHorizontal,
@@ -7,8 +9,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
-import { mergeTemplate } from "../../../shared/merge";
-import { DEAD, MEETING_STAGE, type CampaignSchema, type CellEdit, type Column, type Row, type Template } from "../../../shared/types";
+import { mergeTemplate, placeholderNames } from "../../../shared/merge";
+import { DEAD, isScreened, MEETING_STAGE, type CampaignSchema, type CellEdit, type Column, type Row, type Template } from "../../../shared/types";
+import { toLocalInput } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { formatDateTime, isSameDay, parseLocal, relative } from "../../lib/format";
 import { contactedStage, rowTitle, shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
@@ -38,8 +41,10 @@ interface Props {
 
 export function RowDrawer({ row, schema, stages, templates, state, onClose, onPrev, onNext, onOpenTemplates, enrich }: Props) {
   const { title, subtitle } = rowTitle(row, schema);
-  const screened = row.bucket === "screened";
-  const special = new Set([schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey].filter(Boolean));
+  const screened = isScreened(row, schema);
+  const special = new Set(
+    [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean),
+  );
   const fields = schema.columns.filter((c) => !special.has(c.key));
   const edit = (edits: CellEdit[], label: string, toastMsg?: string) => {
     state.edit(edits, label);
@@ -65,13 +70,12 @@ export function RowDrawer({ row, schema, stages, templates, state, onClose, onPr
           <h2 className="truncate text-base font-semibold">{title}</h2>
           <p className="truncate text-xs text-ink-soft">
             {subtitle || " "}
-            {screened && <span className="ml-2 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 uppercase">Screened out</span>}
+            {screened && <span className="ml-2 rounded-sm bg-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 uppercase">Screened out</span>}
           </p>
         </div>
-        {!screened && (
+        {!screened && schema.screenedKey && (
           <ScreenOutButton count={1} align="right" onConfirm={(reason) => {
-            state.moveRows([row.id], "screened", reason);
-            undoToast("Screened out", () => state.undo());
+            if (state.screenOut([row.id], reason)) undoToast("Screened out", () => state.undo());
           }} />
         )}
         <Button size="icon" variant="ghost" onClick={onPrev} disabled={!onPrev} title="Previous (Alt+↑)"><ChevronUp size={16} /></Button>
@@ -81,25 +85,30 @@ export function RowDrawer({ row, schema, stages, templates, state, onClose, onPr
       </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 scroll-thin">
-        <RowSuggestions row={row} schema={schema} enrich={enrich} />
+        {!screened && <RowSuggestions row={row} schema={schema} enrich={enrich} />}
         {screened ? (
           <ScreenedBanner row={row} schema={schema} state={state} />
         ) : (
           schema.statusKey && <Stepper row={row} schema={schema} stages={stages} onEdit={edit} />
         )}
 
-        {!screened && schema.meetingAtKey && <MeetingSection key={row.id} row={row} schema={schema} stages={stages} onEdit={edit} />}
+        {/* Sibling sections need keys of their own: with one shared key, React never removes the
+            previous prospect's section when the next one opens, and they pile up. */}
+        {!screened && schema.meetingAtKey && <MeetingSection key={`meeting-${row.id}`} row={row} schema={schema} stages={stages} onEdit={edit} />}
 
-        {schema.introKey && (
-          <IntroSection key={row.id} row={row} schema={schema} stages={stages} templates={templates} onEdit={edit} onOpenTemplates={onOpenTemplates}
+        {!screened && schema.introKey && (
+          <IntroSection key={`intro-${row.id}`} row={row} schema={schema} stages={stages} templates={templates} onEdit={edit} onOpenTemplates={onOpenTemplates}
             ai={<AiIntro key={row.id} row={row} schema={schema} templates={templates} enrich={enrich} />} />
         )}
 
         <section>
-          <h3 className="mb-2 text-xs font-semibold tracking-wide text-ink-faint uppercase">Details</h3>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">Details</h3>
+            {screened && <span className="text-xs text-ink-faint">Restore the prospect to edit</span>}
+          </div>
           <div className="space-y-3">
             {fields.map((col) => (
-              <Field key={col.key} col={col} row={row} onEdit={edit} />
+              <Field key={col.key} col={col} row={row} onEdit={edit} disabled={screened} />
             ))}
           </div>
         </section>
@@ -108,7 +117,7 @@ export function RowDrawer({ row, schema, stages, templates, state, onClose, onPr
   );
 }
 
-function Field({ col, row, onEdit }: { col: Column; row: Row; onEdit: (e: CellEdit[], l: string) => void }) {
+function Field({ col, row, onEdit, disabled }: { col: Column; row: Row; onEdit: (e: CellEdit[], l: string) => void; disabled?: boolean }) {
   const v = row.cells[col.key];
   const href = (col.type === "url" || col.type === "email") && v ? hrefOf(String(v), col.type) : null;
   return (
@@ -116,12 +125,12 @@ function Field({ col, row, onEdit }: { col: Column; row: Row; onEdit: (e: CellEd
       <label className="label flex items-center gap-1">
         {col.header}
         {href && (
-          <button className="ml-auto rounded p-0.5 text-ink-faint hover:text-brand-700" onClick={() => openLink(href)} title={`Open ${href}`}>
+          <button className="ml-auto rounded-sm p-0.5 text-ink-faint hover:text-brand-700" onClick={() => openLink(href)} title={`Open ${href}`}>
             <ExternalLink size={12} />
           </button>
         )}
       </label>
-      <FieldInput col={col} value={v} onCommit={(value) => onEdit([{ rowId: row.id, key: col.key, value }], `Edit ${col.header}`)} rows={2} />
+      <FieldInput col={col} value={v} onCommit={(value) => onEdit([{ rowId: row.id, key: col.key, value }], `Edit ${col.header}`)} rows={2} disabled={disabled} />
     </div>
   );
 }
@@ -210,12 +219,12 @@ function ScreenedBanner({ row, schema, state }: { row: Row; schema: CampaignSche
         <Ban size={15} className="text-zinc-500" />
         <h3 className="text-sm font-semibold">Screened out</h3>
         <Button size="sm" className="ml-auto" onClick={() => {
-          state.moveRows([row.id], "prospects");
-          undoToast("Restored to prospects", () => state.undo());
+          if (state.restore([row.id])) undoToast("Restored", () => state.undo());
         }}>
-          <ArchiveRestore size={13} /> Restore to prospects
+          <ArchiveRestore size={13} /> Restore
         </Button>
       </div>
+      <p className="mt-1 text-xs text-ink-soft">It stays in the list, greyed out, until you restore it.</p>
       {reasonCol && (
         <div className="mt-3">
           <label className="label">{reasonCol.header}</label>
@@ -244,11 +253,13 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
   }, [status, booked]);
   useEffect(() => {
     setDraftUrl(url);
-    setDraftAt(/^\d{4}-\d{2}-\d{2}$/.test(at) ? `${at}T09:00` : at.slice(0, 16));
+    setDraftAt(toLocalInput(at));
   }, [url, at, editing]);
 
   const save = () => {
-    const edits: CellEdit[] = [{ rowId: row.id, key: schema.meetingAtKey!, value: draftAt || null }];
+    // A date with no time shows as 09:00: saving it unchanged keeps it a date.
+    const when = draftAt === toLocalInput(at) ? at : draftAt;
+    const edits: CellEdit[] = [{ rowId: row.id, key: schema.meetingAtKey!, value: when || null }];
     if (schema.meetingUrlKey) edits.push({ rowId: row.id, key: schema.meetingUrlKey, value: draftUrl.trim() || null });
     const next = shouldAdvanceToMeeting(status, stages);
     let msg = "Meeting saved";
@@ -304,7 +315,7 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
           <div className="mt-3 flex flex-wrap gap-2">
             {joinHref && <Button size="sm" variant="primary" onClick={() => openLink(joinHref)}><Video size={13} /> Join</Button>}
             {url && (
-              <Button size="sm" onClick={() => navigator.clipboard.writeText(url).then(() => toast.success("Link copied"), () => toast.error("Could not copy"))}>
+              <Button size="sm" onClick={() => void navigator.clipboard.writeText(url).then(() => toast.success("Link copied"), () => toast.error("Could not copy"))}>
                 <ClipboardCopy size={13} /> Copy link
               </Button>
             )}
@@ -346,7 +357,7 @@ function IntroSection({ row, schema, stages, templates, onEdit, onOpenTemplates,
   }, [templates, pick]);
   const tpl = templates.find((t) => t.id === pick);
   const merged = useMemo(() => (tpl ? mergeTemplate(tpl.body, schema, row.cells) : null), [tpl, schema, row.cells]);
-  const leftovers = [...intro.matchAll(/\{\{\s*([^{}|]+?)\s*(?:\|[^{}]*)?\}\}/g)].map((m) => m[1]!);
+  const leftovers = placeholderNames(intro);
   const status = schema.statusKey ? String(row.cells[schema.statusKey] ?? "") : "";
   const contacted = contactedStage(stages);
   const alreadyContacted = contacted ? stageIndex(status, stages) >= stageIndex(contacted, stages) : false;
@@ -392,7 +403,7 @@ function IntroSection({ row, schema, stages, templates, onEdit, onOpenTemplates,
         <p className="mt-1.5 text-xs text-amber-700">Still has placeholders: {leftovers.map((l) => `{{${l}}}`).join(", ")}</p>
       )}
       <div className="mt-2 flex items-center gap-2">
-        <Button size="sm" disabled={!intro} onClick={() => navigator.clipboard.writeText(intro).then(() => toast.success("Copied"), () => toast.error("Could not copy"))}>
+        <Button size="sm" disabled={!intro} onClick={() => void navigator.clipboard.writeText(intro).then(() => toast.success("Copied"), () => toast.error("Could not copy"))}>
           <ClipboardCopy size={13} /> Copy
         </Button>
         {!alreadyContacted && contacted && (

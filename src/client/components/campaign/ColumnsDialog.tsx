@@ -3,28 +3,25 @@
  *
  * Columns that exist in the spreadsheet can be hidden but not deleted: they are still in the
  * file, and export writes every row back to them. Columns Mudd itself relies on (Status, Intro
- * message, the meeting pair, the screening reason) can be renamed or hidden, not removed.
+ * message, the meeting pair, the Screened out box and its reason) can be renamed or hidden, not
+ * removed.
  */
 import { Eye, EyeOff, Lock, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { makeKey } from "../../../shared/schema";
 import { COLUMN_TYPES, type CampaignSchema, type Column, type ColumnType } from "../../../shared/types";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
-const slug = (h: string, taken: Set<string>) => {
-  const base = h.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 32) || "col";
-  let k = base;
-  for (let i = 2; taken.has(k); i++) k = `${base}_${i}`;
-  return k;
-};
-
-export function ColumnsDialog({ open, onClose, schema, onSave, inSheet }: {
+export function ColumnsDialog({ open, onClose, schema, onSave, inSheet, usedKeys }: {
   open: boolean;
   onClose: () => void;
   schema: CampaignSchema;
   onSave: (s: CampaignSchema) => void;
   inSheet: Set<string>;
+  /** Keys any row holds a value for, deleted columns' included: a new column never reuses one. */
+  usedKeys: Set<string>;
 }) {
   const [cols, setCols] = useState<Column[]>(schema.columns);
   const [newHeader, setNewHeader] = useState("");
@@ -33,16 +30,19 @@ export function ColumnsDialog({ open, onClose, schema, onSave, inSheet }: {
     if (open) setCols(schema.columns.map((c) => ({ ...c })));
   }, [open, schema]);
 
-  const roleKeys = new Set([schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey].filter(Boolean));
+  const roleKeys = new Set(
+    [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean),
+  );
   const role = (k: string) =>
     k === schema.statusKey ? "Pipeline status" : k === schema.introKey ? "Intro message" : k === schema.meetingAtKey ? "Meeting time"
-      : k === schema.meetingUrlKey ? "Meeting link" : k === schema.reasonKey ? "Screened reason" : null;
+      : k === schema.meetingUrlKey ? "Meeting link" : k === schema.screenedKey ? "Screened out" : k === schema.reasonKey ? "Screened reason" : null;
 
   const patch = (key: string, p: Partial<Column>) => setCols((cs) => cs.map((c) => (c.key === key ? { ...c, ...p } : c)));
   const add = () => {
     const header = newHeader.trim();
     if (!header) return;
-    const key = slug(header, new Set(cols.map((c) => c.key)));
+    // Not the key of a column deleted just now, or of one whose values the rows still hold.
+    const key = makeKey(header, new Set([...cols.map((c) => c.key), ...schema.columns.map((c) => c.key), ...usedKeys]));
     setCols((cs) => [...cs, { key, header, type: newType, origin: "user", options: newType === "select" ? [] : undefined }]);
     setNewHeader("");
   };
@@ -84,7 +84,7 @@ export function ColumnsDialog({ open, onClose, schema, onSave, inSheet }: {
               return (
                 <tr key={c.key} className={cn("border-t border-line", c.hidden && "opacity-55")}>
                   <td className="py-1.5">
-                    <button className="rounded p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink" onClick={() => patch(c.key, { hidden: !c.hidden })} title={c.hidden ? "Show in grid" : "Hide in grid"}>
+                    <button className="rounded-sm p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink" onClick={() => patch(c.key, { hidden: !c.hidden })} title={c.hidden ? "Show in grid" : "Hide in grid"}>
                       {c.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </td>
@@ -93,7 +93,7 @@ export function ColumnsDialog({ open, onClose, schema, onSave, inSheet }: {
                     {role(c.key) && <span className="mt-0.5 block text-[10px] text-brand-600">{role(c.key)}</span>}
                   </td>
                   <td className="py-1.5 pr-2">
-                    <select className="field h-8 py-0" value={c.type} disabled={c.key === schema.statusKey}
+                    <select className="field h-8 py-0" value={c.type} disabled={c.key === schema.statusKey || c.key === schema.screenedKey}
                       onChange={(e) => patch(c.key, { type: e.target.value as ColumnType, options: e.target.value === "select" ? c.options ?? [] : c.options })}>
                       {COLUMN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
@@ -108,7 +108,7 @@ export function ColumnsDialog({ open, onClose, schema, onSave, inSheet }: {
                     {locked ? (
                       <span className="flex justify-center text-ink-faint" title={inSheet.has(c.key) ? "In your spreadsheet — hide it instead" : "Used by Mudd — hide it instead"}><Lock size={13} /></span>
                     ) : (
-                      <button className="rounded p-1 text-ink-faint hover:bg-rose-50 hover:text-rose-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
+                      <button className="rounded-sm p-1 text-ink-faint hover:bg-rose-50 hover:text-rose-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
                         <Trash2 size={14} />
                       </button>
                     )}

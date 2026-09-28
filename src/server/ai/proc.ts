@@ -18,7 +18,7 @@ export async function* readLines(stream: ReadableStream<Uint8Array>, signal?: Ab
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buf = "";
-  const onAbort = () => reader.cancel().catch(() => {});
+  const onAbort = () => void reader.cancel().catch(() => {});
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
     for (;;) {

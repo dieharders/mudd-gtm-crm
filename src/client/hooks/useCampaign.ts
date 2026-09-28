@@ -8,10 +8,14 @@
  * Cell edits are batched for a moment before they are sent, so typing a word is one write, not
  * one per keystroke. `flush()` sends whatever is waiting; export calls it first so the file
  * contains the very last edit.
+ *
+ * Screening a prospect out only ticks its "Screened out" box (and records why), so it is an
+ * ordinary cell edit: the row stays where it is, and Undo puts the box back.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import type { Bucket, Campaign, CampaignSchema, CellEdit, CellValue, Row, Template } from "../../shared/types";
+import { CHECKED, type Campaign, type CampaignSchema, type CellEdit, type CellValue, type Row, type Template } from "../../shared/types";
+import { applyCellEdits, sameValue } from "../../shared/values";
 import { api } from "../lib/api";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
@@ -20,8 +24,7 @@ type UndoEntry =
   | { kind: "edits"; label: string; before: CellEdit[] }
   | { kind: "insert"; label: string; ids: string[] }
   | { kind: "delete"; label: string; rows: Row[] }
-  | { kind: "move"; label: string; ids: string[]; from: Bucket; edits: CellEdit[]; positions: Record<string, number> }
-  | { kind: "schema"; label: string; before: CampaignSchema };
+  | { kind: "schema"; label: string; before: CampaignSchema; after: CampaignSchema };
 
 const newRowId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 16);
 const EDIT_DEBOUNCE = 350;
@@ -103,132 +106,121 @@ export function useCampaign(id: string) {
     };
   }, [flushEdits]);
 
-  const pushUndo = (e: UndoEntry) => {
+  const pushUndo = useCallback((e: UndoEntry) => {
     undoStack.current.push(e);
     if (undoStack.current.length > UNDO_LIMIT) undoStack.current.shift();
     setUndoCount(undoStack.current.length);
-  };
+  }, []);
 
-  const applyLocal = (edits: CellEdit[]) => {
+  const applyLocal = useCallback((edits: CellEdit[]) => {
     const byRow = new Map<string, CellEdit[]>();
-    for (const e of edits) byRow.set(e.rowId, [...(byRow.get(e.rowId) ?? []), e]);
+    for (const e of edits) {
+      const list = byRow.get(e.rowId);
+      if (list) list.push(e);
+      else byRow.set(e.rowId, [e]);
+    }
     setRows((prev) =>
       prev.map((r) => {
         const list = byRow.get(r.id);
-        if (!list) return r;
-        const cells = { ...r.cells };
-        for (const e of list) {
-          if (e.value === null || e.value === "") delete cells[e.key];
-          else cells[e.key] = e.value;
-        }
-        return { ...r, cells };
+        return list ? { ...r, cells: applyCellEdits(r.cells, list) } : r;
       }),
     );
-  };
+  }, []);
 
-  const queueEdits = (edits: CellEdit[]) => {
+  const queueEdits = useCallback((edits: CellEdit[]) => {
     for (const e of edits) pending.current.set(`${e.rowId}\u0000${e.key}`, e);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flushEdits, EDIT_DEBOUNCE);
     setSave((s) => ({ ...s, state: "saving" }));
-  };
+  }, [flushEdits]);
 
-  /** Change cells. One call is one undo step. */
+  /** Change cells. One call is one undo step. Returns false when nothing actually changed. */
   const edit = useCallback((edits: CellEdit[], label = "Edit") => {
-    const current = new Map(rowsRef.current.map((r) => [r.id, r]));
-    const real = edits.filter((e) => {
-      const before = current.get(e.rowId)?.cells[e.key] ?? null;
-      const norm = (v: CellValue) => (v === "" ? null : v);
-      return norm(before) !== norm(e.value);
-    });
-    if (!real.length) return;
+    const touched = new Set(edits.map((e) => e.rowId));
+    const current = new Map<string, Row>();
+    for (const r of rowsRef.current) if (touched.has(r.id)) current.set(r.id, r);
+    // Tier 1 picked again over a stored 1 is not a change.
+    const real = edits.filter((e) => !sameValue(current.get(e.rowId)?.cells[e.key], e.value));
+    if (!real.length) return false;
     const before = real.map((e) => ({ ...e, value: current.get(e.rowId)?.cells[e.key] ?? null }));
     pushUndo({ kind: "edits", label, before });
     applyLocal(real);
     queueEdits(real);
-  }, []);
+    return true;
+  }, [applyLocal, pushUndo, queueEdits]);
 
-  const addRow = useCallback((bucket: Bucket, cells: Record<string, CellValue> = {}) => {
-    const maxPos = Math.max(-1, ...rowsRef.current.map((r) => r.position));
-    const row: Row = { id: newRowId(), bucket, position: maxPos + 1, cells, sourceSheet: null, sourceRow: null };
+  const addRow = useCallback((cells: Record<string, CellValue> = {}) => {
+    // A loop, not Math.max(...positions): spreading 100k+ arguments throws in V8.
+    let maxPos = -1;
+    for (const r of rowsRef.current) if (r.position > maxPos) maxPos = r.position;
+    const row: Row = { id: newRowId(), position: maxPos + 1, cells, sourceSheet: null, sourceRow: null };
     setRows((prev) => [...prev, row]);
     pushUndo({ kind: "insert", label: "Add row", ids: [row.id] });
     flushEdits();
     void enqueue(() => api.insertRows(id, [row]));
     return row;
-  }, [enqueue, flushEdits, id]);
+  }, [enqueue, flushEdits, id, pushUndo]);
 
   const duplicateRow = useCallback((rowId: string) => {
     const src = rowsRef.current.find((r) => r.id === rowId);
     if (!src) return null;
     // Placed straight after the original, halfway to the next row.
-    const sorted = [...rowsRef.current].sort((a, b) => a.position - b.position);
-    const i = sorted.findIndex((r) => r.id === rowId);
-    const next = sorted[i + 1];
-    const position = next ? (src.position + next.position) / 2 : src.position + 1;
+    let next = Infinity;
+    for (const r of rowsRef.current) if (r.position > src.position && r.position < next) next = r.position;
+    const position = next === Infinity ? src.position + 1 : (src.position + next) / 2;
     const cells = { ...src.cells };
     const s = campaignRef.current?.schema;
     for (const k of [s?.introKey, s?.meetingAtKey, s?.meetingUrlKey]) if (k) delete cells[k];
-    const row: Row = { id: newRowId(), bucket: src.bucket, position, cells, sourceSheet: null, sourceRow: null };
+    const row: Row = { id: newRowId(), position, cells, sourceSheet: null, sourceRow: null };
     setRows((prev) => [...prev, row]);
     pushUndo({ kind: "insert", label: "Duplicate row", ids: [row.id] });
     flushEdits();
     void enqueue(() => api.insertRows(id, [row]));
     return row;
-  }, [enqueue, flushEdits, id]);
+  }, [enqueue, flushEdits, id, pushUndo]);
 
   const deleteRows = useCallback((ids: string[]) => {
-    const gone = rowsRef.current.filter((r) => ids.includes(r.id));
+    const drop = new Set(ids);
+    const gone = rowsRef.current.filter((r) => drop.has(r.id));
     if (!gone.length) return;
-    setRows((prev) => prev.filter((r) => !ids.includes(r.id)));
+    setRows((prev) => prev.filter((r) => !drop.has(r.id)));
     pushUndo({ kind: "delete", label: gone.length === 1 ? "Delete row" : `Delete ${gone.length} rows`, rows: gone });
     flushEdits();
     void enqueue(() => api.deleteRows(id, ids));
-  }, [enqueue, flushEdits, id]);
+  }, [enqueue, flushEdits, id, pushUndo]);
 
-  /** Move rows between buckets. Screening out can record a reason; restoring clears it. */
-  const moveRows = useCallback((ids: string[], bucket: Bucket, reason?: string) => {
-    const moving = rowsRef.current.filter((r) => ids.includes(r.id) && r.bucket !== bucket);
-    if (!moving.length) return;
-    const reasonKey = campaignRef.current?.schema.reasonKey;
-    const from = moving[0]!.bucket;
+  /** Screen prospects out: tick their Screened out box and, when one is given, record why. */
+  const screenOut = useCallback((ids: string[], reason?: string) => {
+    const s = campaignRef.current?.schema;
+    if (!s?.screenedKey) return false;
+    const why = reason?.trim();
     const edits: CellEdit[] = [];
-    const before: CellEdit[] = [];
-    if (reasonKey) {
-      for (const r of moving) {
-        const value = bucket === "screened" ? (reason?.trim() || (r.cells[reasonKey] ?? null)) : null;
-        if ((r.cells[reasonKey] ?? null) !== value) {
-          edits.push({ rowId: r.id, key: reasonKey, value });
-          before.push({ rowId: r.id, key: reasonKey, value: r.cells[reasonKey] ?? null });
-        }
-      }
+    for (const rowId of ids) {
+      edits.push({ rowId, key: s.screenedKey, value: CHECKED });
+      if (why && s.reasonKey) edits.push({ rowId, key: s.reasonKey, value: why });
     }
-    const movingIds = moving.map((r) => r.id);
-    // A moved row goes to the END of the list it joins; undo puts it back where it was.
-    const maxPos = Math.max(-1, ...rowsRef.current.map((r) => r.position));
-    const positions: Record<string, number> = {};
-    const oldPositions: Record<string, number> = {};
-    moving.forEach((r, i) => {
-      positions[r.id] = maxPos + 1 + i;
-      oldPositions[r.id] = r.position;
-    });
-    setRows((prev) => prev.map((r) => (movingIds.includes(r.id) ? { ...r, bucket, position: positions[r.id]! } : r)));
-    if (edits.length) applyLocal(edits);
-    pushUndo({ kind: "move", label: bucket === "screened" ? "Screen out" : "Restore", ids: movingIds, from, edits: before, positions: oldPositions });
-    flushEdits();
-    void enqueue(async () => {
-      await api.moveRows(id, movingIds, bucket, positions);
-      if (edits.length) await api.editRows(id, edits);
-    });
-  }, [enqueue, flushEdits, id]);
+    return edit(edits, "Screen out");
+  }, [edit]);
+
+  /** Bring screened-out prospects back: untick the box and clear the reason. */
+  const restore = useCallback((ids: string[]) => {
+    const s = campaignRef.current?.schema;
+    if (!s?.screenedKey) return false;
+    const edits: CellEdit[] = [];
+    for (const rowId of ids) {
+      edits.push({ rowId, key: s.screenedKey, value: null });
+      if (s.reasonKey) edits.push({ rowId, key: s.reasonKey, value: null });
+    }
+    return edit(edits, "Restore");
+  }, [edit]);
 
   const setSchema = useCallback((schema: CampaignSchema, label = "Change columns", undoable = true) => {
     const c = campaignRef.current;
     if (!c) return;
-    if (undoable) pushUndo({ kind: "schema", label, before: c.schema });
+    if (undoable) pushUndo({ kind: "schema", label, before: c.schema, after: schema });
     setCampaign({ ...c, schema });
     void enqueue(() => api.updateCampaign(id, { schema }));
-  }, [enqueue, id]);
+  }, [enqueue, id, pushUndo]);
 
   const rename = useCallback((name: string) => {
     const c = campaignRef.current;
@@ -247,31 +239,31 @@ export function useCampaign(id: string) {
         applyLocal(e.before);
         queueEdits(e.before);
         break;
-      case "insert":
-        setRows((prev) => prev.filter((r) => !e.ids.includes(r.id)));
+      case "insert": {
+        const drop = new Set(e.ids);
+        setRows((prev) => prev.filter((r) => !drop.has(r.id)));
         void enqueue(() => api.deleteRows(id, e.ids));
         break;
+      }
       case "delete":
         setRows((prev) => [...prev, ...e.rows]);
         void enqueue(() => api.insertRows(id, e.rows));
         break;
-      case "move":
-        setRows((prev) => prev.map((r) => (e.ids.includes(r.id) ? { ...r, bucket: e.from, position: e.positions[r.id] ?? r.position } : r)));
-        if (e.edits.length) applyLocal(e.edits);
-        void enqueue(async () => {
-          await api.moveRows(id, e.ids, e.from, e.positions);
-          if (e.edits.length) await api.editRows(id, e.edits);
-        });
-        break;
       case "schema": {
         const c = campaignRef.current;
-        if (c) setCampaign({ ...c, schema: e.before });
-        void enqueue(() => api.updateCampaign(id, { schema: e.before }));
+        if (!c) break;
+        // Columns the server added since (an AI recipe's outputs) are in neither snapshot: they
+        // stay, at the end, or the recipe would lose the columns it fills.
+        const known = new Set([...e.before.columns, ...e.after.columns].map((col) => col.key));
+        const added = c.schema.columns.filter((col) => !known.has(col.key));
+        const schema = added.length ? { ...e.before, columns: [...e.before.columns, ...added] } : e.before;
+        setCampaign({ ...c, schema });
+        void enqueue(() => api.updateCampaign(id, { schema }));
         break;
       }
     }
     return e.label;
-  }, [enqueue, flushEdits, id]);
+  }, [applyLocal, enqueue, flushEdits, id, queueEdits]);
 
   // ----- templates (not part of undo: each has its own delete confirmation) -----
 
@@ -294,7 +286,7 @@ export function useCampaign(id: string) {
   /** Cells changed on the server (auto-filled by a run): shown, but not an undo step. */
   const applyRemote = useCallback((edits: CellEdit[]) => {
     applyLocal(edits);
-  }, []);
+  }, [applyLocal]);
 
   /** A campaign the server already saved (a recipe added columns): take it as it is. */
   const replaceCampaign = useCallback((c: Campaign) => {
@@ -310,7 +302,7 @@ export function useCampaign(id: string) {
 
   return {
     campaign, rows: sorted, templates, error, save, canUndo: undoCount > 0,
-    reload: load, edit, addRow, duplicateRow, deleteRows, moveRows, setSchema, rename, undo, flush,
+    reload: load, edit, addRow, duplicateRow, deleteRows, screenOut, restore, setSchema, rename, undo, flush,
     addTemplate, updateTemplate, removeTemplate, setSource, applyRemote, replaceCampaign,
   };
 }

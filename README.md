@@ -22,12 +22,13 @@ Your campaigns are stored in `%APPDATA%\Mudd.io\mudd.sqlite`. Set `MUDD_DATA_DIR
 
 ## How it works
 
-- **Campaign** = one column schema + two buckets: **Prospects** and **Screened out**. Separate motions (aggregators, direct…) are separate campaigns.
-- **Import** (.xlsx or .csv): pick which tab is Prospects and which is Screened out. Every other tab (e.g. Summary) is kept as-is and written back on export. Importing through **Import sheet** remembers the file's path, so **Save to file** can write straight back to it. A `.bak.xlsx` copy is kept each time.
-- **Pipeline**: the sheet's own Status column drives the stepper (Not contacted → Contacted → Replied → Meeting booked → … → Signed, or Dead). Moving a prospect fills empty `Sent` / `Replied` dates and updates `Last touch`.
-- **Mudd adds** `Meeting URL`, `Meeting at` and `Intro message` columns (and a `Screened reason` column when there's no screened tab). They go **after your last column**, so formulas pointing at existing columns keep working.
-- **Templates**: per-campaign intro messages with `{{Column}}`, `{{First name}}` and `{{Column|fallback}}` placeholders. They're saved into an `Intro templates` tab on export and restored on re-import.
-- **Export** patches the original workbook. Untouched cells keep their exact value, style, rich text and hyperlinks. Edited cells are written with real types (dates, numbers, links). `src/xlsx/postprocess.ts` restores the column widths and dropdown ranges that ExcelJS would otherwise rewrite.
+- **Campaign** = one column schema + one list of prospects, read from one tab of a workbook.
+- **Import** (.xlsx, .csv, .tsv or .txt; not .xlsm, whose macros a save would lose): pick the prospects tab when the workbook has several. Every other tab stays in the file untouched; a tab that looks like an old Screened-out list is ignored. A tab with formulas can't be imported (writing into it would break them). Importing with the **Import** button remembers the file's path, so **Save file** writes straight back to it.
+- **Screening out** ticks the prospect's `Screened out` column (with an optional `Screened reason`). The prospect stays where it is in the list and in the sheet, disabled in the app until you restore it.
+- **Pipeline**: the sheet's own Status column drives the stepper (Not contacted → Contacted → Replied → Meeting booked → … → Signed, or Dead). Moving a prospect, in the panel or the grid, fills empty `Sent` / `Replied` dates and updates `Last touch`.
+- **Mudd adds** `Meeting URL`, `Meeting at`, `Intro message`, `Screened out` and `Screened reason` columns when the sheet lacks them. They go **after the last column the sheet uses**, so formulas pointing at existing columns keep working.
+- **Templates**: per-campaign intro messages with `{{Column}}`, `{{First name}}` and `{{Column|fallback}}` placeholders. They're saved into an `Intro templates` tab and restored on re-import.
+- **Save file** writes into the workbook you imported, in place: only the cells you changed are rewritten (each keeping its format); a deleted prospect's row is blanked, never removed, so nothing below it moves; new prospects go under the data. Every other part of the file (other tabs, charts, notes, SharePoint properties) is kept byte for byte. Mudd asks before replacing a file that was changed outside it, keeps the previous version as a `.bak.xlsx` next to it, and the last ten versions under `backups/` in its data folder. When Mudd doesn't know where the file is (dropped in, a CSV, created in Mudd), it saves to Downloads and keeps saving there. **Save to cloud** (SharePoint) is coming.
 
 ## Tests
 
@@ -35,7 +36,7 @@ Your campaigns are stored in `%APPDATA%\Mudd.io\mudd.sqlite`. Set `MUDD_DATA_DIR
 $env:MUDD_FIXTURE = "C:\Users\you\Downloads\base-tracker.xlsx"; bun test
 ```
 
-The round-trip suite reads your tracker from `MUDD_FIXTURE` rather than from a copy in the repo, because it contains real contact details. Without it, only the fixture-free tests run.
+The round-trip suite builds workbooks with the features real trackers have (formulas on another tab, column formats, notes, merges, dropdowns, tables) and checks what a save keeps. It can also read your own tracker from `MUDD_FIXTURE`, rather than from a copy in the repo, because a tracker contains real contact details.
 
 ## Layout
 
@@ -43,7 +44,7 @@ The round-trip suite reads your tracker from `MUDD_FIXTURE` rather than from a c
 main.ts                 native window + server worker
 src/worker.ts           Bun.serve on 127.0.0.1
 src/server/             REST API, SQLite, native file dialogs
-src/xlsx/               import, export, style-preserving post-processing
+src/xlsx/               import (ExcelJS), export (patches the workbook's XML in place)
 src/shared/             types and template merging (client + server)
 src/client/             React UI (Tailwind v4, lucide-react, react-hot-toast)
 ```
