@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { norm } from "./merge";
+import { recipeMode } from "./ai";
 import { PRESETS, presetTargets } from "./presets";
 import { assignRoles, CONTACT_TYPES, ensureAppColumns, genericSchema, makeKey, NAME_HEADERS, newProspectId, prospectSchema } from "./schema";
 import { CHECKED, type CampaignSchema, type CellValue } from "./types";
-import { contactLabel, contactOf, orderedContacts, primaryOf, prospectCells, prospectTitle } from "./values";
+import { contactLabel, contactOf, isChannel, isEmptyContact, orderedContacts, primaryOf, prospectCells, prospectTitle } from "./values";
 
 /** A schema with these headers, keyed by header ("Job title" → job_title), roles assigned. */
 function sheet(...headers: string[]): CampaignSchema {
@@ -69,6 +70,30 @@ describe("a prospect and its contacts", () => {
     expect(primaryOf([ann, { ...bob, cells: { name: "Bob Ray" } }], schema)).toBe(ann);
     expect(primaryOf([], schema)).toBeUndefined();
     expect(orderedContacts([ann, bob], schema)).toEqual([bob, ann]);
+  });
+
+  test("a channel is primary only when ticked, or when there's no one else", () => {
+    const line = { id: "l", cells: { name: "Main line", contact_type: "Channel" } };
+    expect(isChannel(line, schema)).toBe(true);
+    expect(isChannel(ann, schema)).toBe(false);
+    expect(CONTACT_TYPES).toContain("Channel");
+    expect(primaryOf([line, ann], schema)).toBe(ann);
+    expect(primaryOf([line], schema)).toBe(line);
+    expect(primaryOf([{ ...line, cells: { ...line.cells, primary: CHECKED } }, ann], schema)?.id).toBe("l");
+  });
+
+  test("a contact with nothing in it but a Primary tick is empty", () => {
+    expect(isEmptyContact({ cells: { primary: CHECKED } }, schema)).toBe(true);
+    expect(isEmptyContact({ cells: {} }, schema)).toBe(true);
+    expect(isEmptyContact({ cells: { primary: CHECKED, role: "CEO" } }, schema)).toBe(false);
+  });
+
+  test("a recipe filling in people's details runs per contact; one finding someone, per prospect", () => {
+    expect(recipeMode([{ key: "email" }, { key: "linkedin" }], schema)).toBe("contacts");
+    expect(recipeMode([{ key: "website" }, { contact: true }], schema)).toBe("contacts");
+    expect(recipeMode([{ key: "name" }, { key: "role" }], schema)).toBe("prospects");
+    expect(recipeMode([{ key: "website" }, { key: "hook" }], schema)).toBe("prospects");
+    expect(recipeMode([{ key: "website" }], schema)).toBe("prospects");
   });
 
   test("every view names the prospect the same way: its company, over its primary contact", () => {

@@ -53,6 +53,9 @@ export function resolvePlaceholder(
   if (!n) return { known: false, value: "" };
   if (n === "firstname") {
     if (!schema.nameKey) return { known: false, value: "" };
+    // A channel (a main line, an inbox) is no one to greet by name: the fallback is used.
+    const typeKey = schema.contacts?.typeKey;
+    if (typeKey && norm(display(cells[typeKey])) === "channel") return { known: true, value: "" };
     return { known: true, value: firstNameOf(display(cells[schema.nameKey])) };
   }
   const col = schema.columns.find((c) => norm(c.header) === n);

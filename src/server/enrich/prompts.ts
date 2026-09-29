@@ -20,8 +20,12 @@ const clip = (v: string) => (v.length > 600 ? `${v.slice(0, 600)}…` : v);
 
 /** The contact's fields go under this, so a header both have (Notes) keeps both values. */
 export const CONTACT_FIELD = "Primary contact";
+/** …or this, in a turn about one of the prospect's people (see recipeMode). */
+export const THIS_CONTACT = "Contact";
 
-export function prospectData(schema: CampaignSchema, cells: Record<string, CellValue>, keys?: string[]): Record<string, string | Record<string, string>> {
+export function prospectData(
+  schema: CampaignSchema, cells: Record<string, CellValue>, keys?: string[], contactField = CONTACT_FIELD,
+): Record<string, string | Record<string, string>> {
   // The ID is Mudd's, not about the prospect; the Primary box says nothing the nesting doesn't.
   const skip = new Set([schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, schema.idKey, schema.contacts?.primaryKey].filter(Boolean));
   const fields = (cols: Column[]) => {
@@ -35,7 +39,7 @@ export function prospectData(schema: CampaignSchema, cells: Record<string, CellV
   };
   const out: Record<string, string | Record<string, string>> = fields(schema.columns);
   const contact = fields(contactSchema(schema).columns);
-  if (Object.keys(contact).length) out[CONTACT_FIELD] = contact;
+  if (Object.keys(contact).length) out[contactField] = contact;
   return out;
 }
 
@@ -62,17 +66,22 @@ function fieldLine(col: Column, hint: string | undefined, current: string): stri
 
 const nullableString = { anyOf: [{ type: "string" }, { type: "null" }] };
 
-export function enrichRequest(recipe: Recipe, schema: CampaignSchema, cells: Record<string, CellValue>) {
+/**
+ * One research turn. `contact`: the turn is about one of the prospect's people, the one in
+ * `cells`; `keys` then limits it to the outputs asked about them (the prospect's are asked once).
+ */
+export function enrichRequest(recipe: Recipe, schema: CampaignSchema, cells: Record<string, CellValue>, opts: { contact?: boolean; keys?: Set<string> } = {}) {
   const cols = recipe.outputs
+    .filter((o) => !opts.keys || opts.keys.has(o.key))
     .map((o) => ({ out: o, col: columnOf(schema, o.key) }))
     .filter((x): x is { out: Recipe["outputs"][number]; col: Column } => !!x.col);
-  const inputs = prospectData(schema, cells, recipe.inputKeys.length ? recipe.inputKeys : undefined);
+  const inputs = prospectData(schema, cells, recipe.inputKeys.length ? recipe.inputKeys : undefined, opts.contact ? THIS_CONTACT : CONTACT_FIELD);
   const prompt = `Task: ${recipe.instructions.trim()}
 
 Prospect:
 ${JSON.stringify(inputs)}
 
-Fill these fields:
+Fill these fields${opts.contact ? `, about the person under "${THIS_CONTACT}"` : ""}:
 ${cols.map(({ out, col }) => fieldLine(col, out.hint, display(cells[col.key]))).join("\n")}
 
 Answer as JSON: {"fields": {"<field key>": {"value": string or null, "source": string or null, "confidence": "high" | "medium" | "low"}}, "notes": string or null}`;

@@ -3,7 +3,7 @@
  * page (grid, prospect panel), so the two never disagree about what a number or a link is.
  */
 import { norm } from "./merge";
-import { contactSchema, HONORIFIC_HEADERS, isHonorific, prospectSchema, ROLE_HEADERS, TITLE_HEADER } from "./schema";
+import { CHANNEL, contactSchema, HONORIFIC_HEADERS, isHonorific, prospectSchema, ROLE_HEADERS, TITLE_HEADER } from "./schema";
 import { CHECKED, isChecked, type CampaignSchema, type CellValue, type Column, type Row } from "./types";
 
 const NUMERIC_RE = /^-?\d+(?:\.\d+)?$/;
@@ -134,10 +134,25 @@ export function rowTitle(row: Pick<Row, "cells">, schema: CampaignSchema): { tit
 
 // ---------- a prospect's contacts ----------
 
-/** The contact intros and templates address: the first one ticked Primary, else the first. */
+/** A contact of type Channel: a way in (a main line, an inbox) rather than a person. */
+export function isChannel(contact: Pick<Row, "cells">, schema: CampaignSchema): boolean {
+  const key = schema.contacts?.typeKey;
+  return !!key && norm(String(contact.cells[key] ?? "")) === norm(CHANNEL);
+}
+
+/**
+ * The contact intros and templates address: the first one ticked Primary, else the first person,
+ * else the first contact (a channel).
+ */
 export function primaryOf<T extends Pick<Row, "cells">>(contacts: readonly T[], schema: CampaignSchema): T | undefined {
   const key = schema.contacts?.primaryKey;
-  return (key ? contacts.find((c) => isChecked(c.cells[key])) : undefined) ?? contacts[0];
+  return (key ? contacts.find((c) => isChecked(c.cells[key])) : undefined) ?? contacts.find((c) => !isChannel(c, schema)) ?? contacts[0];
+}
+
+/** A contact that holds nothing yet (a Primary tick aside): one a run made for someone it found. */
+export function isEmptyContact(contact: Pick<Row, "cells">, schema: CampaignSchema): boolean {
+  const primaryKey = schema.contacts?.primaryKey;
+  return Object.entries(contact.cells).every(([k, v]) => k === primaryKey || v === null || v === "");
 }
 
 /** Contacts as the panel lists them: the primary first, the others in their own order. */

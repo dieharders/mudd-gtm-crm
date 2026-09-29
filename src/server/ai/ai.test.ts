@@ -88,6 +88,14 @@ describe("prompts", () => {
     // A contact column is filled like any other: keyed by its own key.
     expect(req.columns.map((c) => c.header)).toEqual(["Email"]);
   });
+  test("a turn about one contact names them, and asks only what it's told to", () => {
+    const recipe = { id: "r", campaignId: "c", name: "t", instructions: "Find it.", inputKeys: [], webSearch: true, createdAt: 0, updatedAt: 0,
+      outputs: [{ key: k("Email"), header: "Email" }, { key: k("Website"), header: "Website" }] };
+    const req = enrichRequest(recipe, schema, { [k("Company")]: "Acme", [k("Name")]: "Bob Ray" }, { contact: true, keys: new Set([k("Email")]) });
+    expect(req.prompt).toContain('"Contact":{"Name":"Bob Ray"}');
+    expect(req.prompt).toContain('about the person under "Contact"');
+    expect(req.columns.map((c) => c.header)).toEqual(["Email"]);
+  });
   test("intro request pre-fills templates and limits the pool to the chosen one", () => {
     const templates = [
       { id: "t1", campaignId: "c", name: "Warm", body: "Hi {{First name}} at {{Company}}", position: 0, updatedAt: 0 },

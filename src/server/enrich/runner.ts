@@ -2,11 +2,13 @@
  * The enrichment job engine.
  *
  * A run is a list of prospects worked by a few parallel workers. Each is one research turn on
- * the user's CLI, which sees the prospect with its primary contact. Pause lets the in-flight
- * turns finish and starts no more; Stop aborts them.
+ * the user's CLI, which sees the prospect with its primary contact; or, for a recipe that fills
+ * in people's details, one turn per contact, each seeing the prospect with that person (see
+ * recipeMode). Pause lets the in-flight prospects finish and starts no more; Stop aborts them.
  * An answer never overwrites a cell on its own: it becomes a SUGGESTION to accept or reject,
- * except with auto-fill on, which fills cells that are EMPTY and nothing else. A finding for a
- * contact column is the primary contact's; a prospect with no contact gets one to hold it.
+ * except with auto-fill on, which fills cells that are EMPTY and nothing else. A person's
+ * findings go on the contact the turn was about, or, from a recipe that finds someone, on the
+ * contact of that name: a new one when the prospect has no such contact.
  *
  * A run document holds every row, so nothing sends or stores it whole per row (that is
  * quadratic in the run's size). The page gets the whole run when it starts, changes status
@@ -18,10 +20,11 @@ import { domainAcceptsMail } from "./mx";
 import { enrichRequest, introRequest } from "./prompts";
 import * as store from "./store";
 import { publish } from "./hub";
-import { mergeSources, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type RunKind, type Source, type Suggestion } from "../../shared/ai";
+import { mergeSources, recipeMode, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type RunKind, type Source, type Suggestion } from "../../shared/ai";
+import { norm } from "../../shared/merge";
 import { allColumns, columnOf, isContactKey, makeKey } from "../../shared/schema";
 import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../shared/types";
-import { parseFlag, prospectCells, sameValue, toNumber } from "../../shared/values";
+import { contactLabel, isChannel, orderedContacts, parseFlag, primaryOf, prospectCells, sameValue, toNumber } from "../../shared/values";
 import { AiError, generateStructured } from "../ai";
 import { getAiSettings } from "../ai/settings";
 import * as db from "../db";
@@ -211,85 +214,130 @@ async function pump(ctrl: Controller): Promise<void> {
   }
 }
 
+/** One research turn of a prospect: what the model sees, and whose findings they are. */
+interface Turn {
+  /** The prospect's cells with its contact's (see prospectCells). */
+  cells: Record<string, CellValue>;
+  /** The person the turn is about, for a recipe that fills in people's details. */
+  contact?: Row;
+  /** The outputs asked: all of them, or after a prospect's first person just the person's own. */
+  keys?: Set<string>;
+  /** What the page shows before the model's own steps: "Ann Lee (2 of 3)". */
+  label?: string;
+}
+
+/**
+ * A prospect's turns: one, seeing it with its primary contact (an intro; a recipe that fills the
+ * prospect's columns or finds someone), or one per person, primary first, for a recipe that
+ * fills in people's details. A channel (a main line, an inbox) is no person to research.
+ */
+function turnsOf(run: EnrichRun, schema: CampaignSchema, row: Row): Turn[] {
+  const contacts = db.contactsOf(run.campaignId, row.id);
+  const recipe = run.kind === "enrich" ? store.getRecipe(run.recipeId!) : null;
+  if (!recipe || recipeMode(recipe.outputs, schema) === "prospects") return [{ cells: prospectCells(row, primaryOf(contacts, schema)) }];
+  const people = orderedContacts(contacts.filter((c) => !isChannel(c, schema)), schema);
+  const theirs = new Set(recipe.outputs.filter((o) => isContactKey(schema, o.key)).map((o) => o.key));
+  return people.map((c, i) => ({
+    cells: prospectCells(row, c),
+    contact: c,
+    keys: i === 0 ? undefined : theirs,
+    label: `${contactLabel(c, schema)}${people.length > 1 ? ` (${i + 1} of ${people.length})` : ""}`,
+  }));
+}
+
 async function processRow(ctrl: Controller, rowId: string): Promise<void> {
   const { run } = ctrl;
   const state = run.rows[rowId]!;
+  const skip = async (error?: string) => {
+    state.state = "skipped";
+    if (error) state.error = error;
+    state.step = undefined;
+    emitRow(ctrl, rowId);
+    // Nothing before this waits, so a long stretch of such rows would hold the event loop (no
+    // request answered, no event sent) until it ends. Let everything else in between each.
+    await Bun.sleep(0);
+  };
   const campaign = db.getCampaign(run.campaignId);
   const found = campaign ? db.getRow(run.campaignId, rowId) : null;
   // Runs are on prospects; a contact is researched as part of its prospect.
   const row = found?.parentId ? null : found;
-  if (!campaign || !row || isScreened(row, campaign.schema)) {
-    state.state = "skipped";
-    state.error = found?.parentId ? "Not a prospect." : row ? "Screened out" : "Row was deleted.";
-    emitRow(ctrl, rowId);
-    // Nothing above waits, so a long stretch of such rows would hold the event loop (no
-    // request answered, no event sent) until it ends. Let everything else in between each.
-    await Bun.sleep(0);
-    return;
-  }
+  if (!campaign || !row || isScreened(row, campaign.schema)) return skip(found?.parentId ? "Not a prospect." : row ? "Screened out" : "Row was deleted.");
+  const turns = turnsOf(run, campaign.schema, row);
+  if (!turns.length) return skip("No contacts to research.");
   state.state = "running";
   state.step = "Starting";
   emitRow(ctrl, rowId);
-  const onStep = (label: string) => {
-    state.step = label;
-    // Steps arrive in bursts; the page does not need every one.
-    if (Date.now() - ctrl.stepAt > 400) {
-      ctrl.stepAt = Date.now();
-      emitRow(ctrl, rowId);
-    }
-  };
 
-  // The prospect as the turn sees it: with its primary contact, whom intros address.
-  const cells = prospectCells(row, db.primaryContact(run.campaignId, rowId, campaign.schema));
+  let total = 0;
+  const failed: string[] = [];
+  for (const turn of turns) {
+    const onStep = (label: string) => {
+      state.step = turn.label ? `${turn.label}: ${label}` : label;
+      // Steps arrive in bursts; the page does not need every one.
+      if (Date.now() - ctrl.stepAt > 400) {
+        ctrl.stepAt = Date.now();
+        emitRow(ctrl, rowId);
+      }
+    };
+    if (turn.label) onStep("Starting");
+    const result = await runTurn(ctrl, rowId, campaign.schema, turn, onStep);
+    if ("stop" in result) {
+      if (result.stop === "aborted") await skip();
+      return;
+    }
+    // Deleted while the turn ran: the findings have nowhere to go.
+    if ("found" in result && result.found === null) return skip("Row was deleted.");
+    if ("error" in result) failed.push(result.error);
+    else total += result.found ?? 0;
+  }
+  state.step = undefined;
+  if (failed.length) {
+    state.state = "error";
+    state.error = turns.length > 1 ? `${failed.length} of ${turns.length} contacts failed: ${failed[0]}` : failed[0];
+    if (total) state.found = total;
+    run.failed++;
+  } else {
+    state.state = "done";
+    state.found = total;
+    run.completed++;
+  }
+  emitRow(ctrl, rowId);
+}
+
+type TurnResult = { found: number | null } | { error: string } | { stop: "aborted" | "fatal" };
+
+/** One turn, tried up to three times. A missing or signed-out CLI fails the whole run: every turn would. */
+async function runTurn(ctrl: Controller, rowId: string, schema: CampaignSchema, turn: Turn, onStep: (s: string) => void): Promise<TurnResult> {
+  const { run } = ctrl;
+  const state = run.rows[rowId]!;
   for (let attempt = 0; ; attempt++) {
     try {
       const found = run.kind === "intro"
-        ? await doIntro(run, campaign.schema, cells, rowId, ctrl.abort.signal, onStep)
-        : await doEnrich(run, campaign.schema, cells, rowId, ctrl.abort.signal, onStep);
-      state.step = undefined;
-      if (found === null) {
-        // Deleted while the turn ran: its findings have nowhere to go.
-        state.state = "skipped";
-        state.error = "Row was deleted.";
-      } else {
-        state.state = "done";
-        state.found = found;
-        run.completed++;
-      }
-      emitRow(ctrl, rowId);
-      return;
+        ? await doIntro(run, schema, turn.cells, rowId, ctrl.abort.signal, onStep)
+        : await doEnrich(run, schema, turn, rowId, ctrl.abort.signal, onStep);
+      return { found };
     } catch (err) {
-      if (ctrl.abort.signal.aborted) {
-        state.state = "skipped";
-        state.step = undefined;
-        emitRow(ctrl, rowId);
-        return;
-      }
+      if (ctrl.abort.signal.aborted) return { stop: "aborted" };
+      const message = (err as Error).message;
       const code = err instanceof AiError ? err.code : "cli_failed";
-      // No point retrying a missing or signed-out CLI: every other row would fail the same way.
       if (code === "cli_missing" || code === "not_authenticated") {
         state.state = "error";
-        state.error = (err as Error).message;
+        state.error = message;
         run.failed++;
         run.status = "failed";
-        run.error = (err as Error).message;
+        run.error = message;
         ctrl.abort.abort();
         emitRun(ctrl);
-        return;
+        return { stop: "fatal" };
       }
       if (attempt < MAX_RETRIES) {
-        state.step = `Retrying (${attempt + 1}/${MAX_RETRIES})`;
+        state.step = `${turn.label ? `${turn.label}: ` : ""}Retrying (${attempt + 1}/${MAX_RETRIES})`;
         emitRow(ctrl, rowId);
         await Bun.sleep(attempt === 0 ? 3_000 : 8_000);
         continue;
       }
       console.error(`[enrich] row ${rowId} failed:`, err);
-      state.state = "error";
-      state.error = (err as Error).message;
-      state.step = undefined;
-      run.failed++;
-      emitRow(ctrl, rowId);
-      return;
+      return { error: message };
     }
   }
 }
@@ -314,23 +362,39 @@ export function normaliseValue(col: Pick<Column, "type" | "options">, raw: strin
 }
 
 /**
- * File one prospect's findings. It is read again first, with its primary contact: the turn took
+ * File one turn's findings. The prospect and its contacts are read again first: the turn took
  * seconds, in which the user may have typed into a cell auto-fill would fill, or another run
- * may have added its own sources. A contact column's finding goes on the primary contact, which
- * is created (ticked Primary) when the prospect has none; the sources always go on the
- * prospect. Null when the prospect is gone.
+ * may have added its own sources. A person's findings go on the contact the turn was about
+ * (`contactId`; if it was deleted meanwhile they go nowhere); from a recipe that finds someone,
+ * on the contact of the name found, or on a new one (ticked Primary when it is the prospect's
+ * first), never on anyone else. The sources always go on the prospect. Null when it is gone.
  */
 function recordResults(
   run: EnrichRun,
   rowId: string,
   results: { col: Column; value: CellValue; sources: Source[]; confidence: Suggestion["confidence"]; note: string | null }[],
+  contactId?: string,
 ): number | null {
   const schema = db.getCampaign(run.campaignId)?.schema;
   const row = schema ? db.getRow(run.campaignId, rowId) : null;
   if (!schema || !row) return null;
   const { cells } = row;
-  let primary = db.primaryContact(run.campaignId, rowId, schema);
+  const contacts = db.contactsOf(run.campaignId, rowId);
+  const nameKey = schema.contacts?.nameKey;
   const created: Row[] = [];
+  let person: Row | null | undefined;
+  const personOf = (): Row | null => {
+    if (person !== undefined) return person;
+    if (contactId) return (person = contacts.find((c) => c.id === contactId) ?? null);
+    const name = results.find((r) => r.col.key === nameKey)?.value;
+    if (name === null || name === undefined || !nameKey) return (person = null);
+    const same = contacts.find((c) => norm(String(c.cells[nameKey] ?? "")) === norm(String(name)));
+    if (same) return (person = same);
+    const primaryKey = schema.contacts?.primaryKey;
+    person = db.insertRows(run.campaignId, [{ parentId: rowId, cells: !contacts.length && primaryKey ? { [primaryKey]: CHECKED } : {} }])[0]!;
+    created.push(person);
+    return person;
+  };
   const sourcesKey = sourcesColumn(schema)?.key;
   const suggestions: Suggestion[] = [];
   const edits: CellEdit[] = [];
@@ -340,15 +404,12 @@ function recordResults(
     // The column as it is now: it may have been deleted or renamed during the turn.
     const col = columnOf(schema, r.col.key);
     if (!col || r.value === null) continue;
-    const forContact = isContactKey(schema, col.key);
-    if (forContact && !primary) {
-      const primaryKey = schema.contacts?.primaryKey;
-      primary = db.insertRows(run.campaignId, [{ parentId: rowId, cells: primaryKey ? { [primaryKey]: CHECKED } : {} }])[0]!;
-      created.push(primary);
-    }
-    const target = forContact ? primary! : row;
+    const target = isContactKey(schema, col.key) ? personOf() : row;
+    if (!target) continue;
     const current = target.cells[col.key] ?? null;
     if (sameValue(current, r.value)) continue;
+    // The name that found this contact, written another way ("ann lee"), is no finding.
+    if (col.key === nameKey && current !== null && norm(String(current)) === norm(String(r.value))) continue;
     store.supersedePending(run.campaignId, target.id, col.key);
     const auto = run.autoFill && (current === null || current === "");
     suggestions.push({
@@ -386,10 +447,11 @@ function recordResults(
   return suggestions.length;
 }
 
-async function doEnrich(run: EnrichRun, schema: CampaignSchema, cells: Record<string, CellValue>, rowId: string, signal: AbortSignal, onStep: (s: string) => void): Promise<number | null> {
+async function doEnrich(run: EnrichRun, schema: CampaignSchema, turn: Turn, rowId: string, signal: AbortSignal, onStep: (s: string) => void): Promise<number | null> {
   const recipe = store.getRecipe(run.recipeId!);
   if (!recipe) throw new Error("That recipe no longer exists.");
-  const req = enrichRequest(recipe, schema, cells);
+  const { cells } = turn;
+  const req = enrichRequest(recipe, schema, cells, { contact: !!turn.contact, keys: turn.keys });
   if (!req.columns.length) throw new Error("This recipe's output columns were deleted.");
   const { data, costUsd } = await generateStructured({ ...req, webSearch: recipe.webSearch, signal, onStep });
   if (costUsd !== null) run.costUsd = (run.costUsd ?? 0) + costUsd;
@@ -409,7 +471,7 @@ async function doEnrich(run: EnrichRun, schema: CampaignSchema, cells: Record<st
   }
   // The model's general remark about the row goes on one suggestion, not repeated on all.
   if (data.notes && results[0]) results[0].note = [results[0].note, data.notes].filter(Boolean).join(" · ");
-  return recordResults(run, rowId, results);
+  return recordResults(run, rowId, results, turn.contact?.id);
 }
 
 async function doIntro(run: EnrichRun, schema: CampaignSchema, cells: Record<string, CellValue>, rowId: string, signal: AbortSignal, onStep: (s: string) => void): Promise<number | null> {

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { applyRunRow, mergeSources, sourcesColumn, type CampaignEvent, type EnrichRun, type IntroOptions, type Recipe, type Suggestion } from "../../shared/ai";
 import { columnOf } from "../../shared/schema";
+import { isEmptyContact } from "../../shared/values";
 import type { CellEdit } from "../../shared/types";
 import { api, ApiError, type RecipeDraft } from "../lib/api";
 import type { CampaignState } from "./useCampaign";
@@ -121,8 +122,19 @@ export function useEnrichment(state: CampaignState) {
     if (!list.length) return;
     const ids = new Set(list.map((s) => s.id));
     setSuggestions((prev) => prev.filter((s) => !ids.has(s.id)));
+    // A contact a run made for someone it found is empty until accepted: with every finding
+    // for it rejected, it goes too (one undo step, like any delete).
+    const schema = campaign?.schema;
+    if (schema) {
+      const waiting = new Set(suggestions.filter((s) => !ids.has(s.id)).map((s) => s.rowId));
+      const empty = [...new Set(list.map((s) => s.rowId))].filter((rowId) => {
+        const row = state.rowById.get(rowId);
+        return !!row?.parentId && !waiting.has(rowId) && isEmptyContact(row, schema);
+      });
+      if (empty.length) state.deleteRows(empty, empty.length === 1 ? "Remove empty contact" : `Remove ${empty.length} empty contacts`);
+    }
     await api.setSuggestions(id, [...ids], "rejected").catch((e) => toast.error(e.message));
-  }, [id]);
+  }, [campaign, id, state, suggestions]);
 
   const saveRecipe = useCallback(async (draft: RecipeDraft, existing?: Recipe | null) => {
     const res = existing ? await api.updateRecipe(existing.id, draft) : await api.createRecipe(id, draft);

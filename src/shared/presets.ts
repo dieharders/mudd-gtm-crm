@@ -66,7 +66,7 @@ export const PRESETS: Preset[] = [
     name: "Decision-maker",
     icon: "person",
     tone: "bg-yellow-100 text-yellow-800",
-    blurb: "The person most likely to buy, their role and LinkedIn.",
+    blurb: "Who is most likely to buy, with their role and LinkedIn: added as a contact.",
     instructions:
       "Identify the person most likely to make the buying decision: the founder or CEO at a small company, otherwise the head of marketing, growth or business development. Give their full name, job title and LinkedIn profile URL.",
     outputs: [
@@ -80,9 +80,9 @@ export const PRESETS: Preset[] = [
     name: "Published email",
     icon: "mail",
     tone: "bg-pink-100 text-pink-800",
-    blurb: "A work email that is actually published, never a guess.",
+    blurb: "Each contact's work email, where one is actually published. Never a guess.",
     instructions:
-      "Find a work email address for this prospect's primary contact that is published on the web (company site, press release, filings, conference pages). If none is published for the person, a published general contact address for the company is acceptable. Never construct or guess an address from a naming pattern.",
+      "Find a work email address for this contact that is published on the web (company site, press release, filings, conference pages). Never construct or guess an address from a naming pattern: if none is published for this person, return null.",
     outputs: [
       { header: "Email", aliases: ["email", "workemail", "emailaddress"], type: "email", hint: "Only an address you actually found published. Null if none.", person: true },
       { header: "Email source", aliases: ["emailsource"], type: "select", hint: "Published if you saw it on a page; Reported if a data site reports it.", person: true },

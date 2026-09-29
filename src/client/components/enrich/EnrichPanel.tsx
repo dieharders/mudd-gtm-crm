@@ -8,10 +8,10 @@ import { Anchor, Building2, FlaskConical, Globe, Mail, Newspaper, Plus, Rocket, 
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { presetTargets, PRESETS, type Preset } from "../../../shared/presets";
-import { isSourcesColumn, PROVIDERS, type EnrichRun, type Recipe } from "../../../shared/ai";
-import { allColumns, columnOf, contactSchema, typeFromHeader } from "../../../shared/schema";
+import { isSourcesColumn, PROVIDERS, recipeMode, type EnrichRun, type Recipe } from "../../../shared/ai";
+import { allColumns, columnOf, contactSchema, isContactKey, typeFromHeader } from "../../../shared/schema";
 import { COLUMN_TYPES, isScreened, type CampaignSchema, type ColumnType, type Row } from "../../../shared/types";
-import { primaryOf, prospectCells } from "../../../shared/values";
+import { isChannel, primaryOf, prospectCells } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
@@ -428,11 +428,21 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
   const filtered = filteredIds.filter((id) => inPlay.has(id));
   const targets = draft.outputs.filter((o) => !isNew(o.target)).map((o) => o.target);
   const hasNew = draft.outputs.some((o) => isNew(o.target) && o.header.trim());
-  // A contact column is missing when the prospect's primary contact lacks it (or it has none).
+  // Filling in people's details: one turn per person (channels aren't researched).
+  const perContact = recipeMode(draft.outputs.map((o) => ({ key: isNew(o.target) ? undefined : o.target, contact: o.target === NEW_CONTACT })), schema) === "contacts";
+  const people = (orgId: string) => contactsOf(orgId).filter((c) => !isChannel(c, schema));
+  const blank = (v: unknown) => v === undefined || v === null || v === "";
   const missing = prospects.filter((r) => {
+    if (perContact) {
+      const them = people(r.id);
+      if (!them.length) return false;
+      if (hasNew) return true;
+      return targets.some((k) => (isContactKey(schema, k) ? them.some((c) => blank(c.cells[k])) : blank(r.cells[k])));
+    }
     if (hasNew) return true;
+    // A contact column is missing when the prospect's primary contact lacks it (or it has none).
     const cells = prospectCells(r, primaryOf(contactsOf(r.id), schema));
-    return targets.some((k) => cells[k] === undefined || cells[k] === null || cells[k] === "");
+    return targets.some((k) => blank(cells[k]));
   });
   const scopes = [
     ...(selected.length ? [{ id: "selected", label: `Selected rows`, ids: selected }] : []),
@@ -446,7 +456,9 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
   const [starting, setStarting] = useState(false);
   const chosen = scopes.find((s) => s.id === scope) ?? scopes[0]!;
   const n = chosen.ids.length;
-  const minutes = Math.max(1, Math.round((n * 25) / 60 / concurrency));
+  const withPeople = perContact ? chosen.ids.filter((id) => people(id).length).length : n;
+  const turns = perContact ? chosen.ids.reduce((t, id) => t + people(id).length, 0) : n;
+  const minutes = Math.max(1, Math.round((turns * 25) / 60 / concurrency));
   const go = async (test: boolean) => {
     setStarting(true);
     await onRun(test ? chosen.ids.slice(0, 3) : chosen.ids, { test, autoFill, concurrency });
@@ -474,7 +486,9 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
         <span>Fill empty cells automatically <span className="block text-xs text-ink-faint">Findings for cells that already have a value always wait for your review.</span></span>
       </label>
       <p className="mt-3 text-xs text-ink-soft">
-        {n} research turn{n === 1 ? "" : "s"} · usually 10–40 seconds each · about {minutes} min for all at {concurrency} at a time. Counts toward your plan's usage.
+        {turns} research turn{turns === 1 ? "" : "s"}
+        {perContact && <> (one per contact{withPeople < n ? `; ${n - withPeople} prospect${n - withPeople === 1 ? " has" : "s have"} none, and ${n - withPeople === 1 ? "is" : "are"} skipped` : ""})</>}
+        {" "}· usually 10–40 seconds each · about {minutes} min for all at {concurrency} at a time. Counts toward your plan's usage.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {!ready ? (

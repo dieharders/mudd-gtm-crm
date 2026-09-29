@@ -79,8 +79,11 @@ export function newProspectId(taken: Iterable<string>): string {
 
 // ---------- contacts ----------
 
-/** The kinds of stakeholder a contact can be. */
-export const CONTACT_TYPES = ["Economic Buyer", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper"];
+/** A contact who is no one person: a main line, a general inbox, a program desk. */
+export const CHANNEL = "Channel";
+
+/** The kinds of stakeholder a contact can be, and Channel for a way in that isn't a person. */
+export const CONTACT_TYPES = ["Economic Buyer", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", CHANNEL];
 
 /** What each contact type means: the type picker's hints. */
 export const CONTACT_TYPE_HINTS: Record<string, string> = {
@@ -90,6 +93,7 @@ export const CONTACT_TYPE_HINTS: Record<string, string> = {
   Influencer: "Shapes the group's opinion, without final sign-off.",
   Blocker: "The ratifier: legal, compliance, procurement or IT security, who can stall or kill the deal.",
   Gatekeeper: "Controls information and access to the senior decision-makers.",
+  [CHANNEL]: "Not a person: a main line, a general inbox or a program desk. Never greeted by name, and not researched as a person.",
 };
 
 const CONTACT_TYPE_HEADERS = ["contacttype", "type", "stakeholder", "stakeholdertype", "persona"];
