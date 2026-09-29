@@ -1,17 +1,13 @@
 /**
  * Save file end to end through the REST API: in place with backups, the "changed outside Mudd"
- * check, copies, the Downloads fallback, refused macro workbooks, prospects and their contacts,
- * and the migrations: version 2 turned the old Screened-out list into a ticked column, version 3
- * gave prospects contacts and IDs.
+ * check, copies, the Downloads fallback, refused macro workbooks, and prospects and their contacts.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
 import ExcelJS from "exceljs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Campaign, CampaignBundle, CampaignSchema, CampaignSummary, InspectResult, Row } from "../shared/types";
-import { CHECKED, isScreened } from "../shared/types";
+import type { Campaign, CampaignBundle, CampaignSummary, InspectResult, Row } from "../shared/types";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-save-"));
 const saved = { data: process.env.MUDD_DATA_DIR, home: process.env.HOME, profile: process.env.USERPROFILE };
@@ -143,58 +139,6 @@ describe("Save file", () => {
   });
 });
 
-describe("migration to version 2", () => {
-  test("the old Screened-out list becomes ticked rows", async () => {
-    const dir = path.join(tmp, "legacy");
-    fs.mkdirSync(dir, { recursive: true });
-    const legacy = new Database(path.join(dir, "mudd.sqlite"), { create: true });
-    legacy.exec(`
-      CREATE TABLE campaigns (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-        source_name TEXT, source_path TEXT, source_mtime INTEGER, original BLOB, schema_json TEXT NOT NULL, sheets_json TEXT NOT NULL);
-      CREATE TABLE rows (id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL, bucket TEXT NOT NULL, position REAL NOT NULL,
-        source_sheet TEXT, source_row INTEGER, cells_json TEXT NOT NULL);
-    `);
-    const schema = {
-      columns: [
-        { key: "company", header: "Company", type: "text" },
-        { key: "constructor", header: "Constructor", type: "text" },
-        { key: "why", header: "Why it fails the filter", type: "longtext" },
-      ],
-      companyKey: "company",
-      reasonKey: "why",
-    };
-    const sheets: { name: string; role: string; colMap: Record<string, number>; lastDataRow: number; lastCol: number }[] = [
-      { name: "Prospects", role: "prospects", colMap: { company: 1, constructor: 2 }, lastDataRow: 3, lastCol: 2 },
-      { name: "Screened out", role: "screened", colMap: { company: 1, why: 2 }, lastDataRow: 2, lastCol: 2 },
-    ];
-    legacy.query("INSERT INTO campaigns VALUES ('c1', 'Old', 0, 0, NULL, NULL, NULL, NULL, ?, ?)").run(JSON.stringify(schema), JSON.stringify(sheets));
-    legacy.query("INSERT INTO rows VALUES ('a', 'c1', 'prospects', 0, 'Prospects', 2, ?)").run(JSON.stringify({ company: "Acme", constructor: "x" }));
-    legacy.query("INSERT INTO rows VALUES ('b', 'c1', 'screened', 1, 'Screened out', 2, ?)").run(JSON.stringify({ company: "Palantir", why: "Too big" }));
-    legacy.close();
-
-    db.closeDb();
-    process.env.MUDD_DATA_DIR = dir;
-    try {
-      const c = db.getCampaign("c1")!;
-      expect(c.sheets.map((s) => s.role)).toEqual(["prospects", "passthrough"]);
-      expect(c.schema.columns.some((col) => col.key === "constructor")).toBe(false);
-      const rows = db.listRows("c1");
-      const acme = rows.find((r) => r.id === "a")!;
-      const palantir = rows.find((r) => r.id === "b")!;
-      expect(acme.cells.constructor_col).toBe("x");
-      expect(isScreened(palantir, c.schema)).toBe(true);
-      expect(isScreened(acme, c.schema)).toBe(false);
-      expect(palantir.sourceRow).toBeNull();
-      expect(palantir.cells.why).toBe("Too big");
-      // New rows still go into a table created by version 1 (bucket NOT NULL there).
-      expect(db.insertRows("c1", [{ cells: { company: "New" } }])).toHaveLength(1);
-    } finally {
-      db.closeDb();
-      process.env.MUDD_DATA_DIR = path.join(tmp, "data");
-    }
-  });
-});
-
 describe("prospects and their contacts", () => {
   test("import links them, the API keeps them apart, and deleting a prospect takes its contacts", async () => {
     const file = path.join(tmp, "docs", "people.xlsx");
@@ -240,58 +184,5 @@ describe("prospects and their contacts", () => {
     const after = (await call<CampaignBundle>("GET", `/api/campaigns/${id}`)).json;
     expect(after.rows).toHaveLength(1);
     expect(after.contacts.map((c) => c.cells[nameKey])).toEqual(["Bo Chen-Li"]);
-  });
-});
-
-describe("migration to version 3", () => {
-  test("every campaign gets contact columns and an ID column, every prospect an ID; nothing else changes", async () => {
-    const dir = path.join(tmp, "v2");
-    fs.mkdirSync(dir, { recursive: true });
-    const legacy = new Database(path.join(dir, "mudd.sqlite"), { create: true });
-    legacy.exec(`
-      CREATE TABLE campaigns (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-        source_name TEXT, source_path TEXT, source_mtime INTEGER, original BLOB, schema_json TEXT NOT NULL, sheets_json TEXT NOT NULL);
-      CREATE TABLE rows (id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL, bucket TEXT NOT NULL DEFAULT 'prospects', position REAL NOT NULL,
-        source_sheet TEXT, source_row INTEGER, cells_json TEXT NOT NULL, orig_json TEXT);
-      PRAGMA user_version = 2;
-    `);
-    // A version-2 campaign: its contact on the row itself, and a deleted "Email" column's values left behind.
-    const schema: CampaignSchema = {
-      columns: [
-        { key: "name", header: "Name", type: "text" },
-        { key: "company", header: "Company", type: "text" },
-        { key: "status", header: "Status", type: "select", options: ["Contacted"] },
-      ],
-      nameKey: "name",
-      companyKey: "company",
-      statusKey: "status",
-    };
-    legacy.query("INSERT INTO campaigns VALUES ('c1', 'Old', 0, 0, NULL, NULL, NULL, NULL, ?, '[]')").run(JSON.stringify(schema));
-    legacy.query("INSERT INTO rows (id, campaign_id, position, cells_json) VALUES ('b', 'c1', 1, ?)").run(JSON.stringify({ name: "Bo", company: "Beta", email: "bo@beta.io" }));
-    legacy.query("INSERT INTO rows (id, campaign_id, position, cells_json) VALUES ('a', 'c1', 0, ?)").run(JSON.stringify({ name: "Ann", company: "Acme", status: "Contacted" }));
-    legacy.close();
-
-    db.closeDb();
-    process.env.MUDD_DATA_DIR = dir;
-    try {
-      const c = db.getCampaign("c1")!;
-      const contacts = c.schema.contacts!;
-      const keys = [...c.schema.columns, ...contacts.columns].map((col) => col.key);
-      expect(new Set(keys).size).toBe(keys.length);
-      // Not "name" (the prospect's column) nor "email" (the deleted one's values).
-      expect(contacts.nameKey).toBe("name_2");
-      expect(contacts.columns.find((col) => col.header === "Email")!.key).toBe("email_2");
-      expect(c.schema.columns.find((col) => col.key === c.schema.idKey)).toMatchObject({ header: "ID", hidden: true });
-      const rows = db.listRows("c1");
-      expect(rows.map((r) => [r.id, r.cells[c.schema.idKey!]])).toEqual([["a", "P-001"], ["b", "P-002"]]);
-      expect(rows[1]!.cells).toMatchObject({ name: "Bo", company: "Beta", email: "bo@beta.io" });
-      expect(db.listRows("c1", "contacts")).toEqual([]);
-      // Contacts can be added to it straight away.
-      db.insertRows("c1", [{ id: "k", parentId: "a", cells: { name_2: "Ann Lee", [contacts.primaryKey!]: CHECKED } }]);
-      expect(db.primaryContact("c1", "a", c.schema)?.id).toBe("k");
-    } finally {
-      db.closeDb();
-      process.env.MUDD_DATA_DIR = path.join(tmp, "data");
-    }
   });
 });

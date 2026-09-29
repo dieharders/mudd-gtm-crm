@@ -53,4 +53,3 @@ export function contactedStage(stages: string[]): string | undefined {
   return stages.find((s) => s.toLowerCase() === "contacted") ?? stages[1];
 }
 
-export { rowTitle } from "../../shared/values";

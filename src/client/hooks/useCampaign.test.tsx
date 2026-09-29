@@ -161,7 +161,25 @@ test("ticking a contact Primary unticks the other, in one undo step", () =>
     expect(primary()).toEqual([["ann", CHECKED], ["al", null]]);
   }));
 
-test("a new prospect gets the next ID; its first contact is its primary one", () =>
+test("pasting Primary ticks over two contacts of one prospect leaves one ticked: the last", () =>
+  withCampaign("P", async (s) => {
+    await act(() => {
+      s().editContacts([{ rowId: "ann", key: "primary", value: CHECKED }, { rowId: "al", key: "primary", value: CHECKED }], "Paste");
+    });
+    expect(s().contacts.map((c) => [c.id, c.cells.primary ?? null])).toEqual([["ann", null], ["al", CHECKED]]);
+  }));
+
+test("an edit to a contact leaves the prospect list the same array: nothing sorted from it reruns", () =>
+  withCampaign("P", async (s) => {
+    const before = s().rows;
+    await act(() => {
+      s().editContacts([{ rowId: "al", key: "name", value: "Al Ng" }]);
+    });
+    expect(s().rows).toBe(before);
+    expect(s().contactsOf("acme").map((c) => c.cells.name)).toEqual(["Ann", "Al Ng"]);
+  }));
+
+test("a new prospect gets the next ID; no contact of it is ticked Primary unasked", () =>
   withCampaign("P", async (s) => {
     let org: Row | null = null;
     await act(() => {
@@ -176,7 +194,9 @@ test("a new prospect gets the next ID; its first contact is its primary one", ()
     await act(() => {
       second = s().addContact(org!.id);
     });
-    expect(first!.cells).toEqual({ primary: CHECKED, name: "Gil" });
+    // Until someone is ticked, primaryOf addresses the first person: a channel added first
+    // never outranks the people added after it.
+    expect(first!.cells).toEqual({ name: "Gil" });
     expect(second!.cells).toEqual({});
     expect(s().contactsOf(org!.id).map((c) => c.parentId)).toEqual([org!.id, org!.id]);
     // Undoing the new prospect takes the people added to it since.

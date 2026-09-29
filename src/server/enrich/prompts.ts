@@ -11,7 +11,7 @@
 import { z } from "zod";
 import type { Recipe } from "../../shared/ai";
 import { mergeTemplate, norm } from "../../shared/merge";
-import { columnOf, contactSchema, hookColumns, prospectSchema } from "../../shared/schema";
+import { columnOf, contactSchema, hookColumns, isContactKey, prospectSchema } from "../../shared/schema";
 import type { CampaignSchema, CellValue, Column, Template } from "../../shared/types";
 
 const display = (v: CellValue | undefined) => (v === null || v === undefined ? "" : String(v).trim());
@@ -28,17 +28,18 @@ export function prospectData(
 ): Record<string, string | Record<string, string>> {
   // The ID is Mudd's, not about the prospect; the Primary box says nothing the nesting doesn't.
   const skip = new Set([schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, schema.idKey, schema.contacts?.primaryKey].filter(Boolean));
-  const fields = (cols: Column[]) => {
+  const fields = (cols: Column[], only: string[] | undefined) => {
     const out: Record<string, string> = {};
     for (const col of cols) {
-      if (keys ? !keys.includes(col.key) : skip.has(col.key) || col.origin === "enrichment") continue;
+      if (only ? !only.includes(col.key) : skip.has(col.key) || col.origin === "enrichment") continue;
       const v = display(cells[col.key]);
       if (v) out[col.header] = clip(v);
     }
     return out;
   };
-  const out: Record<string, string | Record<string, string>> = fields(schema.columns);
-  const contact = fields(contactSchema(schema).columns);
+  const out: Record<string, string | Record<string, string>> = fields(schema.columns, keys);
+  // In a turn about one person, all their details go whatever the recipe sends: they say who it is.
+  const contact = fields(contactSchema(schema).columns, contactField === THIS_CONTACT ? undefined : keys);
   if (Object.keys(contact).length) out[contactField] = contact;
   return out;
 }
@@ -76,13 +77,21 @@ export function enrichRequest(recipe: Recipe, schema: CampaignSchema, cells: Rec
     .map((o) => ({ out: o, col: columnOf(schema, o.key) }))
     .filter((x): x is { out: Recipe["outputs"][number]; col: Column } => !!x.col);
   const inputs = prospectData(schema, cells, recipe.inputKeys.length ? recipe.inputKeys : undefined, opts.contact ? THIS_CONTACT : CONTACT_FIELD);
+  const lines = (list: typeof cols) => list.map(({ out, col }) => fieldLine(col, out.hint, display(cells[col.key]))).join("\n");
+  // In a turn about one person, the prospect's own fields (asked in its first person's turn) are
+  // listed apart, so a Location is the company's and not that person's.
+  const theirs = opts.contact ? cols.filter(({ col }) => isContactKey(schema, col.key)) : cols;
+  const own = opts.contact ? cols.filter(({ col }) => !isContactKey(schema, col.key)) : [];
+  const fill = [
+    theirs.length ? `Fill these fields${opts.contact ? `, about the person under "${THIS_CONTACT}"` : ""}:\n${lines(theirs)}` : "",
+    own.length ? `${theirs.length ? "And these" : "Fill these fields"}, about the prospect itself:\n${lines(own)}` : "",
+  ].filter(Boolean).join("\n\n");
   const prompt = `Task: ${recipe.instructions.trim()}
 
 Prospect:
 ${JSON.stringify(inputs)}
 
-Fill these fields${opts.contact ? `, about the person under "${THIS_CONTACT}"` : ""}:
-${cols.map(({ out, col }) => fieldLine(col, out.hint, display(cells[col.key]))).join("\n")}
+${fill}
 
 Answer as JSON: {"fields": {"<field key>": {"value": string or null, "source": string or null, "confidence": "high" | "medium" | "low"}}, "notes": string or null}`;
 
@@ -121,6 +130,7 @@ const INTRO_RULES = (web: boolean) => `You write short, warm, specific cold intr
 
 Rules:
 - Fill every {{placeholder}} from the prospect data. Placeholders name spreadsheet columns, the prospect's or its primary contact's; {{First name}} is the primary contact's first name; {{Column|fallback}} uses the fallback when the value is missing. If a value is missing and there is no fallback, rewrite that phrase so it reads naturally without it.
+- A primary contact whose Contact type is "Channel" is a way in (a main line, a general inbox), not a person: never greet it by its name; write to the team.
 - If a Hook is given, it is the researched reason to write to this prospect: make it the inspiration for the message and work it in naturally (where its placeholder is, if the template has one), in the user's voice, rather than pasting it word for word. Report it in "hooks" with the source given for it (null if none).
 - Without a Hook, add one or two specific, true hooks about this prospect ${web ? "that you verified with a web search" : "from the prospect data"} (a recent contract, launch, hire, talk or post). Each must be backed by a source URL.
 - Never invent facts, numbers, names or shared history.

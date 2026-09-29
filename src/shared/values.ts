@@ -2,8 +2,8 @@
  * Reading and comparing cell values, shared by the server (import, export, enrichment) and the
  * page (grid, prospect panel), so the two never disagree about what a number or a link is.
  */
-import { norm } from "./merge";
-import { CHANNEL, contactSchema, HONORIFIC_HEADERS, isHonorific, prospectSchema, ROLE_HEADERS, TITLE_HEADER } from "./schema";
+import { isChannelCells, norm } from "./merge";
+import { contactSchema, HONORIFIC_HEADERS, isHonorific, prospectSchema, ROLE_HEADERS, TITLE_HEADER } from "./schema";
 import { CHECKED, isChecked, type CampaignSchema, type CellValue, type Column, type Row } from "./types";
 
 const NUMERIC_RE = /^-?\d+(?:\.\d+)?$/;
@@ -135,10 +135,7 @@ export function rowTitle(row: Pick<Row, "cells">, schema: CampaignSchema): { tit
 // ---------- a prospect's contacts ----------
 
 /** A contact of type Channel: a way in (a main line, an inbox) rather than a person. */
-export function isChannel(contact: Pick<Row, "cells">, schema: CampaignSchema): boolean {
-  const key = schema.contacts?.typeKey;
-  return !!key && norm(String(contact.cells[key] ?? "")) === norm(CHANNEL);
-}
+export const isChannel = (contact: Pick<Row, "cells">, schema: CampaignSchema): boolean => isChannelCells(contact.cells, schema);
 
 /**
  * The contact intros and templates address: the first one ticked Primary, else the first person,
@@ -159,6 +156,28 @@ export function isEmptyContact(contact: Pick<Row, "cells">, schema: CampaignSche
 export function orderedContacts<T extends Pick<Row, "cells">>(contacts: readonly T[], schema: CampaignSchema): T[] {
   const primary = primaryOf(contacts, schema);
   return primary ? [primary, ...contacts.filter((c) => c !== primary)] : [...contacts];
+}
+
+/**
+ * The contacts a recipe that fills in people's details researches, primary first: the people,
+ * not a channel, and not a contact holding nothing to research them by (one a run made, whose
+ * name still waits for review).
+ */
+export function researchedContacts<T extends Pick<Row, "cells">>(contacts: readonly T[], schema: CampaignSchema): T[] {
+  return orderedContacts(contacts.filter((c) => !isChannel(c, schema) && !isEmptyContact(c, schema)), schema);
+}
+
+/** A name as a set of words: honorifics and initials dropped, order ignored ("Lee, Jane M." is Jane Lee). */
+function personWords(name: string): string {
+  const words = name.normalize("NFKC").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const kept = words.filter((w) => w.length > 1 && !isHonorific(w));
+  return (kept.length ? kept : words).sort().join(" ");
+}
+
+/** Two names for the same person: "Col. Jane Lee", "Jane M. Lee" and "Lee, Jane" are one. */
+export function samePerson(a: CellValue | undefined, b: CellValue | undefined): boolean {
+  const wa = personWords(String(a ?? ""));
+  return !!wa && wa === personWords(String(b ?? ""));
 }
 
 /** A prospect's cells with its primary contact's, for `prospectSchema`. Their keys never overlap. */

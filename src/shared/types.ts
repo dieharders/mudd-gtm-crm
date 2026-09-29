@@ -87,6 +87,11 @@ export interface CampaignSchema {
   companyKey?: string;
   /** The prospect's ID (P-001): what the Contacts tab points at. Read-only in the app. */
   idKey?: string;
+  /**
+   * Prospect IDs the workbook's Contacts tab gives people whose prospect isn't in the campaign:
+   * never handed to a new prospect, which would take those people on the next import.
+   */
+  reservedIds?: string[];
   contacts?: ContactSchema;
 }
 
@@ -101,6 +106,9 @@ export type CellValue = string | number | null;
 
 /** A ticked checkbox cell. */
 export const CHECKED = "TRUE";
+
+/** The contact type of a way in that is no one person: a main line, a general inbox, a program desk. */
+export const CHANNEL = "Channel";
 
 export interface Row {
   id: string;

@@ -8,10 +8,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { mergeTemplate, placeholdersFor, tokenize } from "../../../shared/merge";
 import { prospectSchema } from "../../../shared/schema";
 import { isScreened, type CampaignSchema, type Row, type Template } from "../../../shared/types";
-import { primaryOf, prospectCells } from "../../../shared/values";
+import { primaryOf, prospectCells, prospectTitle } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
 import { cn } from "../../lib/cn";
-import { rowTitle } from "../../lib/pipeline";
 import { Button } from "../ui/Button";
 import { fire } from "../../lib/fire";
 
@@ -107,7 +106,7 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onC
               preview={preview}
               previewSelect={
                 <select className="field h-7 max-w-56 py-0 text-xs" value={previewId} onChange={(e) => setPreviewId(e.target.value)}>
-                  {prospects.map((r) => <option key={r.id} value={r.id}>{rowTitle(r, schema).title}</option>)}
+                  {prospects.map((r) => <option key={r.id} value={r.id}>{prospectTitle(r, primaryOf(contactsOf(r.id), schema), schema).title}</option>)}
                 </select>
               }
               onDelete={() => {

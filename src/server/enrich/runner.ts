@@ -21,10 +21,9 @@ import { enrichRequest, introRequest } from "./prompts";
 import * as store from "./store";
 import { publish } from "./hub";
 import { mergeSources, recipeMode, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type RunKind, type Source, type Suggestion } from "../../shared/ai";
-import { norm } from "../../shared/merge";
 import { allColumns, columnOf, isContactKey, makeKey } from "../../shared/schema";
 import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../shared/types";
-import { contactLabel, isChannel, orderedContacts, parseFlag, primaryOf, prospectCells, sameValue, toNumber } from "../../shared/values";
+import { contactLabel, parseFlag, primaryOf, prospectCells, researchedContacts, sameValue, samePerson, toNumber } from "../../shared/values";
 import { AiError, generateStructured } from "../ai";
 import { getAiSettings } from "../ai/settings";
 import * as db from "../db";
@@ -229,13 +228,14 @@ interface Turn {
 /**
  * A prospect's turns: one, seeing it with its primary contact (an intro; a recipe that fills the
  * prospect's columns or finds someone), or one per person, primary first, for a recipe that
- * fills in people's details. A channel (a main line, an inbox) is no person to research.
+ * fills in people's details. A channel (a main line, an inbox) is no person to research, nor is
+ * a contact with nothing in it to research them by (see researchedContacts).
  */
 function turnsOf(run: EnrichRun, schema: CampaignSchema, row: Row): Turn[] {
   const contacts = db.contactsOf(run.campaignId, row.id);
   const recipe = run.kind === "enrich" ? store.getRecipe(run.recipeId!) : null;
   if (!recipe || recipeMode(recipe.outputs, schema) === "prospects") return [{ cells: prospectCells(row, primaryOf(contacts, schema)) }];
-  const people = orderedContacts(contacts.filter((c) => !isChannel(c, schema)), schema);
+  const people = researchedContacts(contacts, schema);
   const theirs = new Set(recipe.outputs.filter((o) => isContactKey(schema, o.key)).map((o) => o.key));
   return people.map((c, i) => ({
     cells: prospectCells(row, c),
@@ -270,7 +270,10 @@ async function processRow(ctrl: Controller, rowId: string): Promise<void> {
 
   let total = 0;
   const failed: string[] = [];
-  for (const turn of turns) {
+  // The prospect's own outputs go with its first person; if that turn fails, with the next.
+  let ownAsked = false;
+  for (const next of turns) {
+    const turn = ownAsked || !next.keys ? next : { ...next, keys: undefined };
     const onStep = (label: string) => {
       state.step = turn.label ? `${turn.label}: ${label}` : label;
       // Steps arrive in bursts; the page does not need every one.
@@ -288,7 +291,10 @@ async function processRow(ctrl: Controller, rowId: string): Promise<void> {
     // Deleted while the turn ran: the findings have nowhere to go.
     if ("found" in result && result.found === null) return skip("Row was deleted.");
     if ("error" in result) failed.push(result.error);
-    else total += result.found ?? 0;
+    else {
+      total += result.found ?? 0;
+      ownAsked = true;
+    }
   }
   state.step = undefined;
   if (failed.length) {
@@ -366,8 +372,9 @@ export function normaliseValue(col: Pick<Column, "type" | "options">, raw: strin
  * seconds, in which the user may have typed into a cell auto-fill would fill, or another run
  * may have added its own sources. A person's findings go on the contact the turn was about
  * (`contactId`; if it was deleted meanwhile they go nowhere); from a recipe that finds someone,
- * on the contact of the name found, or on a new one (ticked Primary when it is the prospect's
- * first), never on anyone else. The sources always go on the prospect. Null when it is gone.
+ * on the contact of the name found (written another way, or only waiting for review as that
+ * contact's name, since an earlier run made it), or on a new one, never on anyone else. The
+ * sources always go on the prospect, marked with the person's name. Null when it is gone.
  */
 function recordResults(
   run: EnrichRun,
@@ -381,19 +388,26 @@ function recordResults(
   const { cells } = row;
   const contacts = db.contactsOf(run.campaignId, rowId);
   const nameKey = schema.contacts?.nameKey;
+  const found = nameKey ? results.find((r) => r.col.key === nameKey)?.value ?? null : null;
   const created: Row[] = [];
   let person: Row | null | undefined;
   const personOf = (): Row | null => {
     if (person !== undefined) return person;
     if (contactId) return (person = contacts.find((c) => c.id === contactId) ?? null);
-    const name = results.find((r) => r.col.key === nameKey)?.value;
-    if (name === null || name === undefined || !nameKey) return (person = null);
-    const same = contacts.find((c) => norm(String(c.cells[nameKey] ?? "")) === norm(String(name)));
+    if (found === null || !nameKey) return (person = null);
+    const waiting = store.pendingValues(run.campaignId, contacts.map((c) => c.id), nameKey);
+    const same = contacts.find((c) => samePerson(c.cells[nameKey] || waiting.get(c.id), found));
     if (same) return (person = same);
-    const primaryKey = schema.contacts?.primaryKey;
-    person = db.insertRows(run.campaignId, [{ parentId: rowId, cells: !contacts.length && primaryKey ? { [primaryKey]: CHECKED } : {} }])[0]!;
+    // No Primary tick: primaryOf's own default (the first person) decides until the user picks.
+    person = db.insertRows(run.campaignId, [{ parentId: rowId, cells: {} }])[0]!;
     created.push(person);
     return person;
+  };
+  /** Whose finding a source line is: the column, and for a person's, their name before it. */
+  const sourceLabel = (target: Row, col: Column) => {
+    if (target === row) return col.header;
+    const named = nameKey && found !== null && target === person && !target.cells[nameKey] ? { ...target.cells, [nameKey]: found } : target.cells;
+    return `${contactLabel({ cells: named }, schema)} · ${col.header}`;
   };
   const sourcesKey = sourcesColumn(schema)?.key;
   const suggestions: Suggestion[] = [];
@@ -408,8 +422,8 @@ function recordResults(
     if (!target) continue;
     const current = target.cells[col.key] ?? null;
     if (sameValue(current, r.value)) continue;
-    // The name that found this contact, written another way ("ann lee"), is no finding.
-    if (col.key === nameKey && current !== null && norm(String(current)) === norm(String(r.value))) continue;
+    // The name that found this contact, written another way ("Lee, Ann"), is no finding.
+    if (col.key === nameKey && current !== null && samePerson(current, r.value)) continue;
     store.supersedePending(run.campaignId, target.id, col.key);
     const auto = run.autoFill && (current === null || current === "");
     suggestions.push({
@@ -428,7 +442,7 @@ function recordResults(
     });
     if (auto) {
       edits.push({ rowId: target.id, key: col.key, value: r.value });
-      if (sourcesKey && r.sources.length) sourcesCell = mergeSources(sourcesCell, col.header, r.sources);
+      if (sourcesKey && r.sources.length) sourcesCell = mergeSources(sourcesCell, sourceLabel(target, col), r.sources);
     }
   }
   // Before the cells and suggestions that point at it.

@@ -63,7 +63,10 @@ test("a person's detail becomes a contact column, keyed apart from every other c
   const contactCol = (header: string) => campaign.schema.contacts!.columns.find((x) => x.header === header);
   expect(contactCol("Mobile")).toMatchObject({ key: "mobile_2", type: "phone", origin: "enrichment" });
   expect(campaign.schema.columns.some((x) => x.header === "Mobile")).toBe(false);
-  expect(campaign.schema.columns.find((x) => x.header === "Headcount")).toBeDefined();
+  // Headcount is the company's "# Employees", not a column of its own.
+  expect(campaign.schema.columns.some((x) => x.header === "Headcount")).toBe(false);
+  const employees = campaign.schema.columns.find((x) => x.header === "# Employees")!;
+  expect(employees.type).toBe("number");
   // The contacts' own Notes, not the company's; nothing is researched into the ID.
-  expect(recipe.outputs.map((o) => o.key)).toEqual(["mobile_2", "notes_2", campaign.schema.columns.find((x) => x.header === "Headcount")!.key]);
+  expect(recipe.outputs.map((o) => o.key)).toEqual(["mobile_2", "notes_2", employees.key]);
 });

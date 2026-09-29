@@ -5,7 +5,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { allColumns, contactSchema } from "../../../shared/schema";
+import { allColumns, contactSchema, orgColumn } from "../../../shared/schema";
 import {
   DEAD, isChecked, isScreened, ORG_KEY, stagesOf, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
 } from "../../../shared/types";
@@ -43,6 +43,7 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
 // An imported workbook's old Screened-out tab is not part of the campaign: never listed here.
 const SCREENED_TAB = /screen|disqual|reject|exclu|do.?not|dnc|dropped/i;
 const NO_KEYS = new Set<string>();
+const NO_ROWS: Row[] = [];
 /** The Contacts grid's Company column comes from the prospect: read-only there. */
 const CONTACT_FIXED = new Set([ORG_KEY]);
 
@@ -87,6 +88,17 @@ function compare(a: Row, b: Row, col: Column | undefined, stages: string[], sche
   }
   if (typeof va === "number" && typeof vb === "number") return va - vb;
   return collator.compare(String(va), String(vb));
+}
+
+/** Cells that hold the search text (lowercased), in any column. */
+const cellsHit = (cells: Row["cells"], q: string) => Object.values(cells).some((v) => display(v).toLowerCase().includes(q));
+
+/** A list sorted by one of the schema's columns, as the grid header asks; the same list unsorted. */
+function sortRows(list: Row[], sort: SortState | null, schema: CampaignSchema, stages: string[]): Row[] {
+  if (!sort) return list;
+  const col = schema.columns.find((c) => c.key === sort.key);
+  const dir = sort.dir === "asc" ? 1 : -1;
+  return [...list].sort((a, b) => compare(a, b, col, stages, schema) * dir);
 }
 
 function CampaignView({ state }: { state: CampaignState }) {
@@ -164,53 +176,52 @@ function CampaignView({ state }: { state: CampaignState }) {
   const prospectCount = state.rows.length - screenedCount;
 
   const { contactsOf } = state;
+  const q = query.trim().toLowerCase();
+  // Read only while searching: a contact's edit then leaves the prospect list (and its sort) be.
+  const searchedContactsOf = q ? contactsOf : null;
+  // The status chips are the Prospects tab's: hidden on the Contacts tab, they filter nothing there.
+  const chip = onContacts ? null : statusFilter;
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     let list = state.rows;
-    if (statusFilter && statusKey) {
-      list = list.filter((r) => !isScreened(r, schema) && chipOf(r) === statusFilter);
+    if (chip && statusKey) {
+      list = list.filter((r) => !isScreened(r, schema) && chipOf(r) === chip);
     }
     // A prospect matches on its own cells or any of its people's.
-    const hit = (cells: Row["cells"]) => Object.values(cells).some((v) => display(v).toLowerCase().includes(q));
-    if (q) list = list.filter((r) => hit(r.cells) || contactsOf(r.id).some((c) => hit(c.cells)));
-    if (sort) {
-      const col = schema.columns.find((c) => c.key === sort.key);
-      const dir = sort.dir === "asc" ? 1 : -1;
-      list = [...list].sort((a, b) => compare(a, b, col, stages, schema) * dir);
-    }
-    return list;
-  }, [state.rows, statusFilter, statusKey, query, sort, schema, stages, chipOf, contactsOf]);
+    if (searchedContactsOf) list = list.filter((r) => cellsHit(r.cells, q) || searchedContactsOf(r.id).some((c) => cellsHit(c.cells, q)));
+    return sortRows(list, sort, schema, stages);
+  }, [state.rows, chip, statusKey, q, sort, schema, stages, chipOf, searchedContactsOf]);
 
   // ----- the Contacts tab: every prospect's people, with the prospect's company beside them -----
+  // Worked out only while the tab is open: every contact is copied to add its company.
   const contactGridSchema = useMemo<CampaignSchema>(() => {
-    const company = schema.columns.find((c) => c.key === schema.companyKey);
-    const org: Column = { key: ORG_KEY, header: company?.header ?? "Company", type: "text", width: company?.width ?? 190 };
+    const org = orgColumn(schema);
     const cs = contactSchema(schema);
-    return { ...cs, columns: [org, ...cs.columns] };
+    return { ...cs, columns: org ? [org, ...cs.columns] : cs.columns };
   }, [schema]);
   const contactColumns = useMemo(() => contactGridSchema.columns.filter((c) => !c.hidden), [contactGridSchema]);
   const { rowById } = state;
-  const contactRows = useMemo(() => state.contacts.map((c) => {
-    const org = c.parentId ? rowById.get(c.parentId) : undefined;
-    return { ...c, cells: { ...c.cells, [ORG_KEY]: org && schema.companyKey ? org.cells[schema.companyKey] ?? null : null } };
-  }), [state.contacts, rowById, schema.companyKey]);
-  const filteredContacts = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let list = contactRows;
-    if (q) list = list.filter((r) => Object.values(r.cells).some((v) => display(v).toLowerCase().includes(q)));
-    if (contactSort) {
-      const col = contactGridSchema.columns.find((c) => c.key === contactSort.key);
-      const dir = contactSort.dir === "asc" ? 1 : -1;
-      list = [...list].sort((a, b) => compare(a, b, col, stages, contactGridSchema) * dir);
-    }
-    return list;
-  }, [contactRows, query, contactSort, contactGridSchema, stages]);
+  const contactRows = useMemo(() => {
+    const { companyKey } = schema;
+    if (!onContacts) return NO_ROWS;
+    if (!companyKey) return state.contacts;
+    return state.contacts.map((c) => {
+      const org = c.parentId ? rowById.get(c.parentId) : undefined;
+      return { ...c, cells: { ...c.cells, [ORG_KEY]: org ? org.cells[companyKey] ?? null : null } };
+    });
+  }, [onContacts, state.contacts, rowById, schema]);
+  const filteredContacts = useMemo(
+    () => sortRows(q ? contactRows.filter((r) => cellsHit(r.cells, q)) : contactRows, contactSort, contactGridSchema, stages),
+    [contactRows, q, contactSort, contactGridSchema, stages],
+  );
   // A screened-out prospect's people are greyed out and read-only, as it is.
   const isContactLocked = useCallback((r: Row) => {
     const org = r.parentId ? rowById.get(r.parentId) : undefined;
     return !!org && isScreened(org, schema);
   }, [rowById, schema]);
-  const selectedContactRows = useMemo(() => state.contacts.filter((c) => selectedContacts.has(c.id)), [state.contacts, selectedContacts]);
+  const selectedContactRows = useMemo(
+    () => (onContacts && selectedContacts.size ? state.contacts.filter((c) => selectedContacts.has(c.id)) : NO_ROWS),
+    [onContacts, state.contacts, selectedContacts],
+  );
   const idFixed = useMemo(() => new Set([schema.idKey].filter((k): k is string => !!k)), [schema.idKey]);
 
   // Selection only ever refers to rows that still exist. It may mix prospects in play with
@@ -435,7 +446,9 @@ function CampaignView({ state }: { state: CampaignState }) {
             <EmptyContacts />
           ) : (
             <>
+              {/* Keyed apart from the Prospects grid: its active cell and scroll are about other rows. */}
               <Grid
+                key="contacts"
                 columns={contactColumns}
                 rows={filteredContacts}
                 schema={contactGridSchema}
@@ -471,6 +484,7 @@ function CampaignView({ state }: { state: CampaignState }) {
                 contactsOf={contactsOf} onOpenContact={openContact} pending={pendingKeys} />
             ) : (
             <Grid
+              key="prospects"
               ref={grid}
               columns={columns}
               rows={filtered}
@@ -526,10 +540,10 @@ function CampaignView({ state }: { state: CampaignState }) {
         beforeRemove={state.flush} onRemoved={() => void navigate("/")} />
       <ConsentDialog open={!!enrich.needsConsent} onConfirm={() => enrich.needsConsent?.confirm()} onCancel={() => enrich.needsConsent?.cancel()} />
       {onContacts ? (
-        <ColumnsDialog open={showColumns} onClose={() => setShowColumns(false)} kind="contacts" schema={contactSchema(schema)} inSheet={inSheet} usedKeys={usedKeys}
+        <ColumnsDialog key="contacts" open={showColumns} onClose={() => setShowColumns(false)} kind="contacts" schema={contactSchema(schema)} inSheet={inSheet} usedKeys={usedKeys}
           onSave={(s) => state.setSchema({ ...schema, contacts: { ...contactSchema(schema), columns: s.columns } })} />
       ) : (
-        <ColumnsDialog open={showColumns} onClose={() => setShowColumns(false)} kind="prospects" schema={schema} inSheet={inSheet} usedKeys={usedKeys} onSave={(s) => state.setSchema(s)} />
+        <ColumnsDialog key="prospects" open={showColumns} onClose={() => setShowColumns(false)} kind="prospects" schema={schema} inSheet={inSheet} usedKeys={usedKeys} onSave={(s) => state.setSchema(s)} />
       )}
     </div>
   );
@@ -566,47 +580,52 @@ function SaveIndicator({ state }: { state: CampaignState }) {
   return <span>Saved on this computer</span>;
 }
 
-/** Prospects or their contacts: the two lists of the campaign, as the workbook's two tabs. */
-function TabSwitch({ tab, onChange, prospects, contacts }: { tab: Tab; onChange: (t: Tab) => void; prospects: number; contacts: number }) {
-  const opt = (t: Tab, icon: ReactNode, label: string, count: number) => (
-    <button
-      role="tab"
-      aria-selected={tab === t}
-      onClick={() => onChange(t)}
-      className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition",
-        tab === t ? "bg-white text-ink shadow-[0_1px_2px_rgba(23,22,29,0.12)]" : "text-ink-faint hover:text-ink",
-      )}
-    >
-      {icon} {label} <span className="opacity-60 tabular-nums">{count}</span>
-    </button>
-  );
+/** A row of buttons of which one is on: the tab switch and the view toggle. */
+function Segmented<T extends string>({ value, onChange, options, tabs }: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; icon: ReactNode; label: string; count?: number; title?: string }[];
+  /** Tabs (with their ARIA roles), rather than a view setting. */
+  tabs?: boolean;
+}) {
   return (
-    <div role="tablist" className="flex rounded-lg bg-zinc-200/60 p-0.5">
-      {opt("prospects", <Building2 size={13} />, "Prospects", prospects)}
-      {opt("contacts", <Users size={13} />, "Contacts", contacts)}
+    <div role={tabs ? "tablist" : undefined} className="flex rounded-lg bg-zinc-200/60 p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          role={tabs ? "tab" : undefined}
+          aria-selected={tabs ? value === o.value : undefined}
+          aria-pressed={tabs ? undefined : value === o.value}
+          title={o.title}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition",
+            value === o.value ? "bg-white text-ink shadow-[0_1px_2px_rgba(23,22,29,0.12)]" : "text-ink-faint hover:text-ink",
+          )}
+        >
+          {o.icon} {o.label}{o.count !== undefined && <span className="opacity-60 tabular-nums">{o.count}</span>}
+        </button>
+      ))}
     </div>
   );
 }
 
-function ViewToggle({ view, onChange }: { view: "table" | "reading"; onChange: (v: "table" | "reading") => void }) {
-  const opt = (v: "table" | "reading", icon: ReactNode, label: string) => (
-    <button
-      onClick={() => onChange(v)}
-      title={`${label} view`}
-      className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition",
-        view === v ? "bg-white text-ink shadow-[0_1px_2px_rgba(23,22,29,0.12)]" : "text-ink-faint hover:text-ink",
-      )}
-    >
-      {icon} {label}
-    </button>
-  );
+/** Prospects or their contacts: the two lists of the campaign, as the workbook's two tabs. */
+function TabSwitch({ tab, onChange, prospects, contacts }: { tab: Tab; onChange: (t: Tab) => void; prospects: number; contacts: number }) {
   return (
-    <div className="flex rounded-lg bg-zinc-200/60 p-0.5">
-      {opt("table", <Table2 size={13} />, "Table")}
-      {opt("reading", <Rows3 size={13} />, "Reading")}
-    </div>
+    <Segmented tabs value={tab} onChange={onChange} options={[
+      { value: "prospects", icon: <Building2 size={13} />, label: "Prospects", count: prospects },
+      { value: "contacts", icon: <Users size={13} />, label: "Contacts", count: contacts },
+    ]} />
+  );
+}
+
+function ViewToggle({ view, onChange }: { view: "table" | "reading"; onChange: (v: "table" | "reading") => void }) {
+  return (
+    <Segmented value={view} onChange={onChange} options={[
+      { value: "table", icon: <Table2 size={13} />, label: "Table", title: "Table view" },
+      { value: "reading", icon: <Rows3 size={13} />, label: "Reading", title: "Reading view" },
+    ]} />
   );
 }
 

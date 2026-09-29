@@ -10,7 +10,7 @@
  */
 import { Eye, EyeOff, Lock, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { makeKey } from "../../../shared/schema";
+import { EMPLOYEES_HEADER, isEmployeesHeader, makeKey } from "../../../shared/schema";
 import { COLUMN_TYPES, type CampaignSchema, type Column, type ColumnType, type ContactSchema } from "../../../shared/types";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
@@ -47,20 +47,26 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
   // Their type is what makes them work: a dropdown of stages or contact types, a box, an ID.
   const fixedType = new Set([schema.statusKey, schema.screenedKey, schema.idKey, schema.typeKey, schema.primaryKey].filter(Boolean));
 
+  // A company's Staff, Headcount or Size is its "# Employees", a number.
+  const employees = (header: string) => kind === "prospects" && isEmployeesHeader(header);
+  const tidy = (c: Column): Column => {
+    const header = c.header.trim() || c.header;
+    return employees(header) ? { ...c, header: EMPLOYEES_HEADER, type: "number", options: undefined } : { ...c, header };
+  };
   const patch = (key: string, p: Partial<Column>) => setCols((cs) => cs.map((c) => (c.key === key ? { ...c, ...p } : c)));
   const add = () => {
     const header = newHeader.trim();
     if (!header) return;
     // Not the key of a column deleted just now, or of one whose values the rows still hold.
     const key = makeKey(header, new Set([...cols.map((c) => c.key), ...schema.columns.map((c) => c.key), ...usedKeys]));
-    setCols((cs) => [...cs, { key, header, type: newType, origin: "user", options: newType === "select" ? [] : undefined }]);
+    setCols((cs) => [...cs, tidy({ key, header, type: newType, origin: "user", options: newType === "select" ? [] : undefined })]);
     setNewHeader("");
   };
   const save = () => {
-    onSave({ ...schema, columns: cols.map((c) => ({ ...c, header: c.header.trim() || c.header })) });
+    onSave({ ...schema, columns: cols.map(tidy) });
     onClose();
   };
-  const dupes = new Set(cols.map((c) => c.header.trim().toLowerCase()).filter((h, i, a) => a.indexOf(h) !== i));
+  const dupes = new Set(cols.map((c) => tidy(c).header.toLowerCase()).filter((h, i, a) => a.indexOf(h) !== i));
 
   return (
     <Modal
@@ -90,7 +96,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
           <tbody>
             {cols.map((c) => {
               const locked = inSheet.has(c.key) || roleKeys.has(c.key);
-              const dup = dupes.has(c.header.trim().toLowerCase());
+              const dup = dupes.has(tidy(c).header.toLowerCase());
               return (
                 <tr key={c.key} className={cn("border-t border-line", c.hidden && "opacity-55")}>
                   <td className="py-1.5">

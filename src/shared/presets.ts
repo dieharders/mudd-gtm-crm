@@ -9,7 +9,7 @@
  */
 import { isSourcesColumn } from "./ai";
 import { norm } from "./merge";
-import { contactSchema, HOOK_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
+import { contactSchema, EMPLOYEES_HEADER, EMPLOYEES_HEADERS, HOOK_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
 import type { CampaignSchema, Column, ColumnType, Row } from "./types";
 
 export interface PresetOutput {
@@ -44,7 +44,7 @@ export const PRESETS: Preset[] = [
       "Research this company. Explain what they do in plain language, estimate their headcount, and find their official website.",
     outputs: [
       { header: "Company summary", aliases: ["summary", "description", "about", "focus", "focuscerts"], type: "longtext", hint: "One or two plain sentences on what they sell and to whom." },
-      { header: "Employees", aliases: ["staff", "headcount", "employees", "size", "companysize"], type: "text", hint: 'A number or range, e.g. "~40" or "50-100".' },
+      { header: EMPLOYEES_HEADER, aliases: EMPLOYEES_HEADERS, type: "number", hint: "Your best estimate as one whole number, e.g. 40." },
       { header: "Website", aliases: ["website", "url", "domain", "site"], type: "url", hint: "The official homepage URL." },
     ],
   },

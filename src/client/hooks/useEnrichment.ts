@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { applyRunRow, mergeSources, sourcesColumn, type CampaignEvent, type EnrichRun, type IntroOptions, type Recipe, type Suggestion } from "../../shared/ai";
 import { columnOf } from "../../shared/schema";
-import { isEmptyContact } from "../../shared/values";
+import { contactLabel, isEmptyContact } from "../../shared/values";
 import type { CellEdit } from "../../shared/types";
 import { api, ApiError, type RecipeDraft } from "../lib/api";
 import type { CampaignState } from "./useCampaign";
@@ -98,17 +98,22 @@ export function useEnrichment(state: CampaignState) {
     if (!campaign || !list.length) return;
     const schema = campaign.schema;
     const sourcesCol = sourcesColumn(schema);
+    const nameKey = schema.contacts?.nameKey;
+    // Names accepted in this same batch: a contact a run made is still unnamed until then.
+    const names = new Map(list.filter((s) => s.key === nameKey).map((s) => [s.rowId, s.value]));
     const edits: CellEdit[] = [];
     const sourcesByRow = new Map<string, string | null>();
     for (const s of list) {
       edits.push({ rowId: s.rowId, key: s.key, value: s.value });
-      if (sourcesCol && s.sources.length) {
-        // A contact's finding: its sources go on its prospect, where the column is.
-        const orgId = state.rowById.get(s.rowId)?.parentId ?? s.rowId;
-        const row = state.rowById.get(orgId);
-        const cur = sourcesByRow.has(orgId) ? sourcesByRow.get(orgId)! : ((row?.cells[sourcesCol.key] as string | undefined) ?? null);
+      const found = state.rowById.get(s.rowId);
+      if (sourcesCol && s.sources.length && found) {
+        // A contact's finding: its sources go on its prospect, where the column is, under the
+        // person's name, so each of its people's sources can be told apart.
+        const orgId = found.parentId ?? found.id;
+        const cur = sourcesByRow.has(orgId) ? sourcesByRow.get(orgId)! : ((state.rowById.get(orgId)?.cells[sourcesCol.key] as string | undefined) ?? null);
         const header = columnOf(schema, s.key)?.header ?? s.key;
-        sourcesByRow.set(orgId, mergeSources(cur, header, s.sources));
+        const named = nameKey && names.has(found.id) && !found.cells[nameKey] ? { ...found.cells, [nameKey]: names.get(found.id)! } : found.cells;
+        sourcesByRow.set(orgId, mergeSources(cur, found.parentId ? `${contactLabel({ cells: named }, schema)} · ${header}` : header, s.sources));
       }
     }
     if (sourcesCol) for (const [rowId, v] of sourcesByRow) edits.push({ rowId, key: sourcesCol.key, value: v });
@@ -123,7 +128,8 @@ export function useEnrichment(state: CampaignState) {
     const ids = new Set(list.map((s) => s.id));
     setSuggestions((prev) => prev.filter((s) => !ids.has(s.id)));
     // A contact a run made for someone it found is empty until accepted: with every finding
-    // for it rejected, it goes too (one undo step, like any delete).
+    // for it rejected, it goes too (one undo step, like any delete). Only such a contact is both
+    // empty and has findings: a run researches no empty contact of the user's (researchedContacts).
     const schema = campaign?.schema;
     if (schema) {
       const waiting = new Set(suggestions.filter((s) => !ids.has(s.id)).map((s) => s.rowId));

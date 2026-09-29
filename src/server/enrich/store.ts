@@ -93,6 +93,17 @@ export function sourceOfValue(campaignId: string, rowId: string, key: string, va
   return null;
 }
 
+/** The values waiting for review in one column of these rows: row id → the newest one. */
+export function pendingValues(campaignId: string, rowIds: string[], key: string): Map<string, CellValue> {
+  const out = new Map<string, CellValue>();
+  if (!rowIds.length) return out;
+  const rows = getDb()
+    .query("SELECT row_id, json FROM suggestions WHERE campaign_id = ? AND status = 'pending' AND row_id IN (SELECT value FROM json_each(?)) AND json_extract(json, '$.key') = ? ORDER BY created_at")
+    .all(campaignId, JSON.stringify(rowIds), key) as { row_id: string; json: string }[];
+  for (const r of rows) out.set(r.row_id, (JSON.parse(r.json) as Suggestion).value);
+  return out;
+}
+
 /** A newer suggestion for the same cell replaces an older one still waiting for review. */
 export function supersedePending(campaignId: string, rowId: string, key: string): void {
   getDb()

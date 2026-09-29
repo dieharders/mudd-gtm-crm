@@ -2,6 +2,7 @@ import { Check, Copy, LayoutList } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
+import { genericSchema } from "../../../shared/schema";
 import type { CampaignSummary } from "../../../shared/types";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
@@ -9,11 +10,15 @@ import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { fire } from "../../lib/fire";
 
-// What genericSchema() makes: the company's columns, and each of its contacts'.
-const GENERIC = {
-  Prospect: ["Company", "Rank", "Type", "Location", "Website", "Status", "Next step", "Next date", "Meeting URL", "Meeting at", "Hook", "Notes", "Source", "Intro message", "Screened out", "Screened reason"],
-  Contacts: ["Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Notes"],
-};
+// What genericSchema() makes, read from it: the company's columns (not the hidden ID), and each
+// of its contacts'.
+const GENERIC = (() => {
+  const s = genericSchema();
+  return {
+    Prospect: s.columns.filter((c) => !c.hidden).map((c) => c.header),
+    Contacts: (s.contacts?.columns ?? []).map((c) => c.header),
+  };
+})();
 
 export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean; onClose: () => void; campaigns: CampaignSummary[] }) {
   const navigate = useNavigate();

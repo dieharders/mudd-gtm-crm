@@ -50,15 +50,19 @@ export function RemoveCampaignDialog({ campaign, onClose, beforeRemove, onRemove
   };
 
   const file = campaign?.sourcePath ? baseName(campaign.sourcePath) : null;
+  // Once started it can't be called back: closing would only hide a removal still going ahead.
+  const close = () => {
+    if (!busy) onClose();
+  };
   return (
     <Modal
       open={!!campaign}
-      onClose={onClose}
+      onClose={close}
       title={`Remove ${campaign?.name ?? ""} from Mudd?`}
       subtitle="No file is deleted: only Mudd's copy of the campaign goes."
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" disabled={busy} onClick={close}>Cancel</Button>
           <Button variant="danger" disabled={busy} onClick={() => fire(remove())}><Trash2 size={15} /> Remove from Mudd</Button>
         </>
       }

@@ -162,6 +162,10 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
         const n = c.skippedContacts;
         toast(`${n} contact${n === 1 ? "" : "s"} matched no prospect in ${prospects}, and stay${n === 1 ? "s" : ""} in the file as ${n === 1 ? "it is" : "they are"}.`, { icon: "⚠️" });
       }
+      if (c.mismatchedContacts) {
+        const n = c.mismatchedContacts;
+        toast(`${n} contact${n === 1 ? "'s" : "s'"} Company differs from the prospect ${n === 1 ? "its" : "their"} Prospect ID points to. They were linked by ID: check the IDs in ${prospects} still sit on the right rows.`, { icon: "⚠️", duration: 10_000 });
+      }
       onClose();
       void navigate(`/c/${c.id}`);
     } catch (err) {

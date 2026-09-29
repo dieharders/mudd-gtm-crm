@@ -1,7 +1,7 @@
 /** API routes for AI settings, recipes, enrichment runs, suggestions and the event stream. */
 import type { AiSettings, CampaignEvent, IntroOptions, ProviderId, RecipeOutput, RunKind, SuggestionStatus } from "../shared/ai";
 import { PROVIDER_IDS } from "../shared/ai";
-import { allColumns, columnOf, makeKey, typeFromHeader } from "../shared/schema";
+import { allColumns, columnOf, EMPLOYEES_HEADER, isEmployeesHeader, makeKey, typeFromHeader } from "../shared/schema";
 import type { CampaignSchema, ColumnType } from "../shared/types";
 import { openSignIn, providerStatus } from "./ai";
 import { getAiSettings, updateAiSettings } from "./ai/settings";
@@ -38,13 +38,15 @@ function resolveOutputs(campaignId: string, outputs: OutputInput[], recipeId: st
   const newKey = (header: string) => makeKey(header, (taken ??= new Set([...allColumns(schema).map((col) => col.key), ...db.allCellKeys(campaignId)])));
   const resolved: RecipeOutput[] = [];
   for (const o of outputs) {
-    const header = o.header.trim();
+    const employees = !o.contact && isEmployeesHeader(o.header);
+    const header = employees ? EMPLOYEES_HEADER : o.header.trim();
     if (!header) continue;
     const pool = o.contact && contacts ? contacts.columns : schema.columns;
     let col = o.key ? columnOf(schema, o.key) : undefined;
-    col ??= pool.find((x) => x.header.toLowerCase() === header.toLowerCase());
-    // The ID is Mudd's own: nothing is researched into it.
-    if (col && col.key === schema.idKey) continue;
+    col ??= pool.find((x) => x.header.toLowerCase() === header.toLowerCase() || (employees && isEmployeesHeader(x.header)));
+    // The ID is Mudd's own, and the Primary box is the user's pick (one per prospect): nothing
+    // is researched into either.
+    if (col && (col.key === schema.idKey || col.key === schema.contacts?.primaryKey)) continue;
     if (!col) {
       col = { key: newKey(header), header, type: o.type ?? guessType(header, o.hint), origin: "enrichment", recipeId, width: 220, ...(o.options?.length ? { options: o.options } : {}) };
       pool.push(col);

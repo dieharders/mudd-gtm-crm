@@ -9,9 +9,9 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { presetTargets, PRESETS, type Preset } from "../../../shared/presets";
 import { isSourcesColumn, PROVIDERS, recipeMode, type EnrichRun, type Recipe } from "../../../shared/ai";
-import { allColumns, columnOf, contactSchema, isContactKey, typeFromHeader } from "../../../shared/schema";
-import { COLUMN_TYPES, isScreened, type CampaignSchema, type ColumnType, type Row } from "../../../shared/types";
-import { isChannel, primaryOf, prospectCells } from "../../../shared/values";
+import { allColumns, columnOf, contactSchema, typeFromHeader } from "../../../shared/schema";
+import { COLUMN_TYPES, isScreened, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../../shared/types";
+import { primaryOf, researchedContacts } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
@@ -261,7 +261,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
           {/* main */}
           <div className="min-w-0 flex-1 overflow-y-auto p-5 scroll-thin">
             {sel?.kind === "run" && shownRun ? (
-              <RunProgress run={shownRun} rows={state.rows} schema={schema} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
+              <RunProgress run={shownRun} rows={state.rows} schema={schema} contactsOf={state.contactsOf} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
                 pending={enrich.suggestions.filter((s) => s.runId === shownRun.id).length} onOpenRow={onOpenRow} />
             ) : draft && (sel?.kind === "recipe" || sel?.kind === "draft") ? (
               <div className="space-y-5">
@@ -290,7 +290,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                   busy={!!recipe && enrich.activeRuns.some((x) => x.recipeId === recipe.id)}
                 />
                 {shownRun && (
-                  <RunProgress run={shownRun} rows={state.rows} schema={schema} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
+                  <RunProgress run={shownRun} rows={state.rows} schema={schema} contactsOf={state.contactsOf} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
                     pending={enrich.suggestions.filter((s) => s.runId === shownRun.id).length} onOpenRow={onOpenRow} />
                 )}
               </div>
@@ -313,7 +313,7 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
   // The primary contact's columns go along as context too.
   const inputCols = allColumns(schema).filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
   const orgTargets = schema.columns.filter((c) => !isSourcesColumn(c) && c.key !== schema.idKey);
-  const contactTargets = contactSchema(schema).columns;
+  const contactTargets = contactSchema(schema).columns.filter((c) => c.key !== schema.contacts?.primaryKey);
   const [showInputs, setShowInputs] = useState(draft.inputKeys.length > 0);
   const setOutput = (i: number, patch: Partial<OutputDraft>) => onChange({ outputs: draft.outputs.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
 
@@ -422,28 +422,39 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
   busy: boolean;
 }) {
   // Screened-out prospects are left out of every scope: the run would only skip them.
-  const prospects = rows.filter((r) => !isScreened(r, schema));
+  const prospects = useMemo(() => rows.filter((r) => !isScreened(r, schema)), [rows, schema]);
   const inPlay = new Set(prospects.map((r) => r.id));
   const selected = selectedIds.filter((id) => inPlay.has(id));
   const filtered = filteredIds.filter((id) => inPlay.has(id));
-  const targets = draft.outputs.filter((o) => !isNew(o.target)).map((o) => o.target);
-  const hasNew = draft.outputs.some((o) => isNew(o.target) && o.header.trim());
-  // Filling in people's details: one turn per person (channels aren't researched).
-  const perContact = recipeMode(draft.outputs.map((o) => ({ key: isNew(o.target) ? undefined : o.target, contact: o.target === NEW_CONTACT })), schema) === "contacts";
-  const people = (orgId: string) => contactsOf(orgId).filter((c) => !isChannel(c, schema));
-  const blank = (v: unknown) => v === undefined || v === null || v === "";
-  const missing = prospects.filter((r) => {
-    if (perContact) {
-      const them = people(r.id);
-      if (!them.length) return false;
+  // The outputs as Run saves them (an unnamed new column is dropped), so the mode is the run's.
+  const outputs = toApi(draft).outputs;
+  const targetList = outputs.flatMap((o) => (o.key ? [o.key] : [])).join("\u0000");
+  const hasNew = outputs.some((o) => !o.key);
+  // Filling in people's details: one turn per person the run researches (see researchedContacts).
+  const perContact = recipeMode(outputs, schema) === "contacts";
+  // Worked out once per change to the rows or the outputs, not on every keystroke in the recipe.
+  const people = useMemo(
+    () => (perContact ? new Map(prospects.map((r) => [r.id, researchedContacts(contactsOf(r.id), schema)])) : null),
+    [perContact, prospects, contactsOf, schema],
+  );
+  const missing = useMemo(() => {
+    const targets = targetList ? targetList.split("\u0000") : [];
+    const contactKeys = new Set(contactSchema(schema).columns.map((c) => c.key));
+    const blank = (v: CellValue | undefined) => v === undefined || v === null || v === "";
+    const ofContacts = targets.some((k) => contactKeys.has(k));
+    return prospects.filter((r) => {
+      if (people) {
+        const them = people.get(r.id) ?? [];
+        if (!them.length) return false;
+        if (hasNew) return true;
+        return targets.some((k) => (contactKeys.has(k) ? them.some((c) => blank(c.cells[k])) : blank(r.cells[k])));
+      }
       if (hasNew) return true;
-      return targets.some((k) => (isContactKey(schema, k) ? them.some((c) => blank(c.cells[k])) : blank(r.cells[k])));
-    }
-    if (hasNew) return true;
-    // A contact column is missing when the prospect's primary contact lacks it (or it has none).
-    const cells = prospectCells(r, primaryOf(contactsOf(r.id), schema));
-    return targets.some((k) => blank(cells[k]));
-  });
+      // A contact column is missing when the prospect's primary contact lacks it (or it has none).
+      const primary = ofContacts ? primaryOf(contactsOf(r.id), schema) : undefined;
+      return targets.some((k) => blank(contactKeys.has(k) ? primary?.cells[k] : r.cells[k]));
+    });
+  }, [people, prospects, hasNew, targetList, schema, contactsOf]);
   const scopes = [
     ...(selected.length ? [{ id: "selected", label: `Selected rows`, ids: selected }] : []),
     { id: "missing", label: "Prospects missing these fields", ids: missing.map((r) => r.id) },
@@ -456,12 +467,15 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
   const [starting, setStarting] = useState(false);
   const chosen = scopes.find((s) => s.id === scope) ?? scopes[0]!;
   const n = chosen.ids.length;
-  const withPeople = perContact ? chosen.ids.filter((id) => people(id).length).length : n;
-  const turns = perContact ? chosen.ids.reduce((t, id) => t + people(id).length, 0) : n;
+  const researched = people ? chosen.ids.filter((id) => people.get(id)?.length) : chosen.ids;
+  const withPeople = researched.length;
+  const turns = people ? chosen.ids.reduce((t, id) => t + (people.get(id)?.length ?? 0), 0) : n;
+  // A test is of prospects the run researches, not of ones it would skip for having no one.
+  const testIds = researched.slice(0, 3);
   const minutes = Math.max(1, Math.round((turns * 25) / 60 / concurrency));
   const go = async (test: boolean) => {
     setStarting(true);
-    await onRun(test ? chosen.ids.slice(0, 3) : chosen.ids, { test, autoFill, concurrency });
+    await onRun(test ? testIds : chosen.ids, { test, autoFill, concurrency });
     setStarting(false);
   };
 
@@ -495,7 +509,7 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
           <Button variant="primary" onClick={onSetup}>Set up AI first</Button>
         ) : (
           <>
-            <Button onClick={() => fire(go(true))} disabled={!n || busy || starting}><FlaskConical size={14} /> Test on {Math.min(3, n)} row{Math.min(3, n) === 1 ? "" : "s"}</Button>
+            <Button onClick={() => fire(go(true))} disabled={!testIds.length || busy || starting}><FlaskConical size={14} /> Test on {testIds.length} row{testIds.length === 1 ? "" : "s"}</Button>
             <Button variant="primary" onClick={() => fire(go(false))} disabled={!n || busy || starting}><Rocket size={14} /> Run on {n} row{n === 1 ? "" : "s"}</Button>
           </>
         )}

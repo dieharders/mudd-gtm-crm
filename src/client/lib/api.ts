@@ -70,9 +70,12 @@ export const api = {
     return call<InspectResult>("POST", "/api/import/inspect", fd);
   },
   inspectPath: (path: string) => call<InspectResult>("POST", "/api/import/inspect", { path }),
-  /** `skippedContacts`: Contacts-tab rows whose prospect isn't in the imported tab. */
+  /**
+   * `skippedContacts`: Contacts-tab rows whose prospect isn't in the imported tab.
+   * `mismatchedContacts`: ones linked by Prospect ID whose Company names another company.
+   */
   importFile: (token: string, prospects: string, name?: string) =>
-    call<Campaign & { skippedContacts?: number }>("POST", "/api/import", { token, prospects, name }),
+    call<Campaign & { skippedContacts?: number; mismatchedContacts?: number }>("POST", "/api/import", { token, prospects, name }),
 
   /**
    * Save file: write the campaign over the file it was imported from, or, when Mudd does not know

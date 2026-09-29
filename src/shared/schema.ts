@@ -4,15 +4,11 @@
  * header alone says about a column's type.
  */
 import { norm } from "./merge";
-import { DEAD, DEFAULT_STAGES, type CampaignSchema, type Column, type ColumnType, type ContactSchema } from "./types";
+import { CHANNEL, DEAD, DEFAULT_STAGES, ORG_KEY, type CampaignSchema, type Column, type ColumnType, type ContactSchema } from "./types";
 
 // Keys are used as plain object keys on a row's cells, so none may shadow Object.prototype
 // ("constructor" would read back as a function on every row that lacks it).
 const RESERVED = new Set(Object.getOwnPropertyNames(Object.prototype));
-
-export function isReservedKey(key: string): boolean {
-  return RESERVED.has(key);
-}
 
 /** A column key from its header, unique among `taken` (which it joins). */
 export function makeKey(header: string, taken: Set<string>): string {
@@ -38,6 +34,14 @@ export const HOOK_HEADERS = ["hook", "personalization", "icebreaker", "angle"];
 export const hookColumns = (schema: CampaignSchema): Column[] =>
   HOOK_HEADERS.flatMap((n) => schema.columns.filter((c) => norm(c.header) === n));
 
+/**
+ * How many people a company employs, under any of its names (Staff, Headcount, Size…): always
+ * one Number column, called "# Employees".
+ */
+export const EMPLOYEES_HEADER = "# Employees";
+export const EMPLOYEES_HEADERS = ["employees", "staff", "headcount", "size", "companysize", "employeecount", "numemployees", "numberofemployees"];
+export const isEmployeesHeader = (header: string) => EMPLOYEES_HEADERS.includes(norm(header));
+
 /** A contact's job title. "Title" is not among them: see TITLE_HEADER. */
 export const ROLE_HEADERS = ["role", "jobtitle", "position", "contactrole", "decisionmakertitle"];
 /** How a contact is addressed: Mr., Dr., Col. */
@@ -59,28 +63,31 @@ export const isHonorific = (v: string) => HONORIFICS.has(v.toLowerCase().replace
 
 // ---------- prospect IDs ----------
 
-/** A prospect's ID column: what the Contacts tab points at. */
-export const ID_HEADERS = ["id", "prospectid", "orgid", "companyid", "accountid"];
-/** The Contacts tab's column naming each person's prospect by that ID. */
-export const PROSPECT_ID_HEADERS = ["prospectid", "orgid", "companyid", "accountid"];
+/** The Prospects tab's ID column, as Mudd writes it: "ID". */
+export const ID_HEADER = "id";
+/** The Contacts tab's column naming each person's prospect by that ID: "Prospect ID". */
+export const PROSPECT_ID_HEADER = "prospectid";
 
 /**
- * The next prospect ID: P-001, P-002… after the highest one taken. The P- keeps Excel from
- * reading it as a number, and it is short enough to type into the Contacts tab by hand.
+ * Prospect IDs after the highest one taken: P-001, P-002… The P- keeps Excel from reading it as
+ * a number, and it is short enough to type into the Contacts tab by hand. Each call of the
+ * returned function gives the next one, so a whole sheet is numbered in one pass.
  */
-export function newProspectId(taken: Iterable<string>): string {
+export function prospectIds(taken: Iterable<string>): () => string {
   let max = 0;
   for (const t of taken) {
     const m = /^P-(\d+)$/i.exec(t.trim());
     if (m) max = Math.max(max, Number(m[1]));
   }
-  return `P-${String(max + 1).padStart(3, "0")}`;
+  return () => `P-${String(++max).padStart(3, "0")}`;
 }
+
+/** The next prospect ID after the highest one taken. */
+export const newProspectId = (taken: Iterable<string>): string => prospectIds(taken)();
 
 // ---------- contacts ----------
 
-/** A contact who is no one person: a main line, a general inbox, a program desk. */
-export const CHANNEL = "Channel";
+export { CHANNEL };
 
 /** The kinds of stakeholder a contact can be, and Channel for a way in that isn't a person. */
 export const CONTACT_TYPES = ["Economic Buyer", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", CHANNEL];
@@ -96,9 +103,26 @@ export const CONTACT_TYPE_HINTS: Record<string, string> = {
   [CHANNEL]: "Not a person: a main line, a general inbox or a program desk. Never greeted by name, and not researched as a person.",
 };
 
-const CONTACT_TYPE_HEADERS = ["contacttype", "type", "stakeholder", "stakeholdertype", "persona"];
+/**
+ * Only "Contact type": a Contacts tab's own "Type" or "Persona" column means something else
+ * (Mobile/Work, the user's own personas), and turning it into this dropdown would make Excel
+ * reject its values.
+ */
+const CONTACT_TYPE_HEADER = "contacttype";
 /** "Primary contact" is a name, not this box. */
 const PRIMARY_HEADERS = ["primary", "isprimary"];
+
+/** A column made by Mudd: a key free among `taken` (which it joins), the type's width unless given. */
+function newColumn(taken: Set<string>, header: string, type: ColumnType, extra: Partial<Column> = {}): Column {
+  return { key: makeKey(header, taken), header, type, origin: "user", width: DEFAULT_WIDTH[type], ...extra };
+}
+
+/** The three contact columns Mudd relies on, as a new campaign has them and as import adds them. */
+const NAME_COLUMN = { header: "Name", type: "text", width: 180 } as const;
+const TYPE_COLUMN = { header: "Contact type", type: "select", width: 150 } as const;
+const PRIMARY_COLUMN = { header: "Primary", type: "checkbox", width: 90 } as const;
+const roleColumn = (taken: Set<string>, spec: { header: string; type: ColumnType; width: number }, extra: Partial<Column> = {}) =>
+  newColumn(taken, spec.header, spec.type, { width: spec.width, ...(spec.type === "select" ? { options: [...CONTACT_TYPES] } : {}), ...extra });
 
 const NO_CONTACTS: ContactSchema = { columns: [] };
 
@@ -114,6 +138,16 @@ export const columnOf = (schema: CampaignSchema, key: string): Column | undefine
 
 /** A key of one of the contact columns. */
 export const isContactKey = (schema: CampaignSchema, key: string) => !!schema.contacts?.columns.some((c) => c.key === key);
+
+/**
+ * The Company column the Contacts tab (in the workbook and in the app) shows beside each person,
+ * copied from their prospect. None when the prospects have no Company column: there is nothing
+ * to copy, and writing blanks would wipe the tab's own.
+ */
+export function orgColumn(schema: CampaignSchema): Column | null {
+  const company = schema.columns.find((c) => c.key === schema.companyKey);
+  return company ? { key: ORG_KEY, header: company.header, type: "text", width: company.width ?? 190 } : null;
+}
 
 const merged = new WeakMap<CampaignSchema, { cols: Column[]; contactCols: Column[] | undefined; n: number; view: CampaignSchema }>();
 
@@ -139,7 +173,7 @@ export function assignRoles(schema: CampaignSchema): void {
     schema.columns.find((c) => pred(norm(c.header), c))?.key;
   schema.statusKey ??= find((h) => h === "status" || h === "stage");
   schema.companyKey ??= COMPANY_HEADERS.map((n) => find((h) => h === n)).find(Boolean);
-  schema.idKey ??= ID_HEADERS.map((n) => find((h) => h === n)).find(Boolean);
+  schema.idKey ??= find((h) => h === ID_HEADER);
   schema.introKey ??= find((h) => h === "intromessage" || h === "intro" || h === "introductionmessage");
   schema.meetingUrlKey ??= find((h) => /^meeting(url|link)$/.test(h));
   schema.meetingAtKey ??= find((h) => /^meeting(at|date|time|datetime|when)$/.test(h));
@@ -185,20 +219,17 @@ export function ensureAppColumns(schema: CampaignSchema, extraTaken: Iterable<st
 
 /** Contact columns a new campaign starts with. */
 function defaultContactColumns(taken: Set<string>): Column[] {
-  const c = (header: string, type: ColumnType, extra: Partial<Column> = {}): Column => ({
-    key: makeKey(header, taken), header, type, origin: "user", width: DEFAULT_WIDTH[type], ...extra,
-  });
   return [
-    c("Name", "text", { width: 180 }),
-    c("Contact type", "select", { options: [...CONTACT_TYPES], width: 150 }),
-    c("Primary", "checkbox", { width: 90 }),
+    roleColumn(taken, NAME_COLUMN),
+    roleColumn(taken, TYPE_COLUMN),
+    roleColumn(taken, PRIMARY_COLUMN),
     // Text, not a dropdown: honorifics are an open list (Prof., Rev., Col.).
-    c("Title", "text", { width: 90 }),
-    c("Role", "text", { width: 200 }),
-    c("Email", "email"),
-    c("Phone", "phone"),
-    c("LinkedIn", "url"),
-    c("Notes", "longtext"),
+    newColumn(taken, "Title", "text", { width: 90 }),
+    newColumn(taken, "Role", "text", { width: 200 }),
+    newColumn(taken, "Email", "email"),
+    newColumn(taken, "Phone", "phone"),
+    newColumn(taken, "LinkedIn", "url"),
+    newColumn(taken, "Notes", "longtext"),
   ];
 }
 
@@ -207,14 +238,14 @@ function ensureContactColumns(schema: CampaignSchema, taken: Set<string>): void 
   const contacts = (schema.contacts ??= { columns: defaultContactColumns(taken) });
   const find = (names: string[]) => names.map((n) => contacts.columns.find((c) => norm(c.header) === n)).find(Boolean)?.key;
   const colOf = (key: string) => contacts.columns.find((c) => c.key === key)!;
-  const add = (header: string, type: ColumnType, extra: Partial<Column> = {}) => {
-    const col: Column = { key: makeKey(header, taken), header, type, origin: "mudd", width: DEFAULT_WIDTH[type], ...extra };
+  const add = (spec: Parameters<typeof roleColumn>[1]) => {
+    const col = roleColumn(taken, spec, { origin: "mudd" });
     contacts.columns.push(col);
     return col.key;
   };
-  contacts.nameKey ??= find(NAME_HEADERS) ?? add("Name", "text", { width: 180 });
-  contacts.typeKey ??= find(CONTACT_TYPE_HEADERS);
-  if (!contacts.typeKey) contacts.typeKey = add("Contact type", "select", { options: [...CONTACT_TYPES], width: 150 });
+  contacts.nameKey ??= find(NAME_HEADERS) ?? add(NAME_COLUMN);
+  contacts.typeKey ??= find([CONTACT_TYPE_HEADER]);
+  if (!contacts.typeKey) contacts.typeKey = add(TYPE_COLUMN);
   else {
     const type = colOf(contacts.typeKey);
     if (type.type !== "select" || !type.options?.length) {
@@ -223,7 +254,7 @@ function ensureContactColumns(schema: CampaignSchema, taken: Set<string>): void 
     }
   }
   contacts.primaryKey ??= find(PRIMARY_HEADERS);
-  if (!contacts.primaryKey) contacts.primaryKey = add("Primary", "checkbox", { width: 90 });
+  if (!contacts.primaryKey) contacts.primaryKey = add(PRIMARY_COLUMN);
   else colOf(contacts.primaryKey).type = "checkbox";
 }
 
@@ -240,6 +271,7 @@ export function typeFromHeader(header: string): { type: ColumnType; strong: bool
   if (h.includes("email") && !/source|status|verified|sent|opened|bounced|count/.test(h)) return { type: "email", strong: true };
   if (/phone|mobile|telephone|^tel$|^cell$/.test(h)) return { type: "phone", strong: true };
   if (/linkedin|website|url|link|domain/.test(h)) return { type: "url", strong: true };
+  if (isEmployeesHeader(header)) return { type: "number", strong: true };
   if (/notes?|hook|description|summary|why|reason|message|news|angle/.test(h)) return { type: "longtext", strong: false };
   return null;
 }
@@ -254,9 +286,7 @@ export const DEFAULT_WIDTH: Record<ColumnType, number> = {
 
 export function genericSchema(): CampaignSchema {
   const taken = new Set<string>();
-  const c = (header: string, type: ColumnType, extra: Partial<Column> = {}): Column => ({
-    key: makeKey(header, taken), header, type, origin: "user", width: DEFAULT_WIDTH[type], ...extra,
-  });
+  const c = (header: string, type: ColumnType, extra: Partial<Column> = {}) => newColumn(taken, header, type, extra);
   // The company's columns. Its people's come from ensureAppColumns (defaultContactColumns).
   const columns: Column[] = [
     c("ID", "text", { width: 90, hidden: true, origin: "mudd" }),
@@ -265,9 +295,10 @@ export function genericSchema(): CampaignSchema {
     c("Type", "text"),
     c("Location", "text"),
     c("Website", "url"),
+    c(EMPLOYEES_HEADER, "number"),
     c("Status", "select", { options: [...DEFAULT_STAGES, DEAD] }),
+    c("Last touch", "date"),
     c("Next step", "text", { width: 200 }),
-    c("Next date", "date"),
     c("Meeting URL", "url"),
     c("Meeting at", "datetime"),
     c("Hook", "longtext"),

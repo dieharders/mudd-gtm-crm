@@ -24,7 +24,7 @@
  */
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
-import { contactSchema } from "../shared/schema";
+import { contactSchema, orgColumn } from "../shared/schema";
 import { ORG_ID_KEY, ORG_KEY, type Campaign, type CampaignSchema, type CellValue, type Column, type Row, type SheetMeta, type Template } from "../shared/types";
 import { orderedContacts, parseFlag, sameValue } from "../shared/values";
 import { colLetter, hrefFor, numFmtFor, parseAppDate, toExcelValue, toNumber } from "./cells";
@@ -66,15 +66,16 @@ export async function exportCampaign(
 
 /**
  * The Contacts tab's columns: the prospect's ID (what the tab links by) and its company (to read
- * by), both from the prospect, then the contact's own.
+ * by, when the prospects have a Company column), both from the prospect, then the contact's own.
+ * A Company column the tab has that isn't among these is left as it is.
  */
-export function contactsTabSchema(schema: CampaignSchema): CampaignSchema {
+function contactsTabSchema(schema: CampaignSchema): CampaignSchema {
   const id = schema.columns.find((c) => c.key === schema.idKey);
-  const company = schema.columns.find((c) => c.key === schema.companyKey);
+  const org = orgColumn(schema);
   return {
     columns: [
       { key: ORG_ID_KEY, header: "Prospect ID", type: "text", width: id?.width ?? 90 },
-      { key: ORG_KEY, header: company?.header ?? "Company", type: "text", width: company?.width ?? 190 },
+      ...(org ? [org] : []),
       ...contactSchema(schema).columns,
     ],
   };

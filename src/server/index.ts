@@ -131,7 +131,7 @@ async function doImport(req: Request) {
     templates: imp.templates,
   });
   staged.delete(b.token);
-  return { ...campaign, skippedContacts: imp.skippedContacts };
+  return { ...campaign, skippedContacts: imp.skippedContacts, mismatchedContacts: imp.mismatchedContacts };
 }
 
 // ---------- Save file ----------

@@ -147,17 +147,24 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
     else setEditing({ r, c, initial });
   };
 
+  /** Make a row the one the keys act on (Space opens it), from its checkbox or open button. */
+  const pickRow = (r: number) => setActive({ r, c: active?.c ?? 0 });
+
   /**
-   * Make a row the one the keys act on (Space opens it), from its checkbox or open button, and
-   * give the keys back to the grid: that box or button keeps no focus of its own.
+   * A click anywhere in the grid leaves the keys with the grid: no control in it (a sort header,
+   * select-all, a row's box or open button, a cell's link) keeps focus from a click, which in
+   * Chromium would take the arrows, Enter and Space for itself. The cell being edited keeps its
+   * clicks, and so does the scrollbar.
    */
-  const pickRow = (r: number) => {
-    setActive({ r, c: active?.c ?? 0 });
+  const onMouseDownCapture = (e: React.MouseEvent) => {
+    if (editing || e.target === e.currentTarget) return;
+    e.preventDefault();
     scroller.current?.focus({ preventScroll: true });
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    // Keys pressed on a row's checkbox or open button are theirs (Space ticks the box).
+    // A control reached with Tab keeps its own keys (Space ticks a box); a click never leaves
+    // one focused (onMouseDownCapture).
     if (e.target !== e.currentTarget) return;
     if (editing || !active) return;
     const row = p.rows[active.r];
@@ -268,6 +275,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
     <div
       ref={scroller}
       tabIndex={0}
+      onMouseDownCapture={onMouseDownCapture}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
       className="relative h-full overflow-auto bg-white outline-none scroll-thin"
@@ -337,14 +345,12 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                     aria-label="Select row"
                     className="h-3.5 w-3.5 accent-brand-600"
                     checked={isSel}
-                    onMouseDown={(e) => e.preventDefault()}
                     onChange={() => toggleOne(row.id)}
                     // A click (not Space on the box) also picks the row, so Space then opens it.
                     onClick={(e) => e.detail > 0 && pickRow(vr.index)}
                   />
                   <button
                     className={cn("rounded-sm p-1 text-ink-faint hover:bg-brand-100 hover:text-brand-700", !isOpen && "opacity-0 group-hover/row:opacity-100")}
-                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       pickRow(vr.index);
                       p.onOpenRow(row.id);
@@ -375,9 +381,6 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                         if (editing && !isEditing) return;
                         if (e.button !== 0) return;
                         setActive({ r: vr.index, c: ci });
-                        // The keys go to the grid, whatever the engine does with a click (the
-                        // cell being edited keeps them).
-                        if (!isEditing) scroller.current?.focus({ preventScroll: true });
                       }}
                       onDoubleClick={() => startEdit(vr.index, ci)}
                     >
@@ -402,10 +405,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                               aria-checked={isChecked(row.cells[col.key])}
                               aria-label={col.header}
                               className="-ml-0.5 rounded-sm p-0.5 hover:bg-zinc-200/70"
-                              onClick={() => {
-                                startEdit(vr.index, ci);
-                                scroller.current?.focus({ preventScroll: true });
-                              }}
+                              onClick={() => startEdit(vr.index, ci)}
                               onDoubleClick={(e) => e.stopPropagation()}
                             >
                               {view}

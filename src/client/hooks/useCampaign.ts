@@ -36,11 +36,11 @@ const EDIT_DEBOUNCE = 350;
 const UNDO_LIMIT = 100;
 const NO_CONTACTS: Row[] = [];
 
-/** The next free prospect ID among these rows. */
+/** The next free prospect ID among these rows, and past the ones the workbook's Contacts tab reserves. */
 function nextId(rows: Row[], schema: CampaignSchema | undefined): Record<string, CellValue> {
   const key = schema?.idKey;
   if (!key) return {};
-  const taken: string[] = [];
+  const taken: string[] = [...(schema.reservedIds ?? [])];
   for (const r of rows) if (!r.parentId && r.cells[key] !== undefined && r.cells[key] !== null) taken.push(String(r.cells[key]));
   return { [key]: newProspectId(taken) };
 }
@@ -178,12 +178,11 @@ export function useCampaign(id: string) {
     return row;
   }, [enqueue, flushEdits, id, pushUndo]);
 
-  /** A new contact for a prospect. Its first one is the Primary contact. */
-  const addContact = useCallback((orgId: string, cells: Record<string, CellValue> = {}) => {
-    const primaryKey = campaignRef.current?.schema.contacts?.primaryKey;
-    const first = !rowsRef.current.some((r) => r.parentId === orgId);
-    return addRow(first && primaryKey ? { [primaryKey]: CHECKED, ...cells } : cells, orgId);
-  }, [addRow]);
+  /**
+   * A new contact for a prospect. Not ticked Primary: until someone is, primaryOf addresses the
+   * first person, so a channel added first never outranks the people added after it.
+   */
+  const addContact = useCallback((orgId: string, cells: Record<string, CellValue> = {}) => addRow(cells, orgId), [addRow]);
 
   const duplicateRow = useCallback((rowId: string) => {
     const src = rowsRef.current.find((r) => r.id === rowId);
@@ -210,7 +209,9 @@ export function useCampaign(id: string) {
     for (const r of rowsRef.current) if (r.parentId && drop.has(r.parentId)) drop.add(r.id);
     const gone = rowsRef.current.filter((r) => drop.has(r.id));
     if (!gone.length) return;
-    const named = gone.filter((r) => ids.includes(r.id)).length;
+    // The rows asked for, not the contacts that went with them. A Set: a select-all is 100k ids.
+    const asked = new Set(ids);
+    const named = label ? 0 : gone.reduce((n, r) => n + (asked.has(r.id) ? 1 : 0), 0);
     setRows((prev) => prev.filter((r) => !drop.has(r.id)));
     pushUndo({ kind: "delete", label: label ?? (named === 1 ? "Delete row" : `Delete ${named} rows`), rows: gone });
     flushEdits();
@@ -219,21 +220,25 @@ export function useCampaign(id: string) {
 
   /**
    * Edit contacts' cells. Ticking a contact Primary unticks the prospect's other contacts in the
-   * same step, so a prospect has one Primary contact at most.
+   * same step, so a prospect has one Primary contact at most: of several ticked in one batch (a
+   * pasted column), the last.
    */
   const editContacts = useCallback((edits: CellEdit[], label = "Edit contact") => {
     const primaryKey = campaignRef.current?.schema.contacts?.primaryKey;
-    if (!primaryKey) return edit(edits, label);
-    const byId = new Map(rowsRef.current.map((r) => [r.id, r]));
-    const out = [...edits];
-    const given = new Set(edits.map((e) => `${e.rowId}\u0000${e.key}`));
-    for (const e of edits) {
-      if (e.key !== primaryKey || !isChecked(e.value)) continue;
-      const parent = byId.get(e.rowId)?.parentId;
-      if (!parent) continue;
-      for (const r of rowsRef.current) {
-        if (r.parentId !== parent || r.id === e.rowId || !isChecked(r.cells[primaryKey]) || given.has(`${r.id}\u0000${primaryKey}`)) continue;
-        out.push({ rowId: r.id, key: primaryKey, value: null });
+    const ticks = primaryKey ? edits.filter((e) => e.key === primaryKey && isChecked(e.value)) : [];
+    if (!ticks.length) return edit(edits, label);
+    const { rowById, contactsByOrg } = viewsRef.current;
+    const keep = new Map<string, string>();
+    for (const e of ticks) {
+      const parent = rowById.get(e.rowId)?.parentId;
+      if (parent) keep.set(parent, e.rowId);
+    }
+    const kept = new Set(keep.values());
+    const out = edits.map((e) => (e.key === primaryKey && isChecked(e.value) && !kept.has(e.rowId) && rowById.get(e.rowId)?.parentId ? { ...e, value: null } : e));
+    const given = new Set(out.map((e) => `${e.rowId}\u0000${e.key}`));
+    for (const [parent, id] of keep) {
+      for (const c of contactsByOrg.get(parent) ?? []) {
+        if (c.id !== id && isChecked(c.cells[primaryKey!]) && !given.has(`${c.id}\u0000${primaryKey}`)) out.push({ rowId: c.id, key: primaryKey!, value: null });
       }
     }
     return edit(out, label);
@@ -370,16 +375,20 @@ export function useCampaign(id: string) {
     if (c) setCampaign({ ...c, sourcePath });
   }, []);
 
-  // The views of the one array: the prospects, the contacts, and each prospect's contacts. A
-  // prospect's list is the same array as before when its contacts are unchanged, so a card
-  // that shows them re-renders only when they change.
-  const prevByOrg = useRef(new Map<string, Row[]>());
+  // The views of the one array: the prospects, the contacts, and each prospect's contacts. Each
+  // list is the same array as before when its rows are unchanged, so an edit to a contact leaves
+  // the prospects (and everything sorted or counted from them) as they were, and a card that
+  // shows a prospect's contacts re-renders only when they change.
+  const prev = useRef({ prospects: NO_CONTACTS, contacts: NO_CONTACTS, byOrg: new Map<string, Row[]>() });
   const views = useMemo(() => {
+    const same = (a: Row[] | undefined, b: Row[]) => !!a && a.length === b.length && a.every((r, i) => r === b[i]);
     const sorted = [...rows].sort((a, b) => a.position - b.position);
-    const prospects: Row[] = [];
-    const contacts: Row[] = [];
+    let prospects: Row[] = [];
+    let contacts: Row[] = [];
     const lists = new Map<string, Row[]>();
+    const rowById = new Map<string, Row>();
     for (const r of sorted) {
+      rowById.set(r.id, r);
       if (!r.parentId) {
         prospects.push(r);
         continue;
@@ -391,12 +400,16 @@ export function useCampaign(id: string) {
     }
     const contactsByOrg = new Map<string, Row[]>();
     for (const [org, list] of lists) {
-      const prev = prevByOrg.current.get(org);
-      contactsByOrg.set(org, prev && prev.length === list.length && prev.every((r, i) => r === list[i]) ? prev : list);
+      const was = prev.current.byOrg.get(org);
+      contactsByOrg.set(org, same(was, list) ? was! : list);
     }
-    prevByOrg.current = contactsByOrg;
-    return { prospects, contacts, contactsByOrg, rowById: new Map(sorted.map((r) => [r.id, r])) };
+    if (same(prev.current.prospects, prospects)) prospects = prev.current.prospects;
+    if (same(prev.current.contacts, contacts)) contacts = prev.current.contacts;
+    prev.current = { prospects, contacts, byOrg: contactsByOrg };
+    return { prospects, contacts, contactsByOrg, rowById };
   }, [rows]);
+  const viewsRef = useRef(views);
+  viewsRef.current = views;
   const contactsOf = useCallback((orgId: string) => views.contactsByOrg.get(orgId) ?? NO_CONTACTS, [views]);
 
   return {

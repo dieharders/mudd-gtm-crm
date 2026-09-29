@@ -263,14 +263,16 @@ describe("runs", () => {
     };
     const sse = listen(id);
 
-    // No contacts yet: the person found is the first, and primary.
+    // No contacts yet: the person found is the first. Not ticked Primary: as the only person,
+    // they are the primary one anyway, until the user picks someone.
     expect((await run("Ann Lee", "CEO")).rows.r1).toMatchObject({ state: "done", found: 4 });
     const [ann, ...none] = db.contactsOf(id, "r1");
     expect(none).toHaveLength(0);
-    expect(ann!.cells).toEqual({ [k("Primary")]: CHECKED, [k("Name")]: "Ann Lee", [k("Role")]: "CEO", [k("LinkedIn")]: "https://linkedin.com/in/ann" });
+    expect(ann!.cells).toEqual({ [k("Name")]: "Ann Lee", [k("Role")]: "CEO", [k("LinkedIn")]: "https://linkedin.com/in/ann" });
     const org = db.getRow(id, "r1")!;
     expect(org.cells[k("Location")]).toBe("Austin");
-    expect(org.cells[sourcesKey]).toBe("Role: https://a.io\nLinkedIn: https://b.io\nLocation: https://c.io");
+    // A person's sources carry their name: a prospect's people each have their own.
+    expect(org.cells[sourcesKey]).toBe("Ann Lee · Role: https://a.io\nAnn Lee · LinkedIn: https://b.io\nLocation: https://c.io");
     // The page hears of the contact before the cells that fill it.
     await until(() => sse.events.some((e) => e.type === "cells"));
     const types = sse.events.map((e) => e.type);
@@ -286,9 +288,54 @@ describe("runs", () => {
     expect(bob!.cells).toEqual({ [k("Name")]: "Bob Ray", [k("Role")]: "CFO", [k("LinkedIn")]: "https://linkedin.com/in/bob" });
 
     // Ann again, however it is written: her contact, a new role waiting for review.
-    await run("ann lee", "Founder", false);
+    await run("Ann M. Lee", "Founder", false);
     expect(db.contactsOf(id, "r1")).toHaveLength(2);
     expect(store.listSuggestions(id, "pending")).toMatchObject([{ rowId: ann!.id, key: k("Role"), value: "Founder", previous: "CEO" }]);
+  });
+
+  test("a person found again before anyone reviewed them fills the contact made for them, not a second one", async () => {
+    const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme" } }]);
+    const recipe = recipeFor(id, ["Name", "Role"]);
+    const run = async (name: string, role: string) => {
+      fakeTurn = async () => ({
+        data: { fields: { [k("Name")]: { value: name, source: null, confidence: "high" }, [k("Role")]: { value: role, source: null, confidence: "high" } }, notes: null },
+        costUsd: null,
+      });
+      const r = startRun({ campaignId: id, kind: "enrich", recipeId: recipe.id, rowIds: ["r1"], test: false, autoFill: false, concurrency: 1 });
+      await until(() => r.status === "done");
+      fakeTurn = null;
+    };
+    // A test run, then the full run, before any review: the name only waits as a suggestion.
+    await run("Col. Jane Lee", "CFO");
+    const [jane, ...none] = db.contactsOf(id, "r1");
+    expect(none).toHaveLength(0);
+    expect(jane!.cells).toEqual({});
+    await run("Jane M. Lee", "Chief Financial Officer");
+    expect(db.contactsOf(id, "r1").map((c) => c.id)).toEqual([jane!.id]);
+    // The newer findings replace the ones waiting for that contact.
+    const waiting = store.listSuggestions(id, "pending").map((s) => `${s.rowId} ${s.value}`).sort();
+    expect(waiting).toEqual([`${jane!.id} Chief Financial Officer`, `${jane!.id} Jane M. Lee`]);
+  });
+
+  test("a turn about a person always says who they are, and a contact with nothing in it is not researched", async () => {
+    const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme", [k("Location")]: "Austin" } }]);
+    db.insertRows(id, [
+      { id: "ann", position: 10, parentId: "r1", cells: { [k("Name")]: "Ann Lee" } },
+      { id: "blank", position: 11, parentId: "r1", cells: {} },
+    ]);
+    // Only the prospect's columns chosen as inputs: Ann's own still go, as the person asked about.
+    const recipe = store.saveRecipe({ campaignId: id, name: "Email", instructions: "Find their email.", inputKeys: [k("Company")], outputs: [{ key: k("Email"), header: "Email" }], webSearch: true });
+    const prompts: string[] = [];
+    fakeTurn = async (req) => {
+      prompts.push(req.prompt);
+      return { data: { fields: { [k("Email")]: { value: null, source: null, confidence: "low" } }, notes: null }, costUsd: null };
+    };
+    const run = startRun({ campaignId: id, kind: "enrich", recipeId: recipe.id, rowIds: ["r1"], test: false, autoFill: false, concurrency: 1 });
+    await until(() => run.status === "done");
+    fakeTurn = null;
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('"Contact":{"Name":"Ann Lee"}');
+    expect(prompts[0]).not.toContain("Austin");
   });
 
   test("a recipe that fills in people's details runs once per person, not on channels", async () => {

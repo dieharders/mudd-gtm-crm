@@ -47,7 +47,7 @@ async function importFrom(buf: Uint8Array, name = "t.xlsx", prospects?: string) 
   };
   // The prospect's columns first, then its contacts'.
   const key = (header: string) => allColumns(imp.schema).find((c) => c.header === header)!.key;
-  return { campaign, rows, contacts, skipped: imp.skippedContacts, templates: imp.templates, inspected, key };
+  return { campaign, rows, contacts, skipped: imp.skippedContacts, mismatched: imp.mismatchedContacts, templates: imp.templates, inspected, key };
 }
 
 /** Every part of a package, as text. */
@@ -515,7 +515,7 @@ describe("campaigns created in Mudd", () => {
     const schema = genericSchema();
     const k = (h: string) => allColumns(schema).find((c) => c.header === h)!.key;
     const rows: ExportRow[] = [
-      { id: "a", position: 0, cells: { [k("ID")]: "P-001", [k("Company")]: "Acme", [k("Status")]: "Replied", [k("Next date")]: "2026-10-01", [k("Meeting at")]: "2026-10-03T09:15" } },
+      { id: "a", position: 0, cells: { [k("ID")]: "P-001", [k("Company")]: "Acme", [k("Status")]: "Replied", [k("Last touch")]: "2026-10-01", [k("Meeting at")]: "2026-10-03T09:15" } },
       { id: "b", position: 1, cells: { [k("ID")]: "P-002", [k("Company")]: "Beta", [k("Status")]: "Not contacted" } },
       { id: "c", position: 2, cells: { [k("ID")]: "P-003", [k("Company")]: "Gamma", [k("Screened out")]: CHECKED, [k("Screened reason")]: "Too big" } },
     ];
@@ -568,6 +568,15 @@ describe("campaigns created in Mudd", () => {
     expect(imp.schema.columns.map((c) => c.header)).toEqual(
       expect.arrayContaining(["Status", "Meeting URL", "Meeting at", "Intro message", "Screened out", "Screened reason", "ID"]),
     );
+  });
+
+  test("Staff, Headcount or Size imports as one number column, # Employees", async () => {
+    const csv = new TextEncoder().encode("Company,Staff,Headcount\nAcme,40,45\n");
+    const imp = importWorkbook(await loadWorkbook(csv, "list.csv"), { prospects: "Prospects" });
+    const employees = imp.schema.columns.filter((c) => c.header === "# Employees");
+    expect(employees).toMatchObject([{ key: "staff", type: "number", importedHeader: "Staff" }]);
+    // A second one keeps its own name: two columns can't share a header.
+    expect(imp.schema.columns.find((c) => c.key === "headcount")).toMatchObject({ header: "Headcount", type: "number" });
   });
 });
 
@@ -681,6 +690,67 @@ describe("the Contacts tab", () => {
     expect(rows.map((r) => r.cells[id])).toEqual(["P-004", "P-005", "P-006"]);
     const ws = (await read(await exportCampaign(campaign, original, rows, [], []))).getWorksheet("Prospects")!;
     expect([ws.getCell("A2").value, ws.getCell("A3").value, ws.getCell("A4").value]).toEqual(["P-004", "P-005", "P-006"]);
+  });
+
+  test("an ID the Contacts tab uses for a prospect no longer here is never given to a new one", async () => {
+    const original = await xlsxOf((wb) => {
+      const ws = wb.addWorksheet("Prospects");
+      ws.addRow(["ID", "Company"]);
+      ws.addRow(["P-001", "Acme"]);
+      ws.addRow([null, "Newco"]);
+      const c = wb.addWorksheet("Contacts");
+      c.addRow(["Prospect ID", "Company", "Name"]);
+      c.addRow(["P-001", "Acme", "Ann Lee"]);
+      // Oldco's row was deleted in Excel; its person stays.
+      c.addRow(["P-002", "Oldco", "Zed Ray"]);
+      // Linked by ID to Acme, but named for another company: linked, and reported.
+      c.addRow(["P-001", "Globex", "Gil Tan"]);
+      // No ID: matched by company, punctuation aside.
+      c.addRow([null, "ACME.", "Al Ng"]);
+    });
+    const { campaign, rows, contacts, skipped, mismatched, key } = await importFrom(original);
+    expect(rows.map((r) => r.cells[campaign.schema.idKey!])).toEqual(["P-001", "P-003"]);
+    expect(contacts.map((c) => [c.cells[key("Name")], c.parentId])).toEqual([["Ann Lee", "r0"], ["Gil Tan", "r0"], ["Al Ng", "r0"]]);
+    expect(skipped).toBe(1);
+    expect(mismatched).toBe(1);
+    // …nor by the app, to a prospect added there.
+    expect(campaign.schema.reservedIds).toEqual(["P-002"]);
+  });
+
+  test("the Contacts tab read is the first one Mudd can read, as the import dialog says", async () => {
+    const original = await xlsxOf((wb) => {
+      const ws = wb.addWorksheet("Prospects");
+      ws.addRow(["ID", "Company", "Status"]);
+      ws.addRow(["P-001", "Acme", "Contacted"]);
+      ws.addRow(["P-002", "Beta", "Replied"]);
+      // The user's own "Contacts" (no link column) comes before the one Mudd added on a save.
+      const mine = wb.addWorksheet("Contacts");
+      mine.addRow(["Name", "Agency", "Email"]);
+      mine.addRow(["Someone", "Somewhere", null]);
+      const added = wb.addWorksheet("Contacts 2");
+      added.addRow(["Prospect ID", "Company", "Name"]);
+      added.addRow(["P-002", "Beta", "Bo Chen"]);
+    });
+    const { campaign, contacts, inspected, key } = await importFrom(original);
+    expect(inspected.sheets.map((s) => [s.name, s.guess])).toEqual([["Prospects", "prospects"], ["Contacts", "passthrough"], ["Contacts 2", "contacts"]]);
+    expect(contacts.map((c) => [c.cells[key("Name")], c.parentId])).toEqual([["Bo Chen", "r1"]]);
+    expect(campaign.sheets.map((s) => [s.name, s.role])).toEqual([["Prospects", "prospects"], ["Contacts", "passthrough"], ["Contacts 2", "contacts"]]);
+  });
+
+  test("prospects without a Company column: a save leaves the Contacts tab's own Company cells be", async () => {
+    const original = await xlsxOf((wb) => {
+      const ws = wb.addWorksheet("Prospects");
+      ws.addRow(["ID", "Firm", "Status"]);
+      ws.addRow(["P-001", "Acme", "Contacted"]);
+      const c = wb.addWorksheet("Contacts");
+      c.addRow(["Prospect ID", "Company", "Name"]);
+      c.addRow(["P-001", "Acme", "Ann Lee"]);
+    });
+    const { campaign, rows, contacts } = await importFrom(original);
+    expect(campaign.schema.companyKey).toBeUndefined();
+    const out = await exportCampaign(campaign, original, rows, [], contacts);
+    expect(cellXml(await sheetXml(out, "Contacts"), "B2")).toBe(cellXml(await sheetXml(original, "Contacts"), "B2"));
+    expect((await read(out)).getWorksheet("Contacts")!.getCell("B2").value).toBe("Acme");
   });
 });
 

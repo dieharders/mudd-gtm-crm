@@ -9,12 +9,13 @@
  * A "Contacts" tab holds the prospects' people, one per row. Its Prospect ID column names each
  * person's prospect by the ID in the Prospects tab (P-001), so a renamed company keeps its
  * people; a row with no ID is matched by its Company instead. Rows that match no prospect in the
- * chosen tab are skipped, and stay in the file as they are.
+ * chosen tab are skipped, and stay in the file as they are; their IDs are never given to a new
+ * prospect, which would take those people.
  */
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { norm } from "../shared/merge";
-import { COMPANY_HEADERS, ensureAppColumns, looksLikeScreenedTab, makeKey, newProspectId, PROSPECT_ID_HEADERS } from "../shared/schema";
+import { COMPANY_HEADERS, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds } from "../shared/schema";
 import { ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole } from "../shared/types";
 import { colLetter, readCellValue } from "./cells";
 import { charsToPx, detectType, parseListFormula, type ColumnSample } from "./layouts";
@@ -336,7 +337,7 @@ const contactsName = (name: string) => /^contacts\d*$/.test(norm(name));
 /** The link columns of a Contacts tab: the prospect's ID, and its company. -1 when missing. */
 function linkColumns(t: SheetTable): { id: number; company: number } {
   const find = (names: string[]) => names.map((n) => t.headers.findIndex((h) => norm(h) === n)).find((i) => i >= 0) ?? -1;
-  return { id: find(PROSPECT_ID_HEADERS), company: find(COMPANY_HEADERS) };
+  return { id: find([PROSPECT_ID_HEADER]), company: find(COMPANY_HEADERS) };
 }
 
 /** A Contacts tab: that name, a column linking each person to a prospect, and no formulas. */
@@ -392,11 +393,16 @@ export interface ImportedCampaign {
   contacts: (ImportedRow & { parent: number })[];
   /** Contacts-tab rows that match no prospect in the chosen tab: left in the file, not imported. */
   skippedContacts: number;
+  /**
+   * Contacts linked by Prospect ID whose Company names another company than that prospect's:
+   * the ID wins, but rows moved in the Prospects tab without their IDs would do this.
+   */
+  mismatchedContacts: number;
   templates: { name: string; body: string }[];
 }
 
-/** An ID or company as it is matched: case and spacing ignored. */
-const linkKey = (v: CellValue | undefined) => (v === null || v === undefined ? "" : String(v).trim().replace(/\s+/g, " ").toLowerCase());
+/** An ID or company as it is matched: case, spacing and punctuation ignored ("Acme, Inc." is Acme Inc). */
+const linkKey = (v: CellValue | undefined) => (v === null || v === undefined ? "" : norm(String(v)));
 
 /** A column read from a sheet: its type from its values, its width from the sheet's. */
 function sheetColumn(ws: ExcelJS.Worksheet, s: ColumnSample, index: number, taken: Set<string>): Column {
@@ -424,15 +430,24 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
   const colMap: Record<string, number> = {};
   t.samples.forEach((s, i) => {
     const col = sheetColumn(ws, s, i, taken);
+    // Staff, Headcount, Size…: the first is "# Employees" (and export writes that header back).
+    if (isEmployeesHeader(col.header) && !schema.columns.some((c) => c.header === EMPLOYEES_HEADER)) col.header = EMPLOYEES_HEADER;
     schema.columns.push(col);
     colMap[col.key] = i + 1;
   });
 
-  // The people: a Contacts tab other than the one chosen, its columns keyed apart from the
+  // The people: the first Contacts tab, other than the one chosen, that is one (inspectWorkbook's
+  // rule too, so the import dialog names the same tab), its columns keyed apart from the
   // prospect's (one namespace). Its two link columns are not contact columns.
-  const cws = book.wb.worksheets.find((w) => w !== ws && contactsName(book.realName(w)));
-  const ct = cws ? readSheet(cws, book) : null;
-  const contactsTab = cws && ct && isContactsTab(book.realName(cws), ct) ? { ws: cws, t: ct, name: book.realName(cws), link: linkColumns(ct) } : null;
+  let contactsTab: { ws: ExcelJS.Worksheet; t: SheetTable; name: string; link: ReturnType<typeof linkColumns> } | null = null;
+  for (const w of book.wb.worksheets) {
+    const name = book.realName(w);
+    if (w === ws || !contactsName(name)) continue;
+    const ct = readSheet(w, book);
+    if (!isContactsTab(name, ct)) continue;
+    contactsTab = { ws: w, t: ct, name, link: linkColumns(ct) };
+    break;
+  }
   const contactMap: Record<string, number> = {};
   if (contactsTab) {
     const { link } = contactsTab;
@@ -467,52 +482,66 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
     return { position: i, cells, orig: { ...cells }, sourceSheet: choice.prospects, sourceRow: r.r };
   });
 
+  // The Contacts tab's rows with their links, read before any ID is given out: an ID a person
+  // there points at is never given to another prospect, even when theirs is not in this tab.
+  const people = (contactsTab?.t.rows ?? []).map((r) => {
+    const { link } = contactsTab!;
+    return {
+      r,
+      id: link.id >= 0 ? readCellValue(r.values[link.id] ?? null) : null,
+      company: link.company >= 0 ? readCellValue(r.values[link.company] ?? null) : null,
+    };
+  });
+
   // Every prospect has an ID, and no two the same: a missing or repeated one gets the next free
   // P-###, which the next save writes into the sheet. The first of two equal IDs keeps it.
   const idKey = schema.idKey!;
   const byId = new Map<string, number>();
-  const takenIds = new Set(rows.map((r) => String(r.cells[idKey] ?? "").trim()).filter(Boolean));
+  const nextId = prospectIds([
+    ...rows.map((r) => String(r.cells[idKey] ?? "")),
+    ...people.map((p) => String(p.id ?? "")),
+  ]);
   rows.forEach((r, i) => {
     const k = linkKey(r.cells[idKey]);
     if (k && !byId.has(k)) {
       byId.set(k, i);
       return;
     }
-    const id = newProspectId(takenIds);
-    takenIds.add(id);
+    const id = nextId();
     r.cells[idKey] = id;
     byId.set(linkKey(id), i);
   });
+  const companyOf = (i: number) => linkKey(rows[i]!.cells[schema.companyKey!]);
   const byCompany = new Map<string, number>();
   if (schema.companyKey) {
-    rows.forEach((r, i) => {
-      const k = linkKey(r.cells[schema.companyKey!]);
+    rows.forEach((_, i) => {
+      const k = companyOf(i);
       if (k && !byCompany.has(k)) byCompany.set(k, i);
     });
   }
 
   const contacts: ImportedCampaign["contacts"] = [];
   let skippedContacts = 0;
+  let mismatchedContacts = 0;
+  const reserved = new Set<string>();
   const linkedRows: number[] = [];
-  if (contactsTab) {
-    const { link } = contactsTab;
-    for (const r of contactsTab.t.rows) {
-      const cells = read(r.values, contactMap, schema.contacts!.columns);
-      const id = link.id >= 0 ? readCellValue(r.values[link.id] ?? null) : null;
-      const company = link.company >= 0 ? readCellValue(r.values[link.company] ?? null) : null;
-      // The ID when there is one: a company name can be stale, or shared.
-      const parent = linkKey(id) ? byId.get(linkKey(id)) : byCompany.get(linkKey(company));
-      if (parent === undefined) {
-        skippedContacts++;
-        continue;
-      }
-      const orig: Record<string, CellValue> = { ...cells };
-      if (id !== null) orig[ORG_ID_KEY] = id;
-      if (company !== null) orig[ORG_KEY] = company;
-      contacts.push({ parent, position: contacts.length, cells, orig, sourceSheet: contactsTab.name, sourceRow: r.r });
-      linkedRows.push(r.r);
+  for (const { r, id, company } of people) {
+    const cells = read(r.values, contactMap, schema.contacts!.columns);
+    // The ID when there is one: a company name can be stale, or shared.
+    const parent = linkKey(id) ? byId.get(linkKey(id)) : byCompany.get(linkKey(company));
+    if (parent === undefined) {
+      skippedContacts++;
+      if (linkKey(id)) reserved.add(String(id).trim());
+      continue;
     }
+    if (linkKey(id) && schema.companyKey && linkKey(company) && companyOf(parent) && linkKey(company) !== companyOf(parent)) mismatchedContacts++;
+    const orig: Record<string, CellValue> = { ...cells };
+    if (id !== null) orig[ORG_ID_KEY] = id;
+    if (company !== null) orig[ORG_KEY] = company;
+    contacts.push({ parent, position: contacts.length, cells, orig, sourceSheet: contactsTab!.name, sourceRow: r.r });
+    linkedRows.push(r.r);
   }
+  if (reserved.size) schema.reservedIds = [...reserved];
 
   const sheets: SheetMeta[] = book.wb.worksheets.map((w) => {
     const name = book.realName(w);
@@ -545,5 +574,5 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
     meta.lastCol = tt.lastCol;
     break;
   }
-  return { schema, sheets, rows, contacts, skippedContacts, templates };
+  return { schema, sheets, rows, contacts, skippedContacts, mismatchedContacts, templates };
 }

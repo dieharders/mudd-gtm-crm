@@ -277,9 +277,9 @@ function Fact({ col, v, cells, schema }: { col: Column; v: string; cells: Record
   const value = col.type === "date" && /^\d{4}-\d{2}-\d{2}/.test(v) ? formatDate(v) : col.type === "datetime" ? formatDateTime(v) : amount !== null ? `$${amount.toLocaleString()}` : v;
   const tone = col.type === "select" && col.key !== schema.statusKey ? toneFor(v, col.options ?? []).pill : "";
   return (
-    <div className={cn("inline-flex max-w-full items-baseline gap-1.5 rounded-lg border px-2 py-1 text-xs", cue === "overdue" || cue === "expired" ? "border-rose-200 bg-rose-50" : "border-line bg-white")}>
+    <div className={cn("inline-flex max-w-full items-baseline gap-1.5 rounded-lg border px-2 py-1 text-xs", cue === "expired" ? "border-rose-200 bg-rose-50" : "border-line bg-white")}>
       <dt className="shrink-0 text-ink-faint">{col.header}</dt>
-      <dd className={cn("min-w-0 truncate font-medium", cue === "overdue" || cue === "expired" ? "text-rose-700" : "text-ink", tone && "rounded-sm px-1", tone)} title={v}>
+      <dd className={cn("min-w-0 truncate font-medium", cue === "expired" ? "text-rose-700" : "text-ink", tone && "rounded-sm px-1", tone)} title={v}>
         {value.length > 60 ? `${value.slice(0, 58)}…` : value}
       </dd>
     </div>

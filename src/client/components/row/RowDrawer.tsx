@@ -215,7 +215,8 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
                       <span className="truncate text-sm font-medium">{label}</span>
                       {c === primary && <PrimaryStar />}
                     </span>
-                    {(role || email) && <span className="block truncate text-xs text-ink-soft">{[role, email].filter(Boolean).join(" · ")}</span>}
+                    {/* A contact with no name is titled by their email: not shown twice. */}
+                    {(role || (email && email !== label)) && <span className="block truncate text-xs text-ink-soft">{[role, email !== label && email].filter(Boolean).join(" · ")}</span>}
                   </span>
                   {pending > 0 && <span className="tag shrink-0 bg-brand-500 text-white">✨ {pending}</span>}
                   {type && <span className={cn("tag shrink-0", typeTone(type, typeCol?.options))}>{type}</span>}
