@@ -7,9 +7,8 @@
 import { Anchor, Building2, FlaskConical, Globe, Mail, Newspaper, Plus, Rocket, Sparkles, Trash2, TriangleAlert, UserRound, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { norm } from "../../../shared/merge";
-import { PRESETS, type Preset } from "../../../shared/presets";
-import { PROVIDERS, SOURCES_HEADER, type EnrichRun, type Recipe } from "../../../shared/ai";
+import { presetTargets, PRESETS, type Preset } from "../../../shared/presets";
+import { isSourcesColumn, PROVIDERS, type EnrichRun, type Recipe } from "../../../shared/ai";
 import { typeFromHeader } from "../../../shared/schema";
 import { COLUMN_TYPES, isScreened, type CampaignSchema, type ColumnType, type Row } from "../../../shared/types";
 import type { CampaignState } from "../../hooks/useCampaign";
@@ -48,14 +47,10 @@ type Selection = { kind: "recipe"; id: string } | { kind: "draft"; from: string 
  *  until the user picks one, so re-importing the export types it the same. */
 const headerType = (header: string): ColumnType => typeFromHeader(header)?.type ?? "text";
 
-function draftFromPreset(p: Preset, schema: CampaignSchema): Draft {
-  const used = new Set<string>();
-  const outputs = p.outputs.map((o) => {
-    // The most preferred header the sheet has, not the leftmost column matching any of them.
-    const match = [norm(o.header), ...o.aliases]
-      .map((n) => schema.columns.find((c) => !used.has(c.key) && c.header !== SOURCES_HEADER && norm(c.header) === n))
-      .find(Boolean);
-    if (match) used.add(match.key);
+function draftFromPreset(p: Preset, schema: CampaignSchema, rows: Row[]): Draft {
+  const targets = presetTargets(p, schema, rows);
+  const outputs = p.outputs.map((o, i) => {
+    const match = targets[i];
     return {
       target: match?.key ?? NEW,
       header: match?.header ?? o.header,
@@ -223,7 +218,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
               <p className="eyebrow mb-1.5 px-1">Start from a preset</p>
               <div className="space-y-1.5">
                 {PRESETS.map((p) => (
-                  <button key={p.id} onClick={() => pick({ kind: "draft", from: p.id }, draftFromPreset(p, schema))}
+                  <button key={p.id} onClick={() => pick({ kind: "draft", from: p.id }, draftFromPreset(p, schema, state.rows))}
                     className={cn("flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left transition", sel?.kind === "draft" && sel.from === p.id ? "border-brand-300 bg-brand-50/60" : "border-line bg-white hover:border-brand-200")}>
                     <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", p.tone)}>{(() => { const I = PRESET_ICONS[p.icon]; return <I size={14} />; })()}</span>
                     <span className="min-w-0">
@@ -307,7 +302,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
 
 function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: CampaignSchema; onChange: (p: Partial<Draft>) => void }) {
   const skipInputs = new Set([schema.introKey, schema.reasonKey, schema.screenedKey]);
-  const inputCols = schema.columns.filter((c) => c.header !== SOURCES_HEADER && !skipInputs.has(c.key));
+  const inputCols = schema.columns.filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
   const [showInputs, setShowInputs] = useState(draft.inputKeys.length > 0);
   const setOutput = (i: number, patch: Partial<OutputDraft>) => onChange({ outputs: draft.outputs.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
 
@@ -346,7 +341,7 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
                     setOutput(i, col ? { target: col.key, header: col.header, type: col.type } : { target: NEW, header: "", type: "text" });
                   }}>
                   <option value={NEW}>+ New column</option>
-                  {schema.columns.filter((c) => c.header !== SOURCES_HEADER).map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+                  {schema.columns.filter((c) => !isSourcesColumn(c)).map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
                 </select>
                 {o.target === NEW && (
                   <div className="flex gap-1">

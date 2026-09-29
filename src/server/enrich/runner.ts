@@ -16,7 +16,7 @@ import { domainAcceptsMail } from "./mx";
 import { enrichRequest, introRequest } from "./prompts";
 import * as store from "./store";
 import { publish } from "./hub";
-import { mergeSources, SOURCES_HEADER, type EnrichRun, type IntroOptions, type RunKind, type Source, type Suggestion } from "../../shared/ai";
+import { mergeSources, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type RunKind, type Source, type Suggestion } from "../../shared/ai";
 import { makeKey } from "../../shared/schema";
 import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column } from "../../shared/types";
 import { parseFlag, sameValue, toNumber } from "../../shared/values";
@@ -78,7 +78,7 @@ function emitRow(ctrl: Controller, rowId: string): void {
 /** The shared "Enrichment sources" column, created the first time anything needs it. */
 export function ensureSourcesColumn(campaignId: string): string {
   const c = db.getCampaign(campaignId)!;
-  const existing = c.schema.columns.find((col) => col.header === SOURCES_HEADER);
+  const existing = sourcesColumn(c.schema);
   if (existing) return existing.key;
   // Not a key a deleted column left values under: the new column would show them.
   const taken = new Set([...c.schema.columns.map((col) => col.key), ...db.allCellKeys(campaignId)]);
@@ -316,7 +316,7 @@ function recordResults(
   const row = schema ? db.getRow(run.campaignId, rowId) : null;
   if (!schema || !row) return null;
   const { cells } = row;
-  const sourcesKey = schema.columns.find((c) => c.header === SOURCES_HEADER)?.key;
+  const sourcesKey = sourcesColumn(schema)?.key;
   const suggestions: Suggestion[] = [];
   const edits: CellEdit[] = [];
   const sourcesBefore = sourcesKey ? cells[sourcesKey] ?? null : null;
@@ -392,13 +392,15 @@ async function doIntro(run: EnrichRun, schema: CampaignSchema, cells: Record<str
   if (!schema.introKey) throw new Error("This campaign has no Intro message column.");
   const templates = db.listTemplates(run.campaignId);
   const choice = run.intro?.templateId ?? "auto";
-  const req = introRequest(templates, choice, run.intro?.guidance, schema, cells, true);
+  const sourceOf = (key: string) => store.sourceOfValue(run.campaignId, rowId, key, cells[key] ?? null);
+  const req = introRequest(templates, choice, run.intro?.guidance, schema, cells, true, sourceOf);
   if (!req.templates.length) throw new Error("That template no longer exists.");
   const { data, costUsd } = await generateStructured({ ...req, webSearch: true, signal, onStep });
   if (costUsd !== null) run.costUsd = (run.costUsd ?? 0) + costUsd;
   const used = req.templates.find((t) => t.id === data.templateId) ?? req.templates[0]!;
   const col = schema.columns.find((c) => c.key === schema.introKey)!;
-  const hooks = data.hooks.filter((h) => h.text);
+  // One line each: the note lists them by line, and the page matches each to its source by text.
+  const hooks = data.hooks.map((h) => ({ ...h, text: h.text.replace(/\s+/g, " ").trim() })).filter((h) => h.text);
   const note = [`Template: ${used.name}`, ...hooks.map((h) => `Hook: ${h.text}`)].join("\n");
   return recordResults(run, rowId, [{
     col,

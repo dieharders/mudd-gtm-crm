@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { applyRunRow, mergeSources, SOURCES_HEADER, type CampaignEvent, type EnrichRun, type IntroOptions, type Recipe, type Suggestion } from "../../shared/ai";
+import { applyRunRow, mergeSources, sourcesColumn, type CampaignEvent, type EnrichRun, type IntroOptions, type Recipe, type Suggestion } from "../../shared/ai";
 import type { CellEdit } from "../../shared/types";
 import { api, ApiError, type RecipeDraft } from "../lib/api";
 import type { CampaignState } from "./useCampaign";
@@ -93,7 +93,7 @@ export function useEnrichment(state: CampaignState) {
   const accept = useCallback(async (list: Suggestion[]) => {
     if (!campaign || !list.length) return;
     const schema = campaign.schema;
-    const sourcesCol = schema.columns.find((c) => c.header === SOURCES_HEADER);
+    const sourcesCol = sourcesColumn(schema);
     const edits: CellEdit[] = [];
     const sourcesByRow = new Map<string, string | null>();
     for (const s of list) {

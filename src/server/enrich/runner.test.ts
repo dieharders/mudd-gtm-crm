@@ -110,6 +110,22 @@ describe("store", () => {
     expect(store.listSuggestions(id).map((x) => x.id).sort()).toEqual(["b", "c"]);
   });
 
+  test("a cell's source is the one filed with the finding of its current value", () => {
+    const id = campaign([{ id: "r1", cells: {} }]);
+    const hook = k("Hook");
+    const s = (sid: string, value: string, url: string | null, status: Suggestion["status"], createdAt: number): Suggestion => ({
+      id: sid, campaignId: id, runId: "x", rowId: "r1", key: hook, value, previous: null, sources: url ? [{ url }] : [], confidence: null, note: null, status, createdAt,
+    });
+    // Found as A, then B, then A again with no source: the sources cell would end in B's line.
+    store.insertSuggestions([s("a", "A", "https://a.io", "accepted", 1), s("b", "B", "https://b.io", "auto", 2), s("a2", "A", null, "accepted", 3), s("p", "P", "https://p.io", "pending", 4)]);
+    expect(store.sourceOfValue(id, "r1", hook, "A")).toBe("https://a.io");
+    expect(store.sourceOfValue(id, "r1", hook, "B")).toBe("https://b.io");
+    // Typed or edited by hand, or only suggested: nobody recorded where it came from.
+    expect(store.sourceOfValue(id, "r1", hook, "A, edited")).toBeNull();
+    expect(store.sourceOfValue(id, "r1", hook, "P")).toBeNull();
+    expect(store.sourceOfValue(id, "r1", k("Notes"), "A")).toBeNull();
+  });
+
   test("the sources column never takes a key a deleted column left values under", () => {
     const id = campaign([{ id: "r1", cells: { enrichment_sources: "left by a deleted column" } }]);
     expect(ensureSourcesColumn(id)).toBe("enrichment_sources_2");
@@ -184,6 +200,30 @@ describe("runs", () => {
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({ key: k("Role"), value: "Founder", previous: "CEO" });
     expect(run).toMatchObject({ completed: 1, suggestions: 1, autoFilled: 1, costUsd: 0.01 });
+  });
+
+  test("an intro cites the Hook's recorded source, and each hook is one line matched to its own source", async () => {
+    const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme", [k("Hook")]: "Won an AFWERX contract" } }]);
+    db.createTemplate(id, "Warm", "Hi {{First name}}");
+    const s = (sid: string, url: string, createdAt: number): Suggestion => ({
+      id: sid, campaignId: id, runId: "x", rowId: "r1", key: k("Hook"), value: "Won an AFWERX contract", previous: null, sources: [{ url }], confidence: null, note: null, status: "accepted", createdAt,
+    });
+    store.insertSuggestions([s("old", "https://old.io", 1), s("new", "https://afwerx.mil/acme", 2)]);
+    let prompt = "";
+    fakeTurn = async (req) => {
+      prompt = req.prompt;
+      return {
+        data: { templateId: "?", message: "Hi there", hooks: [{ text: "Won an AFWERX\ncontract", source: null }, { text: "Hired a CTO", source: "https://x.io" }] },
+        costUsd: null,
+      };
+    };
+    const run = startRun({ campaignId: id, kind: "intro", rowIds: ["r1"], test: false, autoFill: false, concurrency: 1 });
+    await until(() => run.status === "done");
+    fakeTurn = null;
+    expect(prompt).toContain('Hook: "Won an AFWERX contract" (source: https://afwerx.mil/acme)');
+    const [draft] = store.listSuggestions(id, "pending");
+    expect(draft!.note).toBe("Template: Warm\nHook: Won an AFWERX contract\nHook: Hired a CTO");
+    expect(draft!.sources).toEqual([{ url: "https://x.io", title: "Hired a CTO" }]);
   });
 
   test("a row deleted during its turn is skipped, its findings dropped", async () => {
