@@ -48,7 +48,7 @@ function campaign(rows: { id: string; cells: Record<string, CellValue> }[]): str
 }
 
 const recipeFor = (campaignId: string) =>
-  store.saveRecipe({ campaignId, name: "Find", instructions: "Find it.", inputKeys: [], webSearch: false, outputs: [{ key: k("Title"), header: "Title" }, { key: k("Location"), header: "Location" }] });
+  store.saveRecipe({ campaignId, name: "Find", instructions: "Find it.", inputKeys: [], webSearch: false, outputs: [{ key: k("Role"), header: "Role" }, { key: k("Location"), header: "Location" }] });
 
 /** Read a campaign's event stream as the page would. */
 function listen(campaignId: string, snapshot?: () => CampaignEvent[]) {
@@ -155,7 +155,7 @@ describe("runs", () => {
     fakeTurn = async () => {
       await Bun.sleep(0);
       // During the turn, the user types a title and another run files a source of its own.
-      db.applyEdits(id, [{ rowId: "r1", key: k("Title"), value: "CEO" }, { rowId: "r1", key: sourcesKey, value: "Website: https://other.io" }]);
+      db.applyEdits(id, [{ rowId: "r1", key: k("Role"), value: "CEO" }, { rowId: "r1", key: sourcesKey, value: "Website: https://other.io" }]);
       // A page connecting now starts from the live run, this row mid-turn.
       const sse = listen(id, () => liveRuns(id).map((run): CampaignEvent => ({ type: "run", run })));
       await until(() => sse.events.length > 0);
@@ -164,7 +164,7 @@ describe("runs", () => {
       const runId = liveRuns(id)[0]!.id;
       listed = { live: recentRuns(id).find((r) => r.id === runId)?.rows.r1?.state, stored: store.getRun(runId)?.rows.r1?.state };
       return {
-        data: { fields: { [k("Title")]: { value: "Founder", source: "https://a.io", confidence: "high" }, [k("Location")]: { value: "Austin", source: "https://b.io", confidence: "medium" } }, notes: null },
+        data: { fields: { [k("Role")]: { value: "Founder", source: "https://a.io", confidence: "high" }, [k("Location")]: { value: "Austin", source: "https://b.io", confidence: "medium" } }, notes: null },
         costUsd: 0.01,
       };
     };
@@ -177,12 +177,12 @@ describe("runs", () => {
     expect(listed!).toEqual({ live: "running", stored: "pending" });
 
     const cells = db.getRow(id, "r1")!.cells;
-    expect(cells[k("Title")]).toBe("CEO");
+    expect(cells[k("Role")]).toBe("CEO");
     expect(cells[k("Location")]).toBe("Austin");
     expect(cells[sourcesKey]).toBe("Website: https://other.io\nLocation: https://b.io");
     const pending = store.listSuggestions(id, "pending");
     expect(pending).toHaveLength(1);
-    expect(pending[0]).toMatchObject({ key: k("Title"), value: "Founder", previous: "CEO" });
+    expect(pending[0]).toMatchObject({ key: k("Role"), value: "Founder", previous: "CEO" });
     expect(run).toMatchObject({ completed: 1, suggestions: 1, autoFilled: 1, costUsd: 0.01 });
   });
 
@@ -190,7 +190,7 @@ describe("runs", () => {
     const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme" } }]);
     fakeTurn = async () => {
       db.deleteRows(id, ["r1"]);
-      return { data: { fields: { [k("Title")]: { value: "Founder", source: null, confidence: "low" } }, notes: null }, costUsd: null };
+      return { data: { fields: { [k("Role")]: { value: "Founder", source: null, confidence: "low" } }, notes: null }, costUsd: null };
     };
     const run = startRun({ campaignId: id, kind: "enrich", recipeId: recipeFor(id).id, rowIds: ["r1"], test: false, autoFill: true, concurrency: 1 });
     await until(() => run.status === "done");

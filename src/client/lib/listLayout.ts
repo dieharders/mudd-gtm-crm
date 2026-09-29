@@ -15,6 +15,8 @@ export interface CardLayout {
   tierKey?: string;
   subtitleKey?: string;
   roleKey?: string;
+  /** Mr., Mrs.: put before the contact's name. */
+  honorificKey?: string;
   otherContactsKey?: string;
   emailKeys: string[];
   phoneKeys: string[];
@@ -34,11 +36,13 @@ export function cardLayout(schema: CampaignSchema): CardLayout {
   const subtitleKey =
     find(cols, /^(type|category|industry|vertical|kind|orgtype|companytype)$/) ??
     find(cols, /^(focus|focuscerts|specialty|specialties|whattheydo|offering|sector)$/);
-  const roleKey = find(cols, /^(role|title|jobtitle|position|contactrole)$/);
+  // "Title" is Mr. or Mrs., shown before the contact's name. It is never the job title.
+  const roleKey = find(cols, /^(role|jobtitle|position|contactrole)$/);
+  const honorificKey = find(cols, /^(title|honorific|salutation)$/);
   const otherContactsKey = find(cols, /^othercontacts?$|^additionalcontacts?$/);
 
   const used = new Set(
-    [titleKey, schema.nameKey, rankKey, tierKey, subtitleKey, roleKey, otherContactsKey, schema.statusKey, schema.introKey,
+    [titleKey, schema.nameKey, rankKey, tierKey, subtitleKey, roleKey, honorificKey, otherContactsKey, schema.statusKey, schema.introKey,
       schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean) as string[],
   );
   const emailKeys: string[] = [];
@@ -57,7 +61,7 @@ export function cardLayout(schema: CampaignSchema): CardLayout {
   }
   // The hook (why this prospect, why now) reads first.
   paragraphs.sort((a, b) => Number(/hook|angle|pitch/.test(norm(b.header))) - Number(/hook|angle|pitch/.test(norm(a.header))));
-  return { titleKey, rankKey, tierKey, subtitleKey, roleKey, otherContactsKey, emailKeys, phoneKeys, links, paragraphs, facts };
+  return { titleKey, rankKey, tierKey, subtitleKey, roleKey, honorificKey, otherContactsKey, emailKeys, phoneKeys, links, paragraphs, facts };
 }
 
 /** Columns worth grouping the reading view by: the tier, the status, and any dropdown. */

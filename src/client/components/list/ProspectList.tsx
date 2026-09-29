@@ -102,8 +102,10 @@ const ProspectCard = memo(function ProspectCard({ row, schema, stages, layout, a
   const onOpen = () => onOpenRow(row.id);
   const c = row.cells;
   const txt = (k?: string) => (k ? display(c[k]) : "");
-  const title = txt(layout.titleKey) || "Untitled prospect";
-  const contact = schema.nameKey && schema.nameKey !== layout.titleKey ? txt(schema.nameKey) : "";
+  const honorific = txt(layout.honorificKey);
+  const addressed = (name: string) => (name && honorific ? `${honorific} ${name}` : name);
+  const title = (layout.titleKey === schema.nameKey ? addressed(txt(layout.titleKey)) : txt(layout.titleKey)) || "Untitled prospect";
+  const contact = schema.nameKey && schema.nameKey !== layout.titleKey ? addressed(txt(schema.nameKey)) : "";
   const role = txt(layout.roleKey);
   const others = txt(layout.otherContactsKey);
   const status = txt(schema.statusKey);

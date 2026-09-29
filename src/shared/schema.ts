@@ -31,6 +31,14 @@ export const NAME_HEADERS =["primarycontact", "contact", "name", "fullname", "co
 export const COMPANY_HEADERS = ["company", "org", "organization", "organisation", "account", "companyname", "business"];
 const SCREENED_HEADERS = ["screenedout", "screened", "screenout"];
 const REASON_HEADERS = ["screenedreason", "screeningreason", "screenoutreason", "reasonscreened", "whyscreened", "whyscreenedout"];
+/** The prospect's hook: the researched reason to write to them, which the intro is built on. */
+export const HOOK_HEADERS = ["hook", "personalization", "icebreaker", "angle"];
+
+export const hookColumn = (schema: CampaignSchema): Column | undefined =>
+  HOOK_HEADERS.map((n) => schema.columns.find((c) => norm(c.header) === n)).find(Boolean);
+
+/** A contact's Title: how they are addressed. Never a job title, which is their Role. */
+export const HONORIFICS = ["Mr.", "Mrs.", "Ms.", "Mx.", "Dr."];
 
 export function assignRoles(schema: CampaignSchema): void {
   const find = (pred: (h: string, c: Column) => boolean) =>
@@ -110,7 +118,10 @@ export function genericSchema(): CampaignSchema {
   const columns: Column[] = [
     c("Name", "text", { width: 180 }),
     c("Company", "text", { width: 190 }),
-    c("Title", "text"),
+    c("Title", "select", { options: HONORIFICS, width: 90 }),
+    c("Role", "text", { width: 200 }),
+    c("Rank", "number"),
+    c("Type", "text"),
     c("Email", "email"),
     c("LinkedIn", "url"),
     c("Phone", "phone"),
@@ -121,6 +132,7 @@ export function genericSchema(): CampaignSchema {
     c("Next date", "date"),
     c("Meeting URL", "url"),
     c("Meeting at", "datetime"),
+    c("Hook", "longtext"),
     c("Notes", "longtext"),
     c("Source", "text"),
     c("Intro message", "longtext", { width: 320 }),

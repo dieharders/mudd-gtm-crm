@@ -114,7 +114,7 @@ export function AiIntro({ row, schema, templates, enrich }: { row: Row; schema: 
             <button className="mt-1.5 text-[11px] text-brand-700 hover:underline" onClick={() => setShowGuidance(true)}>+ Add guidance</button>
           )}
           {lastError && <p className="mt-1.5 text-[11px] text-rose-700">Last try failed: {lastError}</p>}
-          <p className="mt-1.5 text-[11px] text-ink-faint">Researches this prospect, fills your template, and adds 1–2 hooks with sources. You review before it goes in.</p>
+          <p className="mt-1.5 text-[11px] text-ink-faint">Fills your template around this prospect’s Hook, or researches 1–2 hooks when it has none, with sources. You review before it goes in.</p>
         </>
       )}
     </div>

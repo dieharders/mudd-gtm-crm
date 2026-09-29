@@ -51,7 +51,10 @@ const headerType = (header: string): ColumnType => typeFromHeader(header)?.type 
 function draftFromPreset(p: Preset, schema: CampaignSchema): Draft {
   const used = new Set<string>();
   const outputs = p.outputs.map((o) => {
-    const match = schema.columns.find((c) => !used.has(c.key) && c.header !== SOURCES_HEADER && (o.aliases.includes(norm(c.header)) || norm(c.header) === norm(o.header)));
+    // The most preferred header the sheet has, not the leftmost column matching any of them.
+    const match = [norm(o.header), ...o.aliases]
+      .map((n) => schema.columns.find((c) => !used.has(c.key) && c.header !== SOURCES_HEADER && norm(c.header) === n))
+      .find(Boolean);
     if (match) used.add(match.key);
     return {
       target: match?.key ?? NEW,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mergeSources } from "../../shared/ai";
+import { mergeSources, SOURCES_HEADER } from "../../shared/ai";
 import { genericSchema } from "../../shared/schema";
 import { enrichRequest, introRequest } from "../enrich/prompts";
 import { parseAuthStatus } from "./claude";
@@ -85,5 +85,15 @@ describe("prompts", () => {
     expect(req.templates.map((t) => t.id)).toEqual(["t1"]);
     expect(req.prompt).toContain("Hi Ann at Acme");
     expect(introRequest(templates, "auto", undefined, schema, {}, true).templates).toHaveLength(2);
+  });
+  test("intro request is written around the prospect's Hook, sent once with its source", () => {
+    const withSources = { ...schema, columns: [...schema.columns, { key: "src", header: SOURCES_HEADER, type: "longtext" as const, origin: "enrichment" as const }] };
+    const templates = [{ id: "t1", campaignId: "c", name: "Warm", body: "Hi {{First name}}", position: 0, updatedAt: 0 }];
+    const cells = { [k("Company")]: "Acme", [k("Hook")]: "Won an AFWERX contract in May", src: "Website: https://acme.io\nHook: https://afwerx.mil/acme" };
+    const req = introRequest(templates, "t1", undefined, withSources, cells, true);
+    expect(req.prompt).toContain('Hook: "Won an AFWERX contract in May" (source: https://afwerx.mil/acme)');
+    expect(req.prompt.split("AFWERX contract").length).toBe(2);
+    expect(req.system).toContain("If a Hook is given");
+    expect(introRequest(templates, "t1", undefined, withSources, { [k("Company")]: "Acme" }, true).prompt).not.toContain("Hook:");
   });
 });
