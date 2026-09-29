@@ -7,6 +7,7 @@ import { rowTitle } from "../../lib/pipeline";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { SuggestionItem } from "./SuggestionItem";
+import { fire } from "../../lib/fire";
 
 export function ReviewPanel({ state, enrich, onClose, onOpenRow }: {
   state: CampaignState;
@@ -52,8 +53,8 @@ export function ReviewPanel({ state, enrich, onClose, onOpenRow }: {
             </select>
             <span className="text-xs text-ink-faint">{list.length} shown</span>
             <div className="ml-auto flex gap-1.5">
-              <Button size="sm" variant="ghost" onClick={() => enrich.reject(list)}>Reject all</Button>
-              <Button size="sm" variant="primary" onClick={() => enrich.accept(list)}><CheckCheck size={13} /> Accept all {list.length}</Button>
+              <Button size="sm" variant="ghost" onClick={() => fire(enrich.reject(list))}>Reject all</Button>
+              <Button size="sm" variant="primary" onClick={() => fire(enrich.accept(list))}><CheckCheck size={13} /> Accept all {list.length}</Button>
             </div>
           </div>
         )}
@@ -78,13 +79,13 @@ export function ReviewPanel({ state, enrich, onClose, onOpenRow }: {
                       </button>
                       {t.subtitle && <span className="truncate text-xs text-ink-faint">{t.subtitle}</span>}
                       <div className="ml-auto flex shrink-0 gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => enrich.reject(items)}>Reject</Button>
-                        <Button size="sm" variant="subtle" onClick={() => enrich.accept(items)}>Accept {items.length > 1 ? `all ${items.length}` : ""}</Button>
+                        <Button size="sm" variant="ghost" onClick={() => fire(enrich.reject(items))}>Reject</Button>
+                        <Button size="sm" variant="subtle" onClick={() => fire(enrich.accept(items))}>Accept {items.length > 1 ? `all ${items.length}` : ""}</Button>
                       </div>
                     </div>
                     <div className="space-y-2">
                       {items.map((s) => (
-                        <SuggestionItem key={s.id} s={s} col={colOf(s.key)} onAccept={() => enrich.accept([s])} onReject={() => enrich.reject([s])} />
+                        <SuggestionItem key={s.id} s={s} col={colOf(s.key)} onAccept={() => fire(enrich.accept([s]))} onReject={() => fire(enrich.reject([s]))} />
                       ))}
                     </div>
                   </section>

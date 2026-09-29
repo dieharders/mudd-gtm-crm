@@ -1,15 +1,21 @@
 /**
- * Converting between ExcelJS cell values and the app's CellValue.
+ * Converting between spreadsheet cell values and the app's CellValue.
  *
- * ONE READER FOR IMPORT AND EXPORT, on purpose. Export decides whether a cell was edited by
- * reading the original cell again and comparing it to the app's value. If the two sides
- * normalised differently, every untouched cell would look edited and be rewritten, and a
- * rewrite loses whatever the plain value cannot carry: rich text runs, hyperlinks, formulas.
+ * Import reads with `readCellValue`. Export does not need to read anything back: each row keeps
+ * its cells as imported, so a cell counts as edited when the app's value differs from that, and
+ * only edited cells are written (see export.ts).
  */
 import type ExcelJS from "exceljs";
-import type { CellValue, Column, ColumnType } from "../shared/types";
+import { CHECKED, type CellValue, type Column, type ColumnType } from "../shared/types";
+import { hrefFor, parseFlag, toNumber } from "../shared/values";
+
+export { hrefFor, sameValue, toNumber } from "../shared/values";
 
 const pad = (n: number) => String(n).padStart(2, "0");
+const DAY = 86_400_000;
+// Excel counts a 29 Feb 1900 that never existed, so its day numbers before 1 March 1900 are one
+// lower than a plain count; ExcelJS converts them plainly and lands a day early.
+const MARCH_1900 = Date.UTC(1900, 2, 1);
 
 /**
  * Excel dates have no time zone, and ExcelJS hands them over as UTC Dates. Reading the UTC
@@ -25,15 +31,29 @@ export function hasTime(d: Date): boolean {
   return d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0;
 }
 
-/** Flatten any ExcelJS value to what the app stores. */
-export function readCellValue(value: ExcelJS.CellValue, type?: ColumnType): CellValue {
+/** A time with no date (a cell formatted h:mm) comes back as a day in December 1899. */
+export const isTimeOnly = (d: Date) => d.getUTCFullYear() < 1900;
+
+const looksLikeLink = (t: string) => !!hrefFor(t) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t.trim());
+
+/**
+ * Flatten any ExcelJS value to what the app stores. With `preferLink`, a hyperlink whose text is
+ * only a label ("Profile") gives its target instead, so a Link column holds something to open.
+ */
+export function readCellValue(value: ExcelJS.CellValue, type?: ColumnType, opts: { preferLink?: boolean } = {}): CellValue {
   if (value === null || value === undefined) return null;
+  if (type === "checkbox") {
+    const flat = typeof value === "object" && !(value instanceof Date) ? readCellValue(value, "text") : value;
+    return parseFlag(flat) ? CHECKED : null;
+  }
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string") return value === "" ? null : value;
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) return null;
-    return dateToString(value, type === "datetime" || (type !== "date" && hasTime(value)));
+    if (isTimeOnly(value)) return `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}`;
+    const d = value.getTime() < MARCH_1900 ? new Date(value.getTime() + DAY) : value;
+    return dateToString(d, type === "datetime" || (type !== "date" && hasTime(d)));
   }
   if (typeof value === "object") {
     const v = value as unknown as Record<string, unknown>;
@@ -42,9 +62,10 @@ export function readCellValue(value: ExcelJS.CellValue, type?: ColumnType): Cell
       return s === "" ? null : s;
     }
     if ("hyperlink" in v) {
-      const text = v.text;
-      if (text && typeof text === "object") return readCellValue(text as ExcelJS.CellValue, type);
-      return readCellValue((text as string) ?? (v.hyperlink as string), type);
+      const text = v.text && typeof v.text === "object" ? readCellValue(v.text as ExcelJS.CellValue, type) : ((v.text as string) || null);
+      const target = typeof v.hyperlink === "string" ? v.hyperlink.replace(/^mailto:/i, "") : null;
+      if (opts.preferLink && target && (!text || !looksLikeLink(String(text)))) return target;
+      return readCellValue(text ?? target, type);
     }
     if ("formula" in v || "sharedFormula" in v) {
       return readCellValue((v.result as ExcelJS.CellValue) ?? null, type);
@@ -56,21 +77,14 @@ export function readCellValue(value: ExcelJS.CellValue, type?: ColumnType): Cell
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/;
-const NUMERIC_RE = /^-?\d+(?:\.\d+)?$/;
 
-export function toNumber(v: CellValue): number | null {
-  if (typeof v === "number") return v;
+/** "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm" → its parts, or null for any other text. */
+export function parseAppDate(v: CellValue): { y: number; m: number; d: number; hh: number; mm: number; time: boolean } | null {
   if (typeof v !== "string") return null;
-  const s = v.replace(/[$,\s]/g, "");
-  return NUMERIC_RE.test(s) ? Number(s) : null;
-}
-
-export function hrefFor(text: string): string | null {
-  const t = text.trim();
-  if (!t || /\s/.test(t)) return null;
-  if (/^(https?:|mailto:)/i.test(t)) return t;
-  if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(t)) return `https://${t}`;
-  return null;
+  const dt = DATETIME_RE.exec(v);
+  if (dt) return { y: +dt[1]!, m: +dt[2]!, d: +dt[3]!, hh: +dt[4]!, mm: +dt[5]!, time: true };
+  const d = DATE_RE.exec(v);
+  return d ? { y: +d[1]!, m: +d[2]!, d: +d[3]!, hh: 0, mm: 0, time: false } : null;
 }
 
 /** The app's value → what ExcelJS should write, typed so Excel sees dates and numbers as such. */
@@ -78,28 +92,23 @@ export function toExcelValue(v: CellValue, col: Column): ExcelJS.CellValue {
   if (v === null || v === "") return null;
   switch (col.type) {
     case "number":
-    case "currency": {
-      const n = toNumber(v);
-      return n ?? String(v);
-    }
-    case "date": {
-      const m = typeof v === "string" ? DATE_RE.exec(v) : null;
-      return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!)) : v;
-    }
+    case "currency":
+      return toNumber(v) ?? String(v);
+    case "date":
     case "datetime": {
-      if (typeof v !== "string") return v;
-      const m = DATETIME_RE.exec(v);
-      if (m) return new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!));
-      const d = DATE_RE.exec(v);
-      return d ? new Date(Date.UTC(+d[1]!, +d[2]! - 1, +d[3]!)) : v;
+      // A datetime written to a Date column (or the other way round) is still a date.
+      const p = parseAppDate(v);
+      if (!p) return v;
+      return new Date(Date.UTC(p.y, p.m - 1, p.d, col.type === "datetime" ? p.hh : 0, col.type === "datetime" ? p.mm : 0));
     }
-    case "select": {
+    case "select":
       if (col.numeric) {
         const n = toNumber(v);
         if (n !== null) return n;
       }
       return String(v);
-    }
+    case "checkbox":
+      return parseFlag(v) ? true : null;
     case "url": {
       const text = String(v);
       const href = hrefFor(text);
@@ -108,15 +117,6 @@ export function toExcelValue(v: CellValue, col: Column): ExcelJS.CellValue {
     default:
       return typeof v === "number" ? v : String(v);
   }
-}
-
-export function sameValue(a: CellValue, b: CellValue): boolean {
-  const na = a === "" ? null : a;
-  const nb = b === "" ? null : b;
-  if (na === nb) return true;
-  if (na === null || nb === null) return false;
-  // Tier 1 stored as 1, edited through a dropdown as "1": the same value.
-  return String(na) === String(nb);
 }
 
 export function numFmtFor(type: ColumnType): string | undefined {

@@ -7,8 +7,9 @@ import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
+import { fire } from "../../lib/fire";
 
-const GENERIC = ["Name", "Company", "Title", "Email", "LinkedIn", "Phone", "Location", "Website", "Status", "Next step", "Next date", "Meeting URL", "Meeting at", "Notes", "Source", "Intro message"];
+const GENERIC = ["Name", "Company", "Title", "Email", "LinkedIn", "Phone", "Location", "Website", "Status", "Next step", "Next date", "Meeting URL", "Meeting at", "Notes", "Source", "Intro message", "Screened out", "Screened reason"];
 
 export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean; onClose: () => void; campaigns: CampaignSummary[] }) {
   const navigate = useNavigate();
@@ -31,7 +32,7 @@ export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean;
     try {
       const c = await api.createCampaign(name, layout === "copy" && copyFrom ? { copyFrom } : "generic");
       onClose();
-      navigate(`/c/${c.id}`);
+      void navigate(`/c/${c.id}`);
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -44,11 +45,11 @@ export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean;
       open={open}
       onClose={onClose}
       title="New campaign"
-      subtitle="Every campaign has a Prospects list and a Screened-out list."
+      subtitle="One list of prospects. Screening one out keeps it in the list, greyed out, until you restore it."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={submit} disabled={!name.trim() || saving || (layout === "copy" && !copyFrom)}>
+          <Button variant="primary" onClick={() => fire(submit())} disabled={!name.trim() || saving || (layout === "copy" && !copyFrom)}>
             {saving ? "Creating…" : "Create campaign"}
           </Button>
         </>

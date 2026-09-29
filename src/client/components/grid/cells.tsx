@@ -1,8 +1,9 @@
 /** How a cell looks, and how it is edited, by column type. */
-import { AlertTriangle, CalendarClock, ExternalLink } from "lucide-react";
+import { AlertTriangle, CalendarClock, ExternalLink, Square, SquareCheck } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import type { CampaignSchema, CellValue, Column } from "../../../shared/types";
+import { isChecked, type CampaignSchema, type CellValue, type Column } from "../../../shared/types";
+import { flagValue, linkFor, parseFlag, toLocalInput, toNumber } from "../../../shared/values";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { CUE_LABEL, cueFor } from "../../lib/cues";
@@ -11,13 +12,9 @@ import { toneFor } from "../../lib/stages";
 
 export const display = (v: CellValue | undefined) => (v === null || v === undefined ? "" : String(v));
 
+/** The link a cell opens: the same rule as export, so the app and the file agree on what a link is. */
 export function hrefOf(text: string, type: Column["type"]): string | null {
-  const t = text.trim();
-  if (!t) return null;
-  if (type === "email" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return `mailto:${t}`;
-  if (/^https?:\/\//i.test(t)) return t;
-  if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(t) && !/\s/.test(t)) return `https://${t}`;
-  return null;
+  return linkFor(text, type);
 }
 
 export function openLink(url: string) {
@@ -47,6 +44,11 @@ export function CellView({
   const text = display(v);
   const cue = cueFor(col, cells, schema);
   if (col.key === schema.statusKey) return <StatusPill value={text} stages={stages} />;
+  if (col.type === "checkbox") {
+    return isChecked(v)
+      ? <SquareCheck size={16} className="shrink-0 text-brand-600" aria-label="Ticked" />
+      : <Square size={16} className="shrink-0 text-ink-faint/70" aria-label="Not ticked" />;
+  }
   if (!text) return null;
 
   switch (col.type) {
@@ -62,7 +64,7 @@ export function CellView({
       return (
         <span className="flex min-w-0 items-center gap-1.5">
           <span className={cn("truncate tabular-nums", cue === "past" && "text-ink-faint")}>{formatDateTime(text)}</span>
-          {cue === "today" && <span className="rounded bg-yellow-200 px-1 text-[10px] font-semibold text-yellow-900 uppercase">Today</span>}
+          {cue === "today" && <span className="rounded-sm bg-yellow-200 px-1 text-[10px] font-semibold text-yellow-900 uppercase">Today</span>}
           {cue === "upcoming" && <CalendarClock size={13} className="shrink-0 text-yellow-600" />}
         </span>
       );
@@ -77,7 +79,7 @@ export function CellView({
           </span>
           {href && (
             <button
-              className="shrink-0 rounded p-0.5 text-ink-faint opacity-0 group-hover/cell:opacity-100 hover:bg-zinc-200 hover:text-ink"
+              className="shrink-0 rounded-sm p-0.5 text-ink-faint opacity-0 group-hover/cell:opacity-100 hover:bg-zinc-200 hover:text-ink"
               title={`Open ${href}`}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
@@ -94,8 +96,8 @@ export function CellView({
     case "number":
       return <span className="ml-auto truncate tabular-nums">{text}</span>;
     case "currency": {
-      const n = typeof v === "number" ? v : Number(String(v).replace(/[$,]/g, ""));
-      return <span className="ml-auto truncate tabular-nums">{Number.isFinite(n) ? `$${n.toLocaleString()}` : text}</span>;
+      const n = toNumber(v);
+      return <span className="ml-auto truncate tabular-nums">{n !== null ? `$${n.toLocaleString()}` : text}</span>;
     }
     default:
       return <span className="truncate">{text}</span>;
@@ -114,18 +116,13 @@ export interface EditorProps {
   onCancel: () => void;
 }
 
+/** Typed or pasted text as the value a column stores. */
 export function coerce(raw: string, col: Column): CellValue {
-  const s = raw;
-  if (s.trim() === "") return null;
-  if (col.type === "number" || col.type === "currency") {
-    const n = Number(s.replace(/[$,\s]/g, ""));
-    return Number.isFinite(n) && /\d/.test(s) ? n : s;
-  }
-  return s;
+  if (col.type === "checkbox") return flagValue(parseFlag(raw));
+  if (raw.trim() === "") return null;
+  if (col.type === "number" || col.type === "currency") return toNumber(raw) ?? raw;
+  return raw;
 }
-
-/** Datetime-local wants "YYYY-MM-DDTHH:mm"; accept a bare date too. */
-const toLocalInput = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T09:00` : v.slice(0, 16));
 
 export function CellEditor(props: EditorProps) {
   const { col } = props;
@@ -138,7 +135,8 @@ function InputEditor({ col, value, initial, onCommit, onCancel }: EditorProps) {
   const ref = useRef<HTMLInputElement>(null);
   const start = initial ?? display(value);
   const type = col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text";
-  const [draft, setDraft] = useState(type === "datetime-local" && start ? toLocalInput(start) : start);
+  const [opened] = useState(() => (type === "datetime-local" && start ? toLocalInput(start) : start));
+  const [draft, setDraft] = useState(opened);
   const done = useRef(false);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -152,7 +150,9 @@ function InputEditor({ col, value, initial, onCommit, onCancel }: EditorProps) {
   const commit = (move?: Move) => {
     if (done.current) return;
     done.current = true;
-    onCommit(coerce(draft, col), move);
+    // Left as it opened: the value stays as it is. A bare date in a date + time column shows
+    // as 09:00, and opening it must not store that time.
+    onCommit(initial === undefined && draft === opened ? value : coerce(draft, col), move);
   };
   return (
     <input
@@ -209,7 +209,7 @@ function LongTextEditor({ value, initial, onCommit, onCancel, col }: EditorProps
 }
 
 function SelectEditor({ col, value, initial, onCommit, onCancel }: EditorProps) {
-  const options = col.options ?? [];
+  const options = useMemo(() => col.options ?? [], [col.options]);
   const [filter, setFilter] = useState(initial ?? "");
   const list = useMemo(
     () => options.filter((o) => o.toLowerCase().includes(filter.toLowerCase())),

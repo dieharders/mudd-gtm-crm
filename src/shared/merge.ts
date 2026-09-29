@@ -13,7 +13,13 @@ import type { CampaignSchema, CellValue } from "./types";
 
 const PLACEHOLDER = /\{\{\s*([^{}|]+?)\s*(?:\|\s*([^{}]*?)\s*)?\}\}/g;
 
-export const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+/** A header for matching: case, spacing and punctuation ignored, letters of any script kept. */
+export const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+/** The placeholder names left in a text, e.g. an intro still holding "{{First name}}". */
+export function placeholderNames(text: string): string[] {
+  return [...text.matchAll(PLACEHOLDER)].map((m) => m[1]!);
+}
 
 export interface MergeResult {
   text: string;
@@ -44,6 +50,7 @@ export function resolvePlaceholder(
   cells: Record<string, CellValue>,
 ): { known: boolean; value: string } {
   const n = norm(name);
+  if (!n) return { known: false, value: "" };
   if (n === "firstname") {
     if (!schema.nameKey) return { known: false, value: "" };
     return { known: true, value: firstNameOf(display(cells[schema.nameKey])) };

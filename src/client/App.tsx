@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useParams } from "react-router-dom";
 import { CampaignPage } from "./components/campaign/CampaignPage";
 import { HomePage, MeetingsPage } from "./components/campaigns/HomePage";
 import { ImportProvider } from "./components/campaigns/ImportFlow";
@@ -10,6 +10,12 @@ import { AiSettingsDialog } from "./components/ai/AiSettings";
 import { AiProvider } from "./lib/aiStatus";
 import { CampaignListProvider, useCampaignList } from "./lib/campaignList";
 
+/** A fresh campaign page per campaign: switching in the sidebar starts clean, undo included. */
+function CampaignRoute() {
+  const { id } = useParams();
+  return <CampaignPage key={id} />;
+}
+
 function Shell() {
   const [creating, setCreating] = useState(false);
   const { campaigns } = useCampaignList();
@@ -19,7 +25,7 @@ function Shell() {
       <main className="min-w-0 flex-1">
         <Routes>
           <Route path="/" element={<HomePage onNewCampaign={() => setCreating(true)} />} />
-          <Route path="/c/:id" element={<CampaignPage />} />
+          <Route path="/c/:id" element={<CampaignRoute />} />
           <Route path="/meetings" element={<MeetingsPage />} />
           <Route path="*" element={<HomePage onNewCampaign={() => setCreating(true)} />} />
         </Routes>

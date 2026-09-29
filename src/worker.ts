@@ -41,14 +41,14 @@ const server = (() => {
   }
 })();
 
-declare var self: Worker;
+declare let self: Worker;
 self.onmessage = (event: MessageEvent) => {
   if (event.data?.type !== "shutdown") return;
   // Stop every research turn: a CLI left running would keep spending the user's plan.
   stopAllRuns();
   abortAll();
-  server.stop(true);
-  postMessage({ type: "closed" });
+  // "closed" only once the server has stopped: the main thread quits on it.
+  void server.stop(true).finally(() => postMessage({ type: "closed" }));
 };
 
 postMessage({ type: "ready", port: server.port });

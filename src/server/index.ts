@@ -4,13 +4,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { Bucket, CampaignSchema, CellEdit, InspectResult, Row } from "../shared/types";
+import { copySchema, genericSchema } from "../shared/schema";
+import { IMPORT_EXTENSIONS, type CampaignSchema, type CellEdit, type InspectResult, type Row } from "../shared/types";
 import { exportCampaign } from "../xlsx/export";
-import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook } from "../xlsx/import";
-import { copySchema, genericSchema } from "../xlsx/layouts";
+import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook, type LoadedBook } from "../xlsx/import";
 import * as db from "./db";
 import { registerAiRoutes } from "./ai-routes";
-import { dialogsSupported, downloadsDir, openDialog, openExternal, saveDialog } from "./dialogs";
+import { dialogsSupported, downloadsDir, openDialog, openExternal } from "./dialogs";
 import { markInterruptedRuns } from "./enrich/store";
 
 const SECURITY_HEADERS = {
@@ -52,6 +52,8 @@ interface Staged {
   fileName: string;
   path: string | null;
   mtime: number | null;
+  /** The workbook as parsed for inspect, so import does not parse it a second time. */
+  book: LoadedBook;
   at: number;
 }
 const staged = new Map<string, Staged>();
@@ -85,30 +87,37 @@ async function inspect(req: Request): Promise<InspectResult> {
     filePath = p;
     mtime = Math.round(fs.statSync(p).mtimeMs);
   }
-  if (!/\.(xlsx|xlsm|csv|tsv|txt)$/i.test(fileName)) {
+  if (/\.xlsm$/i.test(fileName)) {
+    throw new HttpError(400, `${fileName} has macros, and saving it would lose them. In Excel, use File › Save As › Excel Workbook (.xlsx) and import that copy.`);
+  }
+  if (!IMPORT_EXTENSIONS.some((ext) => fileName.toLowerCase().endsWith(ext))) {
     throw new HttpError(400, `${fileName} is not a spreadsheet Mudd can read. Use .xlsx or .csv.`);
   }
-  let wb;
+  let book: LoadedBook;
   try {
-    wb = await loadWorkbook(buf, fileName);
+    book = await loadWorkbook(buf, fileName);
   } catch (err) {
     throw new HttpError(400, `Could not read ${fileName}: ${(err as Error).message}`);
   }
-  const { sheets, templates } = inspectWorkbook(wb);
-  const token = stage({ buf, fileName, path: filePath, mtime });
+  const { sheets, templates } = inspectWorkbook(book);
+  const token = stage({ buf, fileName, path: filePath, mtime, book });
   return { token, fileName, path: filePath, sheets, templates };
 }
 
 async function doImport(req: Request) {
-  const b = await body<{ token: string; name?: string; prospects: string; screened: string | null }>(req);
+  const b = await body<{ token: string; name?: string; prospects: string }>(req);
   const s = staged.get(b.token);
   if (!s) throw new HttpError(410, "That upload expired. Please import the file again.");
-  const wb = await loadWorkbook(s.buf, s.fileName);
-  const imp = importWorkbook(wb, { prospects: b.prospects, screened: b.screened ?? null });
+  let imp;
+  try {
+    imp = importWorkbook(s.book, { prospects: b.prospects });
+  } catch (err) {
+    throw new HttpError(400, (err as Error).message);
+  }
   const csv = isCsvName(s.fileName);
   const base = s.fileName.replace(/\.[^.]+$/, "");
   const campaign = db.createCampaign({
-    name: b.name?.trim() || (wb.worksheets.length > 1 && !csv ? `${base} · ${b.prospects}` : base),
+    name: b.name?.trim() || (s.book.wb.worksheets.length > 1 && !csv ? `${base} · ${b.prospects}` : base),
     schema: imp.schema,
     sheets: csv ? [] : imp.sheets,
     sourceName: s.fileName,
@@ -123,27 +132,46 @@ async function doImport(req: Request) {
   return campaign;
 }
 
-// ---------- export ----------
+// ---------- Save file ----------
 
+// eslint-disable-next-line no-control-regex -- control characters can't be in a file name
 const safeFileName = (s: string) => s.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) || "campaign";
 
-function defaultExportName(c: ReturnType<typeof mustCampaign>): string {
-  if (c.sourceName && !isCsvName(c.sourceName)) return c.sourceName;
+/** The file name a save uses when there is no file to write over: always an .xlsx. */
+function exportName(c: ReturnType<typeof mustCampaign>): string {
+  if (c.sourceName && !isCsvName(c.sourceName)) return c.sourceName.replace(/\.xlsm$/i, ".xlsx");
   return `${safeFileName(c.name)}.xlsx`;
 }
 
-async function buildExport(id: string) {
-  const c = mustCampaign(id);
-  const bytes = await exportCampaign(c, db.getOriginal(id), db.listRows(id), db.listTemplates(id));
-  return { c, bytes };
+/** `dir/name`, or `dir/name (2)` and so on when that file exists. */
+function freePath(dir: string, name: string): string {
+  const ext = path.extname(name);
+  const stem = name.slice(0, name.length - ext.length);
+  let target = path.join(dir, name);
+  for (let i = 2; fs.existsSync(target); i++) target = path.join(dir, `${stem} (${i})${ext}`);
+  return target;
 }
 
-function writeFileSafely(target: string, bytes: Uint8Array, backup: boolean): void {
+const mtimeOf = (p: string) => Math.round(fs.statSync(p).mtimeMs);
+const BACKUPS_KEPT = 10;
+
+/**
+ * Before a file is overwritten: a `.bak` copy next to it (the previous version, where the user
+ * will look), and a dated copy in Mudd's data folder, of which the last ten are kept.
+ */
+function backUp(campaignId: string, target: string): void {
+  if (!fs.existsSync(target)) return;
+  fs.copyFileSync(target, target.replace(/(\.[^.\\/]+)?$/, ".bak$1"));
+  const dir = path.join(db.dataDir(), "backups", campaignId);
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  fs.copyFileSync(target, path.join(dir, `${stamp} ${path.basename(target)}`));
+  const old = fs.readdirSync(dir).sort().slice(0, -BACKUPS_KEPT);
+  for (const f of old) fs.rmSync(path.join(dir, f), { force: true });
+}
+
+function writeFileSafely(target: string, bytes: Uint8Array): void {
   try {
-    if (backup && fs.existsSync(target)) {
-      const bak = target.replace(/(\.[^.\\/]+)?$/, ".bak$1");
-      fs.copyFileSync(target, bak);
-    }
     fs.writeFileSync(target, bytes);
   } catch (err) {
     const code = (err as { code?: string }).code;
@@ -154,46 +182,37 @@ function writeFileSafely(target: string, bytes: Uint8Array, backup: boolean): vo
   }
 }
 
-async function doExport(id: string, req: Request) {
-  const b = await body<{ target: "original" | "saveAs" | "download"; force?: boolean }>(req);
-  const { c, bytes } = await buildExport(id);
-  const name = defaultExportName(c);
+/**
+ * Save file: write over the file the campaign was imported from, with no dialog. When Mudd does
+ * not know where that is (dropped in, a CSV, created in Mudd, or its folder is gone), the file
+ * goes to Downloads and the campaign is linked to it, so the next save writes there again.
+ * `copy` always writes a new file in Downloads and changes no link.
+ */
+async function saveFile(id: string, req: Request) {
+  const b = await body<{ force?: boolean; copy?: boolean }>(req);
+  const c = mustCampaign(id);
+  const inPlace = !b.copy && !!c.sourcePath && !/\.xlsm$/i.test(c.sourcePath) && fs.existsSync(path.dirname(c.sourcePath));
 
-  if (b.target === "download") {
-    return new Response(new Blob([bytes as BlobPart]), {
-      headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${name.replace(/"/g, "")}"`,
-        ...SECURITY_HEADERS,
-      },
-    });
-  }
-
-  if (b.target === "original") {
-    if (!c.sourcePath) throw new HttpError(400, "This campaign is not linked to a file yet. Use Save as.");
+  // The cheap check first: a file edited outside Mudd is not replaced without asking.
+  if (inPlace && fs.existsSync(c.sourcePath!) && !b.force) {
     const recorded = db.getSourceMtime(id);
-    if (fs.existsSync(c.sourcePath) && recorded && !b.force) {
-      const now = Math.round(fs.statSync(c.sourcePath).mtimeMs);
-      if (Math.abs(now - recorded) > 2000) {
-        throw new HttpError(409, `${path.basename(c.sourcePath)} was changed outside Mudd since it was imported. Saving will replace those changes (a .bak copy is kept).`, { code: "changed" });
-      }
+    if (recorded && Math.abs(mtimeOf(c.sourcePath!) - recorded) > 2000) {
+      throw new HttpError(409, `${path.basename(c.sourcePath!)} was changed outside Mudd since it was last saved here. Saving replaces those changes (the previous version is kept as a .bak copy).`, { code: "changed" });
     }
-    writeFileSafely(c.sourcePath, bytes, true);
-    db.setSource(id, c.sourcePath, Math.round(fs.statSync(c.sourcePath).mtimeMs));
-    return json({ path: c.sourcePath });
   }
 
-  // saveAs
-  const suggested = c.sourcePath ? path.join(path.dirname(c.sourcePath), name) : path.join(downloadsDir(), name);
-  const pick = await saveDialog(suggested);
-  if ("unsupported" in pick) return fail(501, "No native save dialog on this system; use Download.", { code: "unsupported" });
-  if ("cancelled" in pick) return json({ cancelled: true });
-  writeFileSafely(pick.path, bytes, false);
-  const mtime = Math.round(fs.statSync(pick.path).mtimeMs);
-  // The first Save As links a campaign to a file, so the next export can simply "Save".
-  if (!c.sourcePath) db.setSource(id, pick.path, mtime);
-  else if (path.resolve(pick.path) === path.resolve(c.sourcePath)) db.setSource(id, pick.path, mtime);
-  return json({ path: pick.path, linked: !c.sourcePath });
+  const bytes = await exportCampaign(c, db.getOriginal(id), db.listRowsForExport(id), db.listTemplates(id));
+  if (inPlace) {
+    backUp(id, c.sourcePath!);
+    writeFileSafely(c.sourcePath!, bytes);
+    db.setSource(id, c.sourcePath!, mtimeOf(c.sourcePath!));
+    return json({ path: c.sourcePath, linked: true });
+  }
+  fs.mkdirSync(downloadsDir(), { recursive: true });
+  const target = freePath(downloadsDir(), exportName(c));
+  writeFileSafely(target, bytes);
+  if (!b.copy) db.setSource(id, target, mtimeOf(target));
+  return json({ path: target, linked: !b.copy });
 }
 
 // ---------- router ----------
@@ -231,7 +250,7 @@ on("DELETE", "/api/campaigns/:id", (_req, [id]) => {
 
 on("POST", "/api/campaigns/:id/rows", async (req, [id]) => {
   mustCampaign(id!);
-  const b = await body<{ rows: (Partial<Row> & { bucket: Bucket })[] }>(req);
+  const b = await body<{ rows: Partial<Row>[] }>(req);
   return json(db.insertRows(id!, b.rows ?? []));
 });
 on("PATCH", "/api/campaigns/:id/rows", async (req, [id]) => {
@@ -242,12 +261,6 @@ on("PATCH", "/api/campaigns/:id/rows", async (req, [id]) => {
 on("DELETE", "/api/campaigns/:id/rows", async (req, [id]) => {
   const b = await body<{ ids: string[] }>(req);
   db.deleteRows(id!, b.ids ?? []);
-  return json({ ok: true });
-});
-on("POST", "/api/campaigns/:id/rows/move", async (req, [id]) => {
-  const b = await body<{ ids: string[]; bucket: Bucket; positions?: Record<string, number> }>(req);
-  if (b.bucket !== "prospects" && b.bucket !== "screened") throw new HttpError(400, "Unknown bucket.");
-  db.moveRows(id!, b.ids ?? [], b.bucket, b.positions);
   return json({ ok: true });
 });
 
@@ -269,7 +282,7 @@ on("DELETE", "/api/templates/:id", (_req, [id]) => {
 
 on("POST", "/api/import/inspect", async (req) => json(await inspect(req)));
 on("POST", "/api/import", async (req) => json(await doImport(req)));
-on("POST", "/api/campaigns/:id/export", async (req, [id]) => doExport(id!, req));
+on("POST", "/api/campaigns/:id/save", async (req, [id]) => saveFile(id!, req));
 
 on("POST", "/api/dialog/open", async () => json(await openDialog()));
 on("POST", "/api/open-url", async (req) => {

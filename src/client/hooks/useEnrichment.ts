@@ -2,13 +2,29 @@
  * One campaign's enrichment state: recipes, runs, pending suggestions, and the live event
  * stream from the server. Accepting a suggestion goes through the campaign's own `edit`, so
  * it saves, shows "Saved", and can be undone like any other edit.
+ *
+ * A live run comes whole over the stream (when it connects, and on each status change), then
+ * one changed row at a time, in order. So the stream's copy of a live run is the newest the
+ * page has, and a copy a request returned only fills a gap: replacing the stream's copy with
+ * it would undo the row updates that arrived in between, and nothing would bring them back.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { mergeSources, SOURCES_HEADER, type CampaignEvent, type EnrichRun, type IntroOptions, type Recipe, type Suggestion } from "../../shared/ai";
+import { applyRunRow, mergeSources, SOURCES_HEADER, type CampaignEvent, type EnrichRun, type IntroOptions, type Recipe, type Suggestion } from "../../shared/ai";
 import type { CellEdit } from "../../shared/types";
 import { api, ApiError, type RecipeDraft } from "../lib/api";
 import type { CampaignState } from "./useCampaign";
+
+const isLive = (r: EnrichRun) => r.status === "running" || r.status === "paused" || r.status === "stopping";
+const newestFirst = (a: EnrichRun, b: EnrichRun) => b.startedAt - a.startedAt;
+
+/** Take a run a request returned, unless it is live and the stream already brought it. */
+function withRun(runs: EnrichRun[], run: EnrichRun): EnrichRun[] {
+  if (isLive(run) && runs.some((r) => r.id === run.id)) return runs;
+  return [run, ...runs.filter((r) => r.id !== run.id)].sort(newestFirst);
+}
+
+const cellOf = (s: Suggestion) => `${s.rowId}\n${s.key}`;
 
 export function useEnrichment(state: CampaignState) {
   const campaign = state.campaign;
@@ -20,9 +36,14 @@ export function useEnrichment(state: CampaignState) {
 
   useEffect(() => {
     if (!id) return;
-    api.recipes(id).then(setRecipes).catch(() => {});
-    api.runs(id).then(setRuns).catch(() => {});
-    api.suggestions(id).then(setSuggestions).catch(() => {});
+    // A reply for the campaign the page has since left is dropped.
+    let current = true;
+    api.recipes(id).then((list) => current && setRecipes(list)).catch(() => {});
+    api.runs(id).then((list) => current && setRuns((prev) => list.reduce(withRun, prev.filter((r) => r.campaignId === id)))).catch(() => {});
+    api.suggestions(id).then((list) => current && setSuggestions(list)).catch(() => {});
+    return () => {
+      current = false;
+    };
   }, [id]);
 
   // Live updates while the campaign is open.
@@ -39,19 +60,23 @@ export function useEnrichment(state: CampaignState) {
       }
       if (ev.type === "run") {
         const run = ev.run;
-        setRuns((prev) => [run, ...prev.filter((r) => r.id !== run.id)].sort((a, b) => b.startedAt - a.startedAt));
+        setRuns((prev) => [run, ...prev.filter((r) => r.id !== run.id)].sort(newestFirst));
         if (run.status === "done" && run.finishedAt && Date.now() - run.finishedAt < 3000) {
           toast.success(`${run.label}: ${run.completed} of ${run.total} rows done${run.suggestions ? ` · ${run.suggestions} suggestions to review` : ""}`, { id: `run-${run.id}` });
         }
         if (run.status === "failed" && run.error) toast.error(run.error, { id: `run-${run.id}` });
+      } else if (ev.type === "runRow") {
+        // A run the page doesn't have yet is skipped: it arrives whole, rows included.
+        setRuns((prev) => applyRunRow(prev, ev));
       } else if (ev.type === "suggestions") {
+        // Any new finding for a cell replaces the one waiting there, as on the server, even
+        // when auto-fill used it: accepting the old one would overwrite the filled value.
+        const cells = new Set(ev.suggestions.map(cellOf));
         const fresh = ev.suggestions.filter((s) => s.status === "pending");
-        if (fresh.length) {
-          setSuggestions((prev) => {
-            const replaced = prev.filter((p) => !fresh.some((f) => f.rowId === p.rowId && f.key === p.key));
-            return [...replaced, ...fresh];
-          });
-        }
+        setSuggestions((prev) => {
+          const kept = prev.filter((p) => !cells.has(cellOf(p)));
+          return kept.length === prev.length && !fresh.length ? prev : [...kept, ...fresh];
+        });
       } else if (ev.type === "cells") {
         applyRemote(ev.edits);
       }
@@ -111,7 +136,7 @@ export function useEnrichment(state: CampaignState) {
     await state.flush();
     try {
       const run = await api.startRun(id, body);
-      setRuns((prev) => [run, ...prev.filter((r) => r.id !== run.id)]);
+      setRuns((prev) => withRun(prev, run));
       return run;
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
@@ -121,17 +146,18 @@ export function useEnrichment(state: CampaignState) {
               setNeedsConsent(null);
               resolve(null);
             },
-            confirm: async () => {
+            confirm: () => {
               setNeedsConsent(null);
-              try {
-                await api.aiSettings({ consented: true });
-                const run = await api.startRun(id, body);
-                setRuns((prev) => [run, ...prev.filter((r) => r.id !== run.id)]);
-                resolve(run);
-              } catch (e) {
-                toast.error((e as Error).message);
-                resolve(null);
-              }
+              api.aiSettings({ consented: true })
+                .then(() => api.startRun(id, body))
+                .then((run) => {
+                  setRuns((prev) => withRun(prev, run));
+                  resolve(run);
+                })
+                .catch((e: unknown) => {
+                  toast.error((e as Error).message);
+                  resolve(null);
+                });
             },
           });
         });
@@ -146,10 +172,11 @@ export function useEnrichment(state: CampaignState) {
       toast.error(e.message);
       return null;
     });
-    if (run) setRuns((prev) => prev.map((r) => (r.id === run.id ? run : r)));
+    // The new status itself comes over the stream, sent before this reply.
+    if (run) setRuns((prev) => withRun(prev, run));
   }, []);
 
-  const activeRuns = runs.filter((r) => r.status === "running" || r.status === "paused" || r.status === "stopping");
+  const activeRuns = runs.filter(isLive);
 
   return {
     recipes, runs, activeRuns, suggestions, pendingByRow, accept, reject, saveRecipe, deleteRecipe, start, action,

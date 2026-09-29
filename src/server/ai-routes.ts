@@ -1,13 +1,13 @@
 /** API routes for AI settings, recipes, enrichment runs, suggestions and the event stream. */
-import type { AiSettings, IntroOptions, ProviderId, RecipeOutput, RunKind, SuggestionStatus } from "../shared/ai";
+import type { AiSettings, CampaignEvent, IntroOptions, ProviderId, RecipeOutput, RunKind, SuggestionStatus } from "../shared/ai";
 import { PROVIDER_IDS } from "../shared/ai";
+import { makeKey, typeFromHeader } from "../shared/schema";
 import type { CampaignSchema, ColumnType } from "../shared/types";
-import { makeKey } from "../xlsx/layouts";
 import { openSignIn, providerStatus } from "./ai";
 import { getAiSettings, updateAiSettings } from "./ai/settings";
 import * as db from "./db";
 import { eventStream } from "./enrich/hub";
-import { ensureSourcesColumn, pauseRun, resumeRun, startRun, stopRun } from "./enrich/runner";
+import { ensureSourcesColumn, liveRuns, pauseRun, recentRuns, resumeRun, startRun, stopRun } from "./enrich/runner";
 import * as store from "./enrich/store";
 
 type Json = (data: unknown, status?: number) => Response;
@@ -15,13 +15,9 @@ type On = (method: string, pattern: string, h: (req: Request, params: string[]) 
 type Body = <T>(req: Request) => Promise<T>;
 type Fail = (status: number, message: string) => never;
 
+/** A new column's type: what import makes of the same header, else long text for a long hint. */
 function guessType(header: string, hint = ""): ColumnType {
-  const h = header.toLowerCase();
-  if (/e-?mail/.test(h) && !/source/.test(h)) return "email";
-  if (/linkedin|website|url|link/.test(h)) return "url";
-  if (/phone/.test(h)) return "phone";
-  if (/summary|news|hook|description|notes?|why|angle/.test(h) || hint.length > 80) return "longtext";
-  return "text";
+  return typeFromHeader(header)?.type ?? (hint.length > 80 ? "longtext" : "text");
 }
 
 /**
@@ -31,7 +27,10 @@ function guessType(header: string, hint = ""): ColumnType {
 function resolveOutputs(campaignId: string, outputs: (Partial<RecipeOutput> & { header: string; type?: ColumnType; options?: string[] })[], recipeId: string) {
   const c = db.getCampaign(campaignId)!;
   const schema: CampaignSchema = { ...c.schema, columns: [...c.schema.columns] };
-  const taken = new Set(schema.columns.map((col) => col.key));
+  // Keys in use, and keys a deleted column left values under: a new column must not show a
+  // deleted one's data. Read only once a column is actually added.
+  let taken: Set<string> | null = null;
+  const newKey = (header: string) => makeKey(header, (taken ??= new Set([...schema.columns.map((col) => col.key), ...db.allCellKeys(campaignId)])));
   const resolved: RecipeOutput[] = [];
   for (const o of outputs) {
     const header = o.header.trim();
@@ -39,7 +38,7 @@ function resolveOutputs(campaignId: string, outputs: (Partial<RecipeOutput> & { 
     let col = o.key ? schema.columns.find((x) => x.key === o.key) : undefined;
     col ??= schema.columns.find((x) => x.header.toLowerCase() === header.toLowerCase());
     if (!col) {
-      col = { key: makeKey(header, taken), header, type: o.type ?? guessType(header, o.hint), origin: "enrichment", recipeId, width: 220, ...(o.options?.length ? { options: o.options } : {}) };
+      col = { key: newKey(header), header, type: o.type ?? guessType(header, o.hint), origin: "enrichment", recipeId, width: 220, ...(o.options?.length ? { options: o.options } : {}) };
       schema.columns.push(col);
     }
     if (!resolved.some((r) => r.key === col!.key)) resolved.push({ key: col.key, header: col.header, hint: o.hint?.trim() || undefined });
@@ -89,7 +88,7 @@ export function registerAiRoutes(on: On, { json, body, fail }: { json: Json; bod
   });
 
   // ----- runs -----
-  on("GET", "/api/campaigns/:id/runs", (_req, [id]) => json(store.listRuns(id!)));
+  on("GET", "/api/campaigns/:id/runs", (_req, [id]) => json(recentRuns(id!)));
   on("POST", "/api/campaigns/:id/runs", async (req, [id]) => {
     mustCampaign(id!);
     const b = await body<{ kind: RunKind; recipeId?: string; rowIds: string[]; test?: boolean; autoFill?: boolean; concurrency?: number; intro?: IntroOptions }>(req);
@@ -119,6 +118,7 @@ export function registerAiRoutes(on: On, { json, body, fail }: { json: Json; bod
 
   on("GET", "/api/campaigns/:id/events", (_req, [id]) => {
     mustCampaign(id!);
-    return eventStream(id!);
+    // Live runs first, whole: the row updates that follow apply to them.
+    return eventStream(id!, () => liveRuns(id!).map((run): CampaignEvent => ({ type: "run", run })));
   });
 }

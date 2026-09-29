@@ -4,22 +4,36 @@
  */
 import type { CampaignEvent } from "../../shared/ai";
 
-type Send = (ev: CampaignEvent) => void;
+type Send = (frame: string) => void;
 const subscribers = new Map<string, Set<Send>>();
 
+const frame = (ev: CampaignEvent) => `data: ${JSON.stringify(ev)}\n\n`;
+
+/**
+ * Send an event to every page showing the campaign. It is serialised once, before this
+ * returns, so a caller may pass live objects (a running run) and go on changing them.
+ */
 export function publish(campaignId: string, ev: CampaignEvent): void {
-  for (const send of subscribers.get(campaignId) ?? []) send(ev);
+  const subs = subscribers.get(campaignId);
+  if (!subs?.size) return;
+  const data = frame(ev);
+  for (const send of subs) send(data);
 }
 
-export function eventStream(campaignId: string): Response {
+/**
+ * One page's stream. `snapshot` goes first, taken in the same tick the page is subscribed, so
+ * it and the events after it are one unbroken sequence: a page that connects (or reconnects)
+ * mid-run gets each live run as it is now, then every change to it.
+ */
+export function eventStream(campaignId: string, snapshot: () => CampaignEvent[] = () => []): Response {
   const enc = new TextEncoder();
   let send: Send | null = null;
   let ping: ReturnType<typeof setInterval> | null = null;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      send = (ev) => {
+      send = (data) => {
         try {
-          controller.enqueue(enc.encode(`data: ${JSON.stringify(ev)}\n\n`));
+          controller.enqueue(enc.encode(data));
         } catch {
           /* closed */
         }
@@ -28,8 +42,9 @@ export function eventStream(campaignId: string): Response {
       set.add(send);
       subscribers.set(campaignId, set);
       controller.enqueue(enc.encode(": connected\n\n"));
+      for (const ev of snapshot()) send(frame(ev));
       // Under the server's idle timeout, so a quiet stream is never cut.
-      ping = setInterval(() => send?.({ type: "ping" }), 25_000);
+      ping = setInterval(() => send?.(frame({ type: "ping" })), 25_000);
     },
     cancel() {
       if (ping) clearInterval(ping);

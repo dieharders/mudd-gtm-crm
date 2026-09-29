@@ -75,12 +75,9 @@ export function listSuggestions(campaignId: string, status?: SuggestionStatus): 
 
 /** A newer suggestion for the same cell replaces an older one still waiting for review. */
 export function supersedePending(campaignId: string, rowId: string, key: string): void {
-  const d = getDb();
-  const rows = d.query("SELECT id, json FROM suggestions WHERE campaign_id = ? AND row_id = ? AND status = 'pending'").all(campaignId, rowId) as { id: string; json: string }[];
-  for (const r of rows) {
-    const s = JSON.parse(r.json) as Suggestion;
-    if (s.key === key) d.query("DELETE FROM suggestions WHERE id = ?").run(r.id);
-  }
+  getDb()
+    .query("DELETE FROM suggestions WHERE campaign_id = ? AND row_id = ? AND status = 'pending' AND json_extract(json, '$.key') = ?")
+    .run(campaignId, rowId, key);
 }
 
 export function setSuggestionStatus(campaignId: string, ids: string[], status: SuggestionStatus): Suggestion[] {

@@ -15,6 +15,7 @@ import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
 import { Modal } from "../ui/Modal";
 import { useImport } from "./ImportFlow";
+import { fire } from "../../lib/fire";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -59,7 +60,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
             {[0, 1].map((i) => <div key={i} className="h-44 animate-pulse rounded-2xl bg-zinc-200/60" />)}
           </div>
         ) : campaigns.length === 0 ? (
-          <Onboarding onImport={startImport} onCreate={onNewCampaign} />
+          <Onboarding />
         ) : (
           <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
             <div className="min-w-0 space-y-5">
@@ -87,7 +88,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
         footer={
           <>
             <Button variant="ghost" onClick={() => setDeleting(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => deleting && remove(deleting)}><Trash2 size={15} /> Delete</Button>
+            <Button variant="danger" onClick={() => { if (deleting) fire(remove(deleting)); }}><Trash2 size={15} /> Delete</Button>
           </>
         }
       >
@@ -122,8 +123,8 @@ function StatCard({ tile, icon, value, label }: { tile: string; icon: ReactNode;
   );
 }
 
-/** First run: the three steps, drawn like Clay's flow diagram. */
-function Onboarding({ onImport, onCreate }: { onImport: () => void; onCreate: () => void }) {
+/** First run: the three steps, drawn like Clay's flow diagram. The page header has the buttons. */
+function Onboarding() {
   const steps = [
     { tile: "bg-violet-100 text-violet-700", icon: <FileSpreadsheet size={18} />, title: "Bring your sheet", tags: [["Excel", "bg-violet-100 text-violet-800"], ["CSV", "bg-violet-100 text-violet-800"]], body: "Import a tracker, or start from a blank layout." },
     { tile: "bg-sky-100 text-sky-700", icon: <Workflow size={18} />, title: "Work the pipeline", tags: [["Status", "bg-sky-100 text-sky-800"], ["Meetings", "bg-sky-100 text-sky-800"], ["Intro msgs", "bg-sky-100 text-sky-800"]], body: "Edit like a spreadsheet, track every touch." },
@@ -134,7 +135,7 @@ function Onboarding({ onImport, onCreate }: { onImport: () => void; onCreate: ()
       <div className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full bg-white/10 blur-2xl" />
       <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-yellow-300/20 blur-3xl" />
       <h2 className="relative text-2xl font-bold tracking-tight">Start with a spreadsheet you already have.</h2>
-      <p className="relative mt-1 max-w-xl text-sm text-white/80">Everything stays on this computer. Drop a file anywhere on this window, or use the buttons below.</p>
+      <p className="relative mt-1 max-w-xl text-sm text-white/80">Everything stays on this computer. Drop a file anywhere on this window, or use Import sheet above.</p>
       <div className="relative mt-7 grid items-stretch gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
         {steps.map((s, i) => (
           <div key={s.title} className="contents">
@@ -152,14 +153,6 @@ function Onboarding({ onImport, onCreate }: { onImport: () => void; onCreate: ()
           </div>
         ))}
       </div>
-      <div className="relative mt-7 flex gap-2">
-        <button onClick={onImport} className="inline-flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-brand-700 shadow-[inset_0_-2px_0_rgba(0,0,0,0.08)] transition hover:bg-brand-50 active:translate-y-px">
-          <FolderOpen size={16} /> Import sheet
-        </button>
-        <button onClick={onCreate} className="inline-flex h-10 items-center gap-2 rounded-xl bg-white/15 px-4 text-sm font-semibold text-white ring-1 ring-white/40 transition hover:bg-white/25">
-          <Plus size={16} /> Start from scratch
-        </button>
-      </div>
     </div>
   );
 }
@@ -172,8 +165,8 @@ function CampaignCard({ c, onDelete }: { c: CampaignSummary; onDelete: () => voi
     <div
       role="link"
       tabIndex={0}
-      onClick={() => navigate(`/c/${c.id}`)}
-      onKeyDown={(e) => e.key === "Enter" && navigate(`/c/${c.id}`)}
+      onClick={() => void navigate(`/c/${c.id}`)}
+      onKeyDown={(e) => { if (e.key === "Enter") void navigate(`/c/${c.id}`); }}
       className="card group cursor-pointer p-5 transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-[0_8px_30px_-12px_rgba(103,68,245,0.35)]"
     >
       <div className="flex items-start gap-3">
@@ -270,7 +263,7 @@ function MeetingItem({ m, past }: { m: Meeting; past?: boolean }) {
         {m.url && !past && (
           <button
             className="ml-auto inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-0.5 text-xs font-medium text-white shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)] hover:bg-brand-600"
-            onClick={() => api.openUrl(m.url!).catch((e) => toast.error(e.message))}
+            onClick={() => fire(api.openUrl(m.url!))}
           >
             <Video size={12} /> Join
           </button>

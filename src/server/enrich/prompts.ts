@@ -14,7 +14,7 @@ const display = (v: CellValue | undefined) => (v === null || v === undefined ? "
 
 export function prospectData(schema: CampaignSchema, cells: Record<string, CellValue>, keys?: string[]): Record<string, string> {
   const out: Record<string, string> = {};
-  const skip = new Set([schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey].filter(Boolean));
+  const skip = new Set([schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey].filter(Boolean));
   for (const col of schema.columns) {
     if (keys ? !keys.includes(col.key) : skip.has(col.key) || col.origin === "enrichment") continue;
     const v = display(cells[col.key]);
@@ -39,6 +39,7 @@ function fieldLine(col: Column, hint: string | undefined, current: string): stri
   if (col.type === "select" && col.options?.length) parts.push(` Must be exactly one of: ${col.options.map((o) => `"${o}"`).join(", ")}.`);
   if (col.type === "email") parts.push(" An email address.");
   if (col.type === "url") parts.push(" A full URL.");
+  if (col.type === "checkbox") parts.push(' "yes" or "no".');
   if (current) parts.push(` The sheet currently has "${current.slice(0, 200)}": confirm it, correct it, or return null.`);
   return parts.join("");
 }

@@ -40,7 +40,8 @@ export async function openSignIn(id: ProviderId): Promise<{ ok: boolean; message
   if (!found.argv.length) return { ok: false, message: errorCopy("cli_missing", PROVIDERS[id].label) };
   const args = [...found.argv.slice(1), ...(id === "claude" ? ["auth", "login"] : ["login"])];
   if (process.platform === "win32") {
-    const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+    // PowerShell also reads the curly single quotes (U+2018–U+201B) as quotes: double those too.
+    const q = (s: string) => `'${s.replace(/['‘’‚‛]/g, "$&$&")}'`;
     const list = args.length ? ` -ArgumentList ${args.map(q).join(",")}` : "";
     Bun.spawn(["powershell.exe", "-NoProfile", "-Command", `Start-Process -FilePath ${q(found.argv[0]!)}${list}`], { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true });
     return { ok: true };

@@ -10,7 +10,8 @@ import toast from "react-hot-toast";
 import { norm } from "../../../shared/merge";
 import { PRESETS, type Preset } from "../../../shared/presets";
 import { PROVIDERS, SOURCES_HEADER, type EnrichRun, type Recipe } from "../../../shared/ai";
-import { COLUMN_TYPES, type CampaignSchema, type ColumnType, type Row } from "../../../shared/types";
+import { typeFromHeader } from "../../../shared/schema";
+import { COLUMN_TYPES, isScreened, type CampaignSchema, type ColumnType, type Row } from "../../../shared/types";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
@@ -20,6 +21,7 @@ import { timeAgo } from "../../lib/format";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { RunProgress } from "./RunProgress";
+import { fire } from "../../lib/fire";
 
 const NEW = "__new";
 const PRESET_ICONS = { building: Building2, news: Newspaper, person: UserRound, mail: Mail, hook: Anchor };
@@ -41,6 +43,10 @@ interface Draft {
 }
 
 type Selection = { kind: "recipe"; id: string } | { kind: "draft"; from: string } | { kind: "run"; id: string } | null;
+
+/** The type import gives a column with this header. A new column's type follows its header
+ *  until the user picks one, so re-importing the export types it the same. */
+const headerType = (header: string): ColumnType => typeFromHeader(header)?.type ?? "text";
 
 function draftFromPreset(p: Preset, schema: CampaignSchema): Draft {
   const used = new Set<string>();
@@ -66,7 +72,7 @@ function draftFromRecipe(r: Recipe, schema: CampaignSchema): Draft {
     webSearch: r.webSearch,
     outputs: r.outputs.map((o) => {
       const col = schema.columns.find((c) => c.key === o.key);
-      return { target: col ? o.key : NEW, header: col?.header ?? o.header, hint: o.hint ?? "", type: col?.type ?? "text" };
+      return { target: col ? o.key : NEW, header: col?.header ?? o.header, hint: o.hint ?? "", type: col?.type ?? headerType(o.header) };
     }),
   };
 }
@@ -198,11 +204,10 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                         </span>
                         <span className="block truncate text-[11px] text-ink-faint">Fills {r.outputs.map((o) => o.header).join(", ")}</span>
                       </button>
-                      <button title="Delete recipe" className="absolute top-2 right-1.5 rounded p-1 text-ink-faint opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
-                        onClick={async () => {
-                          await enrich.deleteRecipe(r.id);
+                      <button title="Delete recipe" className="absolute top-2 right-1.5 rounded-sm p-1 text-ink-faint opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                        onClick={() => fire(enrich.deleteRecipe(r.id).then(() => {
                           if (sel?.kind === "recipe" && sel.id === r.id) setSel(null);
-                        }}>
+                        }))}>
                         <Trash2 size={13} />
                       </button>
                     </li>
@@ -251,14 +256,14 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
           {/* main */}
           <div className="min-w-0 flex-1 overflow-y-auto p-5 scroll-thin">
             {sel?.kind === "run" && shownRun ? (
-              <RunProgress run={shownRun} rows={state.rows} schema={schema} onAction={(a) => enrich.action(shownRun.id, a)} onReview={onOpenReview}
+              <RunProgress run={shownRun} rows={state.rows} schema={schema} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
                 pending={enrich.suggestions.filter((s) => s.runId === shownRun.id).length} onOpenRow={onOpenRow} />
             ) : draft && (sel?.kind === "recipe" || sel?.kind === "draft") ? (
               <div className="space-y-5">
                 <RecipeEditor draft={draft} schema={schema} onChange={change} />
                 <div className="flex items-center gap-2">
                   {(dirty || !recipe) && (
-                    <Button variant={recipe ? "primary" : "secondary"} onClick={save} disabled={saving}>{saving ? "Saving…" : recipe ? "Save changes" : "Save recipe"}</Button>
+                    <Button variant={recipe ? "primary" : "secondary"} onClick={() => fire(save())} disabled={saving}>{saving ? "Saving…" : recipe ? "Save changes" : "Save recipe"}</Button>
                   )}
                   {dirty && recipe && <span className="text-xs text-ink-faint">Unsaved changes</span>}
                 </div>
@@ -279,7 +284,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                   busy={!!recipe && enrich.activeRuns.some((x) => x.recipeId === recipe.id)}
                 />
                 {shownRun && (
-                  <RunProgress run={shownRun} rows={state.rows} schema={schema} onAction={(a) => enrich.action(shownRun.id, a)} onReview={onOpenReview}
+                  <RunProgress run={shownRun} rows={state.rows} schema={schema} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
                     pending={enrich.suggestions.filter((s) => s.runId === shownRun.id).length} onOpenRow={onOpenRow} />
                 )}
               </div>
@@ -298,7 +303,8 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
 }
 
 function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: CampaignSchema; onChange: (p: Partial<Draft>) => void }) {
-  const inputCols = schema.columns.filter((c) => c.header !== SOURCES_HEADER && c.key !== schema.introKey && c.key !== schema.reasonKey);
+  const skipInputs = new Set([schema.introKey, schema.reasonKey, schema.screenedKey]);
+  const inputCols = schema.columns.filter((c) => c.header !== SOURCES_HEADER && !skipInputs.has(c.key));
   const [showInputs, setShowInputs] = useState(draft.inputKeys.length > 0);
   const setOutput = (i: number, patch: Partial<OutputDraft>) => onChange({ outputs: draft.outputs.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
 
@@ -334,14 +340,15 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
                 <select className="field h-8 py-0 text-xs" value={o.target}
                   onChange={(e) => {
                     const col = schema.columns.find((c) => c.key === e.target.value);
-                    setOutput(i, col ? { target: col.key, header: col.header, type: col.type } : { target: NEW, header: "" });
+                    setOutput(i, col ? { target: col.key, header: col.header, type: col.type } : { target: NEW, header: "", type: "text" });
                   }}>
                   <option value={NEW}>+ New column</option>
                   {schema.columns.filter((c) => c.header !== SOURCES_HEADER).map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
                 </select>
                 {o.target === NEW && (
                   <div className="flex gap-1">
-                    <input className="field h-8 py-0 text-xs" placeholder="Column name" value={o.header} onChange={(e) => setOutput(i, { header: e.target.value })} />
+                    <input className="field h-8 py-0 text-xs" placeholder="Column name" value={o.header}
+                      onChange={(e) => setOutput(i, { header: e.target.value, ...(o.type === headerType(o.header) ? { type: headerType(e.target.value) } : {}) })} />
                     <select className="field h-8 w-24 py-0 text-xs" value={o.type} onChange={(e) => setOutput(i, { type: e.target.value as ColumnType })}>
                       {COLUMN_TYPES.filter((t) => t.value !== "select").map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
@@ -349,7 +356,7 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
                 )}
               </div>
               <input className="field h-8 py-0 text-xs" placeholder="Guidance for this field (optional)" value={o.hint} onChange={(e) => setOutput(i, { hint: e.target.value })} />
-              <button className="mt-1 rounded p-1 text-ink-faint hover:bg-rose-50 hover:text-rose-600" title="Remove" onClick={() => onChange({ outputs: draft.outputs.filter((_, j) => j !== i) })}>
+              <button className="mt-1 rounded-sm p-1 text-ink-faint hover:bg-rose-50 hover:text-rose-600" title="Remove" onClick={() => onChange({ outputs: draft.outputs.filter((_, j) => j !== i) })}>
                 <X size={14} />
               </button>
             </div>
@@ -396,14 +403,18 @@ function RunBox({ draft, schema, rows, selectedIds, filteredIds, ready, onSetup,
   onRun: (rowIds: string[], opts: { test: boolean; autoFill: boolean; concurrency: number }) => Promise<void>;
   busy: boolean;
 }) {
-  const prospects = rows.filter((r) => r.bucket === "prospects");
+  // Screened-out prospects are left out of every scope: the run would only skip them.
+  const prospects = rows.filter((r) => !isScreened(r, schema));
+  const inPlay = new Set(prospects.map((r) => r.id));
+  const selected = selectedIds.filter((id) => inPlay.has(id));
+  const filtered = filteredIds.filter((id) => inPlay.has(id));
   const targets = draft.outputs.filter((o) => o.target !== NEW).map((o) => o.target);
   const hasNew = draft.outputs.some((o) => o.target === NEW && o.header.trim());
   const missing = prospects.filter((r) => hasNew || targets.some((k) => r.cells[k] === undefined || r.cells[k] === null || r.cells[k] === ""));
   const scopes = [
-    ...(selectedIds.length ? [{ id: "selected", label: `Selected rows`, ids: selectedIds }] : []),
+    ...(selected.length ? [{ id: "selected", label: `Selected rows`, ids: selected }] : []),
     { id: "missing", label: "Prospects missing these fields", ids: missing.map((r) => r.id) },
-    ...(filteredIds.length !== prospects.length ? [{ id: "filtered", label: "Rows in the current view", ids: filteredIds }] : []),
+    ...(filtered.length !== prospects.length ? [{ id: "filtered", label: "Rows in the current view", ids: filtered }] : []),
     { id: "all", label: "All prospects", ids: prospects.map((r) => r.id) },
   ];
   const [scope, setScope] = useState(scopes[0]!.id);
@@ -447,8 +458,8 @@ function RunBox({ draft, schema, rows, selectedIds, filteredIds, ready, onSetup,
           <Button variant="primary" onClick={onSetup}>Set up AI first</Button>
         ) : (
           <>
-            <Button onClick={() => go(true)} disabled={!n || busy || starting}><FlaskConical size={14} /> Test on {Math.min(3, n)} row{Math.min(3, n) === 1 ? "" : "s"}</Button>
-            <Button variant="primary" onClick={() => go(false)} disabled={!n || busy || starting}><Rocket size={14} /> Run on {n} row{n === 1 ? "" : "s"}</Button>
+            <Button onClick={() => fire(go(true))} disabled={!n || busy || starting}><FlaskConical size={14} /> Test on {Math.min(3, n)} row{Math.min(3, n) === 1 ? "" : "s"}</Button>
+            <Button variant="primary" onClick={() => fire(go(false))} disabled={!n || busy || starting}><Rocket size={14} /> Run on {n} row{n === 1 ? "" : "s"}</Button>
           </>
         )}
         {busy && <span className="self-center text-xs text-brand-700">This recipe is running…</span>}

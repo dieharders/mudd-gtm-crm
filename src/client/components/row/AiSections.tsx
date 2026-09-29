@@ -7,6 +7,7 @@ import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { hrefOf, openLink } from "../grid/cells";
 import { SuggestionItem } from "../enrich/SuggestionItem";
 import { Button } from "../ui/Button";
+import { fire } from "../../lib/fire";
 
 export function RowSuggestions({ row, schema, enrich }: { row: Row; schema: CampaignSchema; enrich: EnrichmentState }) {
   const list = (enrich.pendingByRow.get(row.id) ?? []).filter((s) => s.key !== schema.introKey);
@@ -17,13 +18,13 @@ export function RowSuggestions({ row, schema, enrich }: { row: Row; schema: Camp
         <Sparkles size={14} className="text-brand-600" />
         <h3 className="text-sm font-semibold text-brand-900">AI found {list.length} update{list.length === 1 ? "" : "s"}</h3>
         <div className="ml-auto flex gap-1">
-          <Button size="sm" variant="ghost" onClick={() => enrich.reject(list)}>Reject</Button>
-          <Button size="sm" variant="primary" onClick={() => enrich.accept(list)}><CheckCheck size={12} /> Accept all</Button>
+          <Button size="sm" variant="ghost" onClick={() => fire(enrich.reject(list))}>Reject</Button>
+          <Button size="sm" variant="primary" onClick={() => fire(enrich.accept(list))}><CheckCheck size={12} /> Accept all</Button>
         </div>
       </div>
       <div className="space-y-1.5">
         {list.map((s) => (
-          <SuggestionItem key={s.id} compact s={s} col={schema.columns.find((c) => c.key === s.key)} onAccept={() => enrich.accept([s])} onReject={() => enrich.reject([s])} />
+          <SuggestionItem key={s.id} compact s={s} col={schema.columns.find((c) => c.key === s.key)} onAccept={() => fire(enrich.accept([s]))} onReject={() => fire(enrich.reject([s]))} />
         ))}
       </div>
     </section>
@@ -78,9 +79,9 @@ export function AiIntro({ row, schema, templates, enrich }: { row: Row; schema: 
           </ul>
         )}
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <Button size="sm" variant="primary" onClick={() => enrich.accept([draft])}>Use this draft</Button>
-          <Button size="sm" onClick={async () => { await enrich.reject([draft]); void write(); }} disabled={!!run}><RotateCcw size={12} /> Try again</Button>
-          <Button size="sm" variant="ghost" onClick={() => enrich.reject([draft])}>Discard</Button>
+          <Button size="sm" variant="primary" onClick={() => fire(enrich.accept([draft]))}>Use this draft</Button>
+          <Button size="sm" onClick={() => fire(enrich.reject([draft]).then(() => write()))} disabled={!!run}><RotateCcw size={12} /> Try again</Button>
+          <Button size="sm" variant="ghost" onClick={() => fire(enrich.reject([draft]))}>Discard</Button>
         </div>
       </div>
     );
@@ -92,7 +93,7 @@ export function AiIntro({ row, schema, templates, enrich }: { row: Row; schema: 
         <div className="flex items-center gap-2 text-sm">
           <Loader2 size={14} className="animate-spin text-brand-600" />
           <span className="min-w-0 flex-1 truncate text-brand-900">{rowState?.state === "pending" ? "Waiting to start…" : rowState?.step ?? "Writing…"}</span>
-          <Button size="sm" variant="ghost" onClick={() => enrich.action(run.id, "stop")}><Square size={11} /> Stop</Button>
+          <Button size="sm" variant="ghost" onClick={() => fire(enrich.action(run.id, "stop"))}><Square size={11} /> Stop</Button>
         </div>
       ) : (
         <>
@@ -102,7 +103,7 @@ export function AiIntro({ row, schema, templates, enrich }: { row: Row; schema: 
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             {ready ? (
-              <Button size="sm" variant="primary" onClick={write}><Wand2 size={13} /> Write with AI</Button>
+              <Button size="sm" variant="primary" onClick={() => fire(write())}><Wand2 size={13} /> Write with AI</Button>
             ) : (
               <Button size="sm" onClick={() => ai.setOpen(true)}>Set up AI</Button>
             )}

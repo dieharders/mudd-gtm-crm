@@ -173,12 +173,39 @@ export interface Suggestion {
   createdAt: number;
 }
 
-/** Server → page, over the campaign's event stream. */
+/** A run's totals, sent with every row update. */
+export type RunCounts = Pick<EnrichRun, "completed" | "failed" | "suggestions" | "autoFilled" | "costUsd">;
+
+/** One row of a live run changed state or step. Carries the totals, which that may have moved. */
+export interface RunRowEvent {
+  type: "runRow";
+  runId: string;
+  rowId: string;
+  row: RunRow;
+  counts: RunCounts;
+}
+
+/**
+ * Server → page, over the campaign's event stream. A run goes whole (`run`) when the page
+ * connects, when the run starts, when its status changes and when it ends; in between, only
+ * the row that changed (`runRow`). Sending the whole run per row was quadratic in its size.
+ */
 export type CampaignEvent =
   | { type: "run"; run: EnrichRun }
+  | RunRowEvent
   | { type: "suggestions"; suggestions: Suggestion[] }
   | { type: "cells"; edits: { rowId: string; key: string; value: CellValue }[] }
   | { type: "ping" };
+
+/** The runs with one row update applied. The same array when the run isn't among them. */
+export function applyRunRow(runs: EnrichRun[], ev: RunRowEvent): EnrichRun[] {
+  const i = runs.findIndex((r) => r.id === ev.runId);
+  if (i < 0) return runs;
+  const run = runs[i]!;
+  const next = [...runs];
+  next[i] = { ...run, ...ev.counts, rows: { ...run.rows, [ev.rowId]: ev.row } };
+  return next;
+}
 
 /** The column that collects source links for accepted suggestions. */
 export const SOURCES_HEADER = "Enrichment sources";

@@ -5,13 +5,18 @@
  * Keyboard, while the grid has focus:
  *   arrows / Tab      move          Enter or F2   edit          typing   edit, replacing
  *   Delete/Backspace  clear         Ctrl+C / V    copy / paste  Space    open the row
+ * A checkbox cell has no editor: Enter, F2, a double-click or a click on the box ticks it.
+ *
+ * Locked rows (screened-out prospects) are greyed out and read-only, except their Screened out
+ * box, so unticking it restores the prospect right here.
  */
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, Maximize2 } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import type { CampaignSchema, CellEdit, CellValue, Column, Row } from "../../../shared/types";
+import { CHECKED, isChecked, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../../shared/types";
 import { cn } from "../../lib/cn";
 import { CellEditor, CellView, coerce, display, type Move } from "./cells";
+import { clipboardCell, parseClipboard } from "./clipboard";
 
 export interface SortState {
   key: string;
@@ -37,6 +42,8 @@ interface Props {
   onSort: (s: SortState | null) => void;
   openRowId: string | null;
   readOnly?: boolean;
+  /** Rows shown greyed out and read-only (all but the schema's Screened out box). */
+  isLocked?: (row: Row) => boolean;
   /** Cells with an AI suggestion waiting: row id → column keys. */
   pending?: Map<string, Set<string>>;
 }
@@ -114,13 +121,26 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
     },
   }), [p.rows, p.columns, reveal]);
 
+  /** A cell that can't be changed: the grid is read-only, or its row is locked (bar the Screened out box). */
+  const isFixed = (row: Row, col: Column) =>
+    !!p.readOnly || (!!p.isLocked?.(row) && col.key !== p.schema.screenedKey);
+
   const commit = (r: number, c: number, value: CellValue, dir?: Move) => {
     const row = p.rows[r];
     const col = p.columns[c];
     setEditing(null);
-    if (row && col) p.onEdit([{ rowId: row.id, key: col.key, value }], `Edit ${col.header}`);
+    if (row && col && !isFixed(row, col)) p.onEdit([{ rowId: row.id, key: col.key, value }], `Edit ${col.header}`);
     scroller.current?.focus({ preventScroll: true });
     if (dir) move(dir, { r, c });
+  };
+
+  /** Edit a cell in place: a checkbox is ticked or unticked, anything else opens its editor. */
+  const startEdit = (r: number, c: number, initial?: string) => {
+    const row = p.rows[r];
+    const col = p.columns[c];
+    if (!row || !col || isFixed(row, col)) return;
+    if (col.type === "checkbox") p.onEdit([{ rowId: row.id, key: col.key, value: isChecked(row.cells[col.key]) ? null : CHECKED }], `Edit ${col.header}`);
+    else setEditing({ r, c, initial });
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -140,7 +160,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
         return;
       case "Enter": case "F2":
         e.preventDefault();
-        if (!p.readOnly) setEditing({ ...active });
+        startEdit(active.r, active.c);
         return;
       case " ":
         e.preventDefault();
@@ -148,7 +168,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
         return;
       case "Delete": case "Backspace":
         e.preventDefault();
-        if (!p.readOnly && row.cells[col.key] !== undefined) p.onEdit([{ rowId: row.id, key: col.key, value: null }], `Clear ${col.header}`);
+        if (!isFixed(row, col) && row.cells[col.key] !== undefined) p.onEdit([{ rowId: row.id, key: col.key, value: null }], `Clear ${col.header}`);
         return;
       case "Home":
         e.preventDefault();
@@ -162,29 +182,29 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
         return;
     }
     if (mod && e.key.toLowerCase() === "c") {
-      void navigator.clipboard?.writeText(display(row.cells[col.key])).catch(() => {});
+      void navigator.clipboard?.writeText(clipboardCell(display(row.cells[col.key]))).catch(() => {});
       return;
     }
-    if (!mod && !e.altKey && e.key.length === 1 && !p.readOnly) {
+    // Typing replaces the cell's text; a checkbox has none, so a key does nothing there.
+    if (!mod && !e.altKey && e.key.length === 1 && !isFixed(row, col) && col.type !== "checkbox") {
       e.preventDefault();
-      setEditing({ ...active, initial: col.type === "date" || col.type === "datetime" ? undefined : e.key });
+      startEdit(active.r, active.c, col.type === "date" || col.type === "datetime" ? undefined : e.key);
     }
   };
 
-  // Paste a block from Excel or Sheets: tab-separated columns, one line per row.
+  // Paste a block from Excel or Sheets. Cells of locked rows are skipped.
   const onPaste = (e: React.ClipboardEvent) => {
     if (editing || !active || p.readOnly) return;
     const text = e.clipboardData.getData("text/plain");
     if (!text) return;
     e.preventDefault();
-    const lines = text.replace(/\r\n?/g, "\n").replace(/\n$/, "").split("\n");
     const edits: CellEdit[] = [];
-    lines.forEach((line, i) => {
+    parseClipboard(text).forEach((cells, i) => {
       const row = p.rows[active.r + i];
       if (!row) return;
-      line.split("\t").forEach((raw, j) => {
+      cells.forEach((raw, j) => {
         const col = p.columns[active.c + j];
-        if (col) edits.push({ rowId: row.id, key: col.key, value: coerce(raw, col) });
+        if (col && !isFixed(row, col)) edits.push({ rowId: row.id, key: col.key, value: coerce(raw, col) });
       });
     });
     if (edits.length) p.onEdit(edits, "Paste");
@@ -285,7 +305,9 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
             const row = p.rows[vr.index]!;
             const isSel = p.selected.has(row.id);
             const isOpen = p.openRowId === row.id;
-            const rowBg = isOpen ? "bg-brand-50" : isSel ? "bg-brand-50/60" : "bg-white group-hover/row:bg-zinc-50";
+            const locked = !!p.isLocked?.(row);
+            const rowBg = isOpen ? "bg-brand-50" : isSel ? "bg-brand-50/60"
+              : locked ? "bg-zinc-50 group-hover/row:bg-zinc-100" : "bg-white group-hover/row:bg-zinc-50";
             return (
               <div
                 key={row.id}
@@ -301,7 +323,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                     onChange={() => toggleOne(row.id)}
                   />
                   <button
-                    className={cn("rounded p-1 text-ink-faint hover:bg-brand-100 hover:text-brand-700", !isOpen && "opacity-0 group-hover/row:opacity-100")}
+                    className={cn("rounded-sm p-1 text-ink-faint hover:bg-brand-100 hover:text-brand-700", !isOpen && "opacity-0 group-hover/row:opacity-100")}
                     onClick={() => p.onOpenRow(row.id)}
                     title="Open prospect (Space)"
                   >
@@ -311,6 +333,8 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                 {p.columns.map((col, ci) => {
                   const isActive = active?.r === vr.index && active?.c === ci;
                   const isEditing = editing?.r === vr.index && editing?.c === ci;
+                  const greyed = locked && col.key !== p.schema.screenedKey;
+                  const view = <CellView col={col} cells={row.cells} schema={p.schema} stages={p.stages} />;
                   return (
                     <div
                       key={col.key}
@@ -328,7 +352,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                         if (e.button !== 0) return;
                         setActive({ r: vr.index, c: ci });
                       }}
-                      onDoubleClick={() => !p.readOnly && setEditing({ r: vr.index, c: ci })}
+                      onDoubleClick={() => startEdit(vr.index, ci)}
                     >
                       {isEditing ? (
                         <CellEditor
@@ -342,8 +366,24 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                           }}
                         />
                       ) : (
-                        <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-                          <CellView col={col} cells={row.cells} schema={p.schema} stages={p.stages} />
+                        <div className={cn("flex min-w-0 flex-1 items-center overflow-hidden", greyed && "opacity-50")}>
+                          {col.type === "checkbox" && !isFixed(row, col) ? (
+                            <button
+                              type="button"
+                              role="checkbox"
+                              tabIndex={-1}
+                              aria-checked={isChecked(row.cells[col.key])}
+                              aria-label={col.header}
+                              className="-ml-0.5 rounded-sm p-0.5 hover:bg-zinc-200/70"
+                              onClick={() => {
+                                startEdit(vr.index, ci);
+                                scroller.current?.focus({ preventScroll: true });
+                              }}
+                              onDoubleClick={(e) => e.stopPropagation()}
+                            >
+                              {view}
+                            </button>
+                          ) : view}
                           {p.pending?.get(row.id)?.has(col.key) && (
                             <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" title="AI suggestion waiting for review" />
                           )}

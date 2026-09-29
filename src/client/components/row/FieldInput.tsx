@@ -1,11 +1,12 @@
 /** One editable field in the prospect panel. Commits on blur / Enter, or on change for pickers. */
 import { useEffect, useRef, useState } from "react";
-import type { CellValue, Column } from "../../../shared/types";
+import { isChecked, type CellValue, type Column } from "../../../shared/types";
+import { flagValue, toLocalInput } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { coerce, display } from "../grid/cells";
 
 export function FieldInput({
-  col, value, onCommit, className, placeholder, rows = 3, autoFocus,
+  col, value, onCommit, className, placeholder, rows = 3, autoFocus, disabled,
 }: {
   col: Column;
   value: CellValue | undefined;
@@ -14,6 +15,8 @@ export function FieldInput({
   placeholder?: string;
   rows?: number;
   autoFocus?: boolean;
+  /** Read-only: shown, and selectable to copy, but not changed. */
+  disabled?: boolean;
 }) {
   const text = display(value);
   const [draft, setDraft] = useState(text);
@@ -24,6 +27,9 @@ export function FieldInput({
   }, [text]);
 
   const commit = (raw = draft) => {
+    if (disabled) return;
+    // A date + time field shows a bare date as 09:00: leaving it as shown is not a change.
+    if (col.type === "datetime" && /^\d{4}-\d{2}-\d{2}/.test(text) && raw === toLocalInput(text)) return;
     const v = coerce(raw, col);
     if (display(v) !== text) onCommit(v);
   };
@@ -40,15 +46,30 @@ export function FieldInput({
     },
     autoFocus,
     placeholder,
-    className: cn("field", className),
+    readOnly: disabled,
+    className: cn("field", disabled && "bg-zinc-50 text-ink-soft", className),
   };
 
+  if (col.type === "checkbox") {
+    return (
+      <input
+        type="checkbox"
+        className={cn("block h-4 w-4 accent-brand-600", disabled && "opacity-60", className)}
+        checked={isChecked(value)}
+        disabled={disabled}
+        autoFocus={autoFocus}
+        aria-label={col.header}
+        onChange={(e) => onCommit(flagValue(e.target.checked))}
+      />
+    );
+  }
   if (col.type === "select") {
     const opts = col.options ?? [];
     return (
       <select
-        className={cn("field", className)}
+        className={cn("field", disabled && "bg-zinc-50 text-ink-soft", className)}
         value={text}
+        disabled={disabled}
         onChange={(e) => {
           setDraft(e.target.value);
           onCommit(e.target.value || null);
@@ -62,7 +83,7 @@ export function FieldInput({
   }
   if (col.type === "date" || col.type === "datetime") {
     const isDt = col.type === "datetime";
-    const v = isDt && /^\d{4}-\d{2}-\d{2}$/.test(draft) ? `${draft}T09:00` : isDt ? draft.slice(0, 16) : draft.slice(0, 10);
+    const v = isDt ? toLocalInput(draft) : draft.slice(0, 10);
     const valid = isDt ? /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v) || !v : /^\d{4}-\d{2}-\d{2}$/.test(v) || !v;
     if (!valid) {
       // Free text in a date column (e.g. "Q3 2026"): edit it as text rather than lose it.
@@ -71,6 +92,8 @@ export function FieldInput({
     return (
       <input
         {...common}
+        // A picker ignores readOnly in some browsers: a read-only date is disabled instead.
+        disabled={disabled}
         type={isDt ? "datetime-local" : "date"}
         value={v}
         onChange={(e) => {
@@ -87,7 +110,7 @@ export function FieldInput({
         rows={rows}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        className={cn("field resize-y leading-relaxed", className)}
+        className={cn("field resize-y leading-relaxed", disabled && "bg-zinc-50 text-ink-soft", className)}
       />
     );
   }
