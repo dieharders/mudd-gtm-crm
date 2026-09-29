@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { assignRoles, makeKey } from "../../shared/schema";
 import type { CampaignSchema, ColumnType } from "../../shared/types";
-import { cardLayout } from "./listLayout";
+import { cardLayout, pinnedCount } from "./listLayout";
 
 function sheet(...cols: [string, ColumnType?][]): CampaignSchema {
   const taken = new Set<string>();
@@ -16,6 +16,18 @@ describe("card layout", () => {
     const layout = cardLayout(sheet(["ID"], ["Company"], ["Location"]));
     expect(layout.titleKey).toBe("company");
     expect(headers(layout.facts)).toEqual(["Location"]);
+  });
+
+  test("the grid pins through the company column, not a fixed two", () => {
+    const pinned = (...headers: string[]) => {
+      const s = sheet(...headers.map((h): [string] => [h]));
+      return pinnedCount(s.columns, s);
+    };
+    expect(pinned("Company", "Motion", "Tier")).toBe(1);
+    expect(pinned("Tier", "Company", "Location")).toBe(2);
+    expect(pinned("Name", "Email", "Phone", "Notes", "Company")).toBe(1);
+    expect(pinned("Name", "Email")).toBe(1);
+    expect(pinned()).toBe(0);
   });
 
   test("hook columns read first, in the order intros prefer them, whatever their type", () => {

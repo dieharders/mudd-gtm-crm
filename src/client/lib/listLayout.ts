@@ -62,6 +62,16 @@ export function cardLayout(schema: CampaignSchema): CardLayout {
   return { titleKey, rankKey, tierKey, subtitleKey, emailKeys, phoneKeys, links, paragraphs, facts };
 }
 
+/**
+ * How many of the grid's first columns stay put when it scrolls sideways: through the company's,
+ * so the name is always in view (Tier and Company in a sheet that starts with Tier). Just the
+ * first column when the company's is missing or far to the right.
+ */
+export function pinnedCount(columns: Column[], schema: CampaignSchema): number {
+  const i = columns.findIndex((c) => c.key === schema.companyKey);
+  return i >= 0 && i < 3 ? i + 1 : Math.min(1, columns.length);
+}
+
 /** Columns worth grouping the reading view by: the tier, the status, and any dropdown. */
 export function groupableColumns(schema: CampaignSchema): Column[] {
   const layout = cardLayout(schema);

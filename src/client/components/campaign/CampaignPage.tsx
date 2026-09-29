@@ -25,7 +25,7 @@ import { display } from "../grid/cells";
 import { Grid, type GridHandle, type SortState } from "../grid/Grid";
 import { ProspectList } from "../list/ProspectList";
 import { RowDrawer } from "../row/RowDrawer";
-import { cardLayout, groupableColumns } from "../../lib/listLayout";
+import { cardLayout, groupableColumns, pinnedCount } from "../../lib/listLayout";
 import { TemplatesPanel } from "../templates/TemplatesPanel";
 import { Button } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Menu";
@@ -476,7 +476,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               rows={filtered}
               schema={schema}
               stages={stages}
-              pinned={Math.min(2, columns.length)}
+              pinned={pinnedCount(columns, schema)}
               selected={selected}
               onSelect={setSelected}
               onEdit={gridEdit}

@@ -1,5 +1,5 @@
 /**
- * The spreadsheet view: virtualized rows, the first columns pinned (the sheet freezes at C2),
+ * The spreadsheet view: virtualized rows, the first columns pinned (through the company's),
  * resizable columns, keyboard navigation and in-place editing.
  *
  * Keyboard, while the grid has focus:
@@ -310,7 +310,9 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
             const isSel = p.selected.has(row.id);
             const isOpen = p.openRowId === row.id;
             const locked = !!p.isLocked?.(row);
-            const rowBg = isOpen ? "bg-brand-50" : isSel ? "bg-brand-50/60"
+            // Every one opaque: the pinned cells wear it too, and the cells scrolling under them
+            // would show through a see-through tint. A selected row's is brand-50 mixed into white.
+            const rowBg = isOpen ? "bg-brand-50" : isSel ? "bg-[color-mix(in_oklab,var(--color-brand-50)_60%,white)]"
               : locked ? "bg-zinc-50 group-hover/row:bg-zinc-100" : "bg-white group-hover/row:bg-zinc-50";
             return (
               <div
