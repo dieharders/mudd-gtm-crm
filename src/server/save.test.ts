@@ -115,6 +115,25 @@ describe("Save file", () => {
     expect(second.json.path).toBe(first.json.path);
   });
 
+  test("removing a campaign takes it out of Mudd and leaves its file and backups alone", async () => {
+    const file = path.join(tmp, "docs", "keep-me.xlsx");
+    await trackerFile(file);
+    const { campaign } = await importPath(file);
+    expect((await call("POST", `/api/campaigns/${campaign.id}/save`, {})).status).toBe(200);
+    const bytes = fs.readFileSync(file);
+    const backups = path.join(tmp, "data", "backups", campaign.id);
+    const kept = fs.readdirSync(backups);
+    expect((await call("DELETE", `/api/campaigns/${campaign.id}`)).status).toBe(200);
+    expect((await call("GET", `/api/campaigns/${campaign.id}`)).status).toBe(404);
+    expect((await call<CampaignSummary[]>("GET", "/api/campaigns")).json.some((c) => c.id === campaign.id)).toBe(false);
+    expect(fs.readFileSync(file).equals(bytes)).toBe(true);
+    expect(fs.existsSync(path.join(tmp, "docs", "keep-me.bak.xlsx"))).toBe(true);
+    expect(fs.readdirSync(backups)).toEqual(kept);
+    // Imported again, it's all there as it was saved.
+    const again = await importPath(file);
+    expect(again.rows).toHaveLength(2);
+  });
+
   test("a macro workbook is refused at import", async () => {
     const file = path.join(tmp, "docs", "macros.xlsm");
     await trackerFile(file);

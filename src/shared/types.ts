@@ -165,6 +165,8 @@ export interface CampaignSummary {
   name: string;
   updatedAt: number;
   sourceName: string | null;
+  /** The file Save file writes to, when the campaign is linked to one. */
+  sourcePath: string | null;
   /** Prospects still in play (not screened out). */
   prospects: number;
   screened: number;

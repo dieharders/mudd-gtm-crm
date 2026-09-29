@@ -320,6 +320,11 @@ export function setSource(id: string, sourcePath: string, mtime: number | null):
   getDb().query("UPDATE campaigns SET source_path = ?, source_mtime = ? WHERE id = ?").run(sourcePath, mtime, id);
 }
 
+/**
+ * Remove a campaign from Mudd, and everything Mudd kept for it (rows, templates, recipes, runs,
+ * suggestions, the stored workbook). Never a file: the spreadsheet it came from or saves to, and
+ * Mudd's backup copies of that, stay where they are.
+ */
 export function deleteCampaign(id: string): void {
   getDb().query("DELETE FROM campaigns WHERE id = ?").run(id);
   summaryCache.delete(id);
@@ -355,6 +360,7 @@ export function listCampaigns(): CampaignSummary[] {
       name: c.name,
       updatedAt: c.updatedAt,
       sourceName: c.sourceName,
+      sourcePath: c.sourcePath,
       prospects,
       screened,
       byStatus,

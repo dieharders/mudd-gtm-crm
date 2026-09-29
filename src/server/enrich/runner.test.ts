@@ -12,7 +12,7 @@ import { CHECKED, type CellValue } from "../../shared/types";
 import * as ai from "../ai";
 import * as db from "../db";
 import { eventStream } from "./hub";
-import { ensureSourcesColumn, liveRuns, normaliseValue, recentRuns, startRun } from "./runner";
+import { ensureSourcesColumn, liveRuns, normaliseValue, recentRuns, startRun, stopCampaignRuns } from "./runner";
 import * as store from "./store";
 
 // Module mocks outlive this file, so anything that isn't one of these tests gets the real turn.
@@ -280,6 +280,26 @@ describe("runs", () => {
     fakeTurn = null;
     expect(db.contactsOf(id, "r1")).toHaveLength(1);
     expect(store.listSuggestions(id, "pending")).toMatchObject([{ rowId: contact!.id, key: k("Role"), value: "Founder", previous: "CEO" }]);
+  });
+
+  test("removing a campaign mid-run stops its runs, and nothing is stored against it after", async () => {
+    const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme" } }, { id: "r2", cells: { [k("Company")]: "Beta" } }]);
+    let release = () => {};
+    fakeTurn = (req) => new Promise((resolve, reject) => {
+      release = () => resolve({ data: { fields: { [k("Type")]: { value: "Incubator", source: null, confidence: "low" } }, notes: null }, costUsd: null });
+      req.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+    });
+    const run = startRun({ campaignId: id, kind: "enrich", recipeId: recipeFor(id).id, rowIds: ["r1", "r2"], test: false, autoFill: true, concurrency: 1 });
+    await until(() => run.rows.r1?.state === "running");
+    // What the DELETE route does.
+    stopCampaignRuns(id);
+    db.deleteCampaign(id);
+    release();
+    await until(() => run.status === "stopped");
+    fakeTurn = null;
+    expect(run.rows.r2).toMatchObject({ state: "skipped" });
+    expect(store.getRun(run.id)).toBeNull();
+    expect(store.listSuggestions(id)).toEqual([]);
   });
 
   test("a contact's id is not a prospect to research", async () => {

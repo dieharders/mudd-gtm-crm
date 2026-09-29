@@ -29,8 +29,11 @@ export function deleteRecipe(id: string): void {
 
 // ---------- runs ----------
 
+/** Store a run; not once its campaign is removed (a run stopping just after has nowhere to go). */
 export function saveRun(run: EnrichRun): void {
-  getDb().query("INSERT OR REPLACE INTO runs (id, campaign_id, json, started_at) VALUES (?, ?, ?, ?)").run(run.id, run.campaignId, JSON.stringify(run), run.startedAt);
+  getDb()
+    .query("INSERT OR REPLACE INTO runs (id, campaign_id, json, started_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM campaigns WHERE id = ?)")
+    .run(run.id, run.campaignId, JSON.stringify(run), run.startedAt, run.campaignId);
 }
 
 export function getRun(id: string): EnrichRun | null {

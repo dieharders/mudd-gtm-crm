@@ -11,6 +11,7 @@ import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook, type LoadedBo
 import * as db from "./db";
 import { registerAiRoutes } from "./ai-routes";
 import { dialogsSupported, downloadsDir, openDialog, openExternal } from "./dialogs";
+import { stopCampaignRuns } from "./enrich/runner";
 import { markInterruptedRuns } from "./enrich/store";
 
 const SECURITY_HEADERS = {
@@ -244,7 +245,9 @@ on("PATCH", "/api/campaigns/:id", async (req, [id]) => {
   if (b.name !== undefined && !b.name.trim()) throw new HttpError(400, "The name cannot be empty.");
   return json(db.updateCampaign(id!, { name: b.name?.trim(), schema: b.schema }));
 });
+// Removes the campaign from Mudd only: no file is ever deleted.
 on("DELETE", "/api/campaigns/:id", (_req, [id]) => {
+  stopCampaignRuns(id!);
   db.deleteCampaign(id!);
   return json({ ok: true });
 });

@@ -1,10 +1,10 @@
 import {
-  ArchiveRestore, ArrowLeft, Building2, CheckCircle2, Columns3, FileSpreadsheet, Link2, Loader2, MessageSquareText, Plus,
+  ArchiveRestore, ArrowLeft, Building2, CheckCircle2, Columns3, FileSpreadsheet, Link2, Loader2, MessageSquareText, MoreHorizontal, Plus,
   Loader2 as Spinner, MessageSquarePlus, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { allColumns, contactSchema } from "../../../shared/schema";
 import {
   DEAD, isChecked, isScreened, ORG_KEY, stagesOf, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
@@ -30,6 +30,7 @@ import { TemplatesPanel } from "../templates/TemplatesPanel";
 import { Button } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Menu";
 import { undoToast } from "../ui/Toaster";
+import { RemoveCampaignDialog } from "../campaigns/RemoveCampaignDialog";
 import { ColumnsDialog } from "./ColumnsDialog";
 import { ExportMenu } from "./ExportMenu";
 import { ScreenOutButton } from "../row/ScreenOutButton";
@@ -108,6 +109,8 @@ function CampaignView({ state }: { state: CampaignState }) {
   const [showColumns, setShowColumns] = useState(false);
   const [showEnrich, setShowEnrich] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const navigate = useNavigate();
   const enrich = useEnrichment(state);
   const pendingKeys = useMemo(() => {
     const m = new Map<string, Set<string>>();
@@ -352,6 +355,13 @@ function CampaignView({ state }: { state: CampaignState }) {
         </Button>
         <Button onClick={() => setShowColumns(true)}><Columns3 size={15} /> Columns</Button>
         <ExportMenu campaign={campaign} state={state} />
+        <Popover align="right" trigger={({ toggle }) => (
+          <Button size="icon" variant="ghost" onClick={toggle} title="More" aria-label="Campaign menu"><MoreHorizontal size={16} /></Button>
+        )}>
+          {(close) => (
+            <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); setRemoving(true); }} hint="The file stays">Remove from Mudd</MenuItem>
+          )}
+        </Popover>
       </div>
 
       {/* toolbar */}
@@ -512,6 +522,8 @@ function CampaignView({ state }: { state: CampaignState }) {
           onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }} onOpenRow={(id) => { setShowEnrich(false); showRow(id); }} />
       )}
       {showReview && <ReviewPanel state={state} enrich={enrich} onClose={() => setShowReview(false)} onOpenRow={showRow} />}
+      <RemoveCampaignDialog campaign={removing ? campaign : null} onClose={() => setRemoving(false)}
+        beforeRemove={state.flush} onRemoved={() => void navigate("/")} />
       <ConsentDialog open={!!enrich.needsConsent} onConfirm={() => enrich.needsConsent?.confirm()} onCancel={() => enrich.needsConsent?.cancel()} />
       {onContacts ? (
         <ColumnsDialog open={showColumns} onClose={() => setShowColumns(false)} kind="contacts" schema={contactSchema(schema)} inSheet={inSheet} usedKeys={usedKeys}

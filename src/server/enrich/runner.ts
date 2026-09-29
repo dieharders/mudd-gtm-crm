@@ -183,6 +183,11 @@ export function stopAllRuns(): void {
   for (const id of active.keys()) stopRun(id);
 }
 
+/** Stop a campaign's live runs: before it is removed, so no turn files findings into nothing. */
+export function stopCampaignRuns(campaignId: string): void {
+  for (const c of active.values()) if (c.run.campaignId === campaignId) stopRun(c.run.id);
+}
+
 async function pump(ctrl: Controller): Promise<void> {
   const { run } = ctrl;
   const queue = [...run.rowIds];
