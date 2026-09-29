@@ -7,14 +7,15 @@
  * is ever hidden from the card.
  */
 import { norm } from "../../shared/merge";
+import { HOOK_HEADERS } from "../../shared/schema";
 import type { CampaignSchema, Column } from "../../shared/types";
+import { contactColumns } from "../../shared/values";
 
 export interface CardLayout {
   titleKey?: string;
   rankKey?: string;
   tierKey?: string;
   subtitleKey?: string;
-  roleKey?: string;
   otherContactsKey?: string;
   emailKeys: string[];
   phoneKeys: string[];
@@ -25,6 +26,12 @@ export interface CardLayout {
 
 const find = (cols: Column[], names: RegExp) => cols.find((c) => names.test(norm(c.header)))?.key;
 
+/** A hook column's place in HOOK_HEADERS, the order intros prefer them in; anything else after. */
+const hookRank = (c: Column) => {
+  const i = HOOK_HEADERS.indexOf(norm(c.header));
+  return i < 0 ? HOOK_HEADERS.length : i;
+};
+
 export function cardLayout(schema: CampaignSchema): CardLayout {
   const cols = schema.columns.filter((c) => !c.hidden);
   const titleKey = schema.companyKey ?? schema.nameKey ?? cols[0]?.key;
@@ -34,12 +41,13 @@ export function cardLayout(schema: CampaignSchema): CardLayout {
   const subtitleKey =
     find(cols, /^(type|category|industry|vertical|kind|orgtype|companytype)$/) ??
     find(cols, /^(focus|focuscerts|specialty|specialties|whattheydo|offering|sector)$/);
-  const roleKey = find(cols, /^(role|title|jobtitle|position|contactrole)$/);
+  // Role, Title and Honorific go in the contact box, with the name (see contactOf).
+  const contact = contactColumns(schema);
   const otherContactsKey = find(cols, /^othercontacts?$|^additionalcontacts?$/);
 
   const used = new Set(
-    [titleKey, schema.nameKey, rankKey, tierKey, subtitleKey, roleKey, otherContactsKey, schema.statusKey, schema.introKey,
-      schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean) as string[],
+    [titleKey, schema.nameKey, rankKey, tierKey, subtitleKey, contact.roleKey, contact.honorificKey, contact.titleKey, otherContactsKey,
+      schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean) as string[],
   );
   const emailKeys: string[] = [];
   const phoneKeys: string[] = [];
@@ -52,12 +60,12 @@ export function cardLayout(schema: CampaignSchema): CardLayout {
     if (c.type === "email") emailKeys.push(c.key);
     else if (c.type === "phone") phoneKeys.push(c.key);
     else if (c.type === "url") links.push(c);
-    else if (c.type === "longtext" || /hook|notes?|description|summary|about|angle|pitch/.test(h)) paragraphs.push(c);
+    else if (c.type === "longtext" || hookRank(c) < HOOK_HEADERS.length || /hook|notes?|description|summary|about|angle|pitch/.test(h)) paragraphs.push(c);
     else facts.push(c);
   }
-  // The hook (why this prospect, why now) reads first.
-  paragraphs.sort((a, b) => Number(/hook|angle|pitch/.test(norm(b.header))) - Number(/hook|angle|pitch/.test(norm(a.header))));
-  return { titleKey, rankKey, tierKey, subtitleKey, roleKey, otherContactsKey, emailKeys, phoneKeys, links, paragraphs, facts };
+  // The hook (why this prospect, why now) reads first: the columns intros build on, in their order.
+  paragraphs.sort((a, b) => hookRank(a) - hookRank(b));
+  return { titleKey, rankKey, tierKey, subtitleKey, otherContactsKey, emailKeys, phoneKeys, links, paragraphs, facts };
 }
 
 /** Columns worth grouping the reading view by: the tier, the status, and any dropdown. */

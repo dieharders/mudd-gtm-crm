@@ -1,9 +1,13 @@
 /**
  * Starting recipes for prospect research. Each output lists header ALIASES so a preset fills
  * the sheet's existing column when there is one (base-tracker's "Primary contact", "Role")
- * instead of adding a near-duplicate.
+ * instead of adding a near-duplicate. Aliases are in order of preference. A job title goes in
+ * a Title column only when the sheet has no Role, and not when its Title holds Mr. or Dr.
  */
-import type { ColumnType } from "./types";
+import { isSourcesColumn } from "./ai";
+import { norm } from "./merge";
+import { HOOK_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
+import type { CampaignSchema, Column, ColumnType, Row } from "./types";
 
 export interface PresetOutput {
   header: string;
@@ -55,12 +59,12 @@ export const PRESETS: Preset[] = [
     name: "Decision-maker",
     icon: "person",
     tone: "bg-yellow-100 text-yellow-800",
-    blurb: "The person most likely to buy, their title and LinkedIn.",
+    blurb: "The person most likely to buy, their role and LinkedIn.",
     instructions:
-      "Identify the person most likely to make the buying decision: the founder or CEO at a small company, otherwise the head of marketing, growth or business development. Give their full name, title and LinkedIn profile URL.",
+      "Identify the person most likely to make the buying decision: the founder or CEO at a small company, otherwise the head of marketing, growth or business development. Give their full name, job title and LinkedIn profile URL.",
     outputs: [
       { header: "Decision maker", aliases: ["primarycontact", "contact", "decisionmaker", "name", "contactname"], type: "text", hint: "Full name of one person." },
-      { header: "Title", aliases: ["role", "title", "jobtitle", "position", "decisionmakertitle"], type: "text", hint: "Their current job title." },
+      { header: "Role", aliases: [...ROLE_HEADERS, TITLE_HEADER], type: "text", hint: "Their current job title." },
       { header: "LinkedIn", aliases: ["linkedin", "linkedinurl"], type: "url", hint: "Their personal LinkedIn profile URL." },
     ],
   },
@@ -86,7 +90,21 @@ export const PRESETS: Preset[] = [
     instructions:
       "Find one specific, recent, verifiable detail about this company or its decision-maker that would make a cold introduction feel genuinely researched: a launch, a talk, a hire, a contract, a post they wrote. Write it as one short sentence that could open an email.",
     outputs: [
-      { header: "Hook", aliases: ["hook", "personalization", "icebreaker", "angle"], type: "longtext", hint: "One short, specific sentence, with the fact it rests on." },
+      { header: "Hook", aliases: HOOK_HEADERS, type: "longtext", hint: "One short, specific sentence, with the fact it rests on." },
     ],
   },
 ];
+
+/** The sheet column each of a preset's outputs fills, if it has one: the most preferred header. */
+export function presetTargets(p: Preset, schema: CampaignSchema, rows: Pick<Row, "cells">[]): (Column | undefined)[] {
+  const used = new Set<string>();
+  // A Title column holding Mr. or Dr. is how contacts are addressed: no job title goes there.
+  const addresses = (c: Column) => norm(c.header) === TITLE_HEADER && rows.some((r) => isHonorific(String(r.cells[c.key] ?? "")));
+  return p.outputs.map((o) => {
+    const match = [norm(o.header), ...o.aliases]
+      .map((n) => schema.columns.find((c) => !used.has(c.key) && !isSourcesColumn(c) && norm(c.header) === n && !addresses(c)))
+      .find(Boolean);
+    if (match) used.add(match.key);
+    return match;
+  });
+}

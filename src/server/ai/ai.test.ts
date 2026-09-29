@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mergeSources } from "../../shared/ai";
+import { mergeSources, SOURCES_HEADER } from "../../shared/ai";
 import { genericSchema } from "../../shared/schema";
 import { enrichRequest, introRequest } from "../enrich/prompts";
 import { parseAuthStatus } from "./claude";
@@ -85,5 +85,46 @@ describe("prompts", () => {
     expect(req.templates.map((t) => t.id)).toEqual(["t1"]);
     expect(req.prompt).toContain("Hi Ann at Acme");
     expect(introRequest(templates, "auto", undefined, schema, {}, true).templates).toHaveLength(2);
+  });
+  describe("intro request around the prospect's Hook", () => {
+    const withSources = { ...schema, columns: [...schema.columns, { key: "src", header: SOURCES_HEADER, type: "longtext" as const, origin: "enrichment" as const }] };
+    const t = (body: string) => [{ id: "t1", campaignId: "c", name: "Warm", body, position: 0, updatedAt: 0 }];
+    const hook = "Won an AFWERX contract in May";
+    const once = (prompt: string) => prompt.split("AFWERX contract").length === 2;
+
+    test("sent once, with the source recorded for its value", () => {
+      const cells = { [k("Company")]: "Acme", [k("Hook")]: hook };
+      const req = introRequest(t("Hi {{First name}}"), "t1", undefined, schema, cells, true, (key) => (key === k("Hook") ? "https://afwerx.mil/acme" : null));
+      expect(req.prompt).toContain(`Hook: "${hook}" (source: https://afwerx.mil/acme)`);
+      expect(once(req.prompt)).toBe(true);
+      expect(req.system).toContain("If a Hook is given");
+      expect(introRequest(t("Hi {{First name}}"), "t1", undefined, schema, { [k("Company")]: "Acme" }, true).prompt).not.toContain("Hook:");
+    });
+
+    test("never cites a line in the sources cell, which may belong to an older hook", () => {
+      const cells = { [k("Hook")]: hook, src: "Hook: https://stale.io" };
+      expect(introRequest(t("Hi"), "t1", undefined, withSources, cells, true).prompt).toContain(`Hook: "${hook}"\n`);
+    });
+
+    test("a template's {{Hook}} is left for the model to write in, not pasted", () => {
+      const req = introRequest(t("Hi {{First name}}, saw that {{Hook|you're growing}}."), "t1", undefined, schema, { [k("Name")]: "Ann Lee", [k("Hook")]: hook }, true);
+      expect(req.prompt).toContain("Hi Ann, saw that {{Hook|you're growing}}.");
+      expect(once(req.prompt)).toBe(true);
+    });
+
+    test("read from the first hook column the row fills, researched ones included", () => {
+      const pers = { key: "pers", header: "Personalization", type: "longtext" as const, origin: "sheet" as const };
+      const researched = { ...schema, columns: [...schema.columns.map((c) => (c.header === "Hook" ? { ...c, origin: "enrichment" as const } : c)), pers] };
+      const empty = introRequest(t("Hi"), "t1", undefined, researched, { pers: hook }, true);
+      expect(empty.prompt).toContain(`Hook (Personalization): "${hook}"`);
+      expect(once(empty.prompt)).toBe(true);
+      expect(introRequest(t("Hi"), "t1", undefined, researched, { [k("Hook")]: "Hired a CTO", pers: hook }, true).prompt).toContain('Hook: "Hired a CTO"');
+    });
+
+    test("cut to 600 characters, like every other value", () => {
+      const req = introRequest(t("Hi"), "t1", undefined, schema, { [k("Hook")]: "x".repeat(5000) }, true);
+      expect(req.prompt).toContain(`Hook: "${"x".repeat(600)}…"`);
+      expect(req.prompt).not.toContain("x".repeat(601));
+    });
   });
 });

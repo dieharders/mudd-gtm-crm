@@ -4,7 +4,7 @@
  * Mudd never holds an API key. It drives the user's own signed-in agent CLI — Claude Code or
  * Codex — the way motionbuff-native-app does, so enrichment bills the user's plan.
  */
-import type { CellValue } from "./types";
+import type { CampaignSchema, CellValue, Column } from "./types";
 
 export type ProviderId = "claude" | "codex";
 export const PROVIDER_IDS: ProviderId[] = ["claude", "codex"];
@@ -209,6 +209,9 @@ export function applyRunRow(runs: EnrichRun[], ev: RunRowEvent): EnrichRun[] {
 
 /** The column that collects source links for accepted suggestions. */
 export const SOURCES_HEADER = "Enrichment sources";
+
+export const isSourcesColumn = (c: Pick<Column, "header">) => c.header === SOURCES_HEADER;
+export const sourcesColumn = (schema: CampaignSchema): Column | undefined => schema.columns.find(isSourcesColumn);
 
 /**
  * Add "Header: url" lines to the sources cell, keeping what is there and skipping duplicates.

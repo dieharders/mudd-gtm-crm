@@ -31,6 +31,31 @@ export const NAME_HEADERS =["primarycontact", "contact", "name", "fullname", "co
 export const COMPANY_HEADERS = ["company", "org", "organization", "organisation", "account", "companyname", "business"];
 const SCREENED_HEADERS = ["screenedout", "screened", "screenout"];
 const REASON_HEADERS = ["screenedreason", "screeningreason", "screenoutreason", "reasonscreened", "whyscreened", "whyscreenedout"];
+/** The prospect's hook: the researched reason to write to them, which the intro is built on. */
+export const HOOK_HEADERS = ["hook", "personalization", "icebreaker", "angle"];
+
+/** The sheet's hook columns, most preferred first. A row's hook is the first of them it fills. */
+export const hookColumns = (schema: CampaignSchema): Column[] =>
+  HOOK_HEADERS.flatMap((n) => schema.columns.filter((c) => norm(c.header) === n));
+
+/** A contact's job title. "Title" is not among them: see TITLE_HEADER. */
+export const ROLE_HEADERS = ["role", "jobtitle", "position", "contactrole", "decisionmakertitle"];
+/** How a contact is addressed: Mr., Dr., Col. */
+export const HONORIFIC_HEADERS = ["honorific", "salutation"];
+/**
+ * "Title" is how a contact is addressed in Mudd's own layout, and their job title in most CRM
+ * exports (Salesforce, Apollo), so a Title cell is read by its value: see isHonorific.
+ */
+export const TITLE_HEADER = "title";
+
+// Military ranks too: defense prospects are addressed as Col. Lee.
+const HONORIFICS = new Set([
+  "mr", "mrs", "ms", "miss", "mx", "dr", "doctor", "prof", "professor", "rev", "sir", "dame", "hon",
+  "gen", "ltgen", "majgen", "briggen", "col", "ltcol", "maj", "capt", "cpt", "lt", "cdr", "lcdr", "adm", "radm", "vadm", "sgt",
+]);
+
+/** "Dr." or "Lt. Col.", as opposed to a job title such as "CEO". */
+export const isHonorific = (v: string) => HONORIFICS.has(v.toLowerCase().replace(/[^a-z]/g, ""));
 
 export function assignRoles(schema: CampaignSchema): void {
   const find = (pred: (h: string, c: Column) => boolean) =>
@@ -110,7 +135,11 @@ export function genericSchema(): CampaignSchema {
   const columns: Column[] = [
     c("Name", "text", { width: 180 }),
     c("Company", "text", { width: 190 }),
-    c("Title", "text"),
+    // Text, not a dropdown: honorifics are an open list (Prof., Rev., Col.).
+    c("Title", "text", { width: 90 }),
+    c("Role", "text", { width: 200 }),
+    c("Rank", "number"),
+    c("Type", "text"),
     c("Email", "email"),
     c("LinkedIn", "url"),
     c("Phone", "phone"),
@@ -121,6 +150,7 @@ export function genericSchema(): CampaignSchema {
     c("Next date", "date"),
     c("Meeting URL", "url"),
     c("Meeting at", "datetime"),
+    c("Hook", "longtext"),
     c("Notes", "longtext"),
     c("Source", "text"),
     c("Intro message", "longtext", { width: 320 }),

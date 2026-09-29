@@ -61,8 +61,9 @@ export function AiIntro({ row, schema, templates, enrich }: { row: Row; schema: 
         <p className="rounded-xl bg-white p-3 text-[13px] leading-relaxed whitespace-pre-wrap ring-1 ring-line">{String(draft.value ?? "")}</p>
         {hooks.length > 0 && (
           <ul className="mt-2 space-y-1">
-            {hooks.map((h, i) => {
-              const src = draft.sources.find((s) => s.title === h) ?? draft.sources[i];
+            {hooks.map((h) => {
+              // Only hooks with a source are listed there, so never match one by position.
+              const src = draft.sources.find((s) => s.title === h);
               const href = src ? hrefOf(src.url, "url") : null;
               return (
                 <li key={h} className="flex items-start gap-1.5 text-xs text-ink-soft">
@@ -114,7 +115,7 @@ export function AiIntro({ row, schema, templates, enrich }: { row: Row; schema: 
             <button className="mt-1.5 text-[11px] text-brand-700 hover:underline" onClick={() => setShowGuidance(true)}>+ Add guidance</button>
           )}
           {lastError && <p className="mt-1.5 text-[11px] text-rose-700">Last try failed: {lastError}</p>}
-          <p className="mt-1.5 text-[11px] text-ink-faint">Researches this prospect, fills your template, and adds 1–2 hooks with sources. You review before it goes in.</p>
+          <p className="mt-1.5 text-[11px] text-ink-faint">Fills your template around this prospect’s Hook, or researches 1–2 hooks when it has none, with sources. You review before it goes in.</p>
         </>
       )}
     </div>

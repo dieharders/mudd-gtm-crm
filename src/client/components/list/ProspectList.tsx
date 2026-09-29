@@ -6,7 +6,7 @@
 import { AlertTriangle, Ban, CalendarClock, ExternalLink, Mail, MessageSquareText, Phone, Users } from "lucide-react";
 import { memo, useMemo, type ReactNode } from "react";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Column, type Row } from "../../../shared/types";
-import { toNumber } from "../../../shared/values";
+import { contactOf, toNumber } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { cueFor } from "../../lib/cues";
 import { formatDate, formatDateTime, relative } from "../../lib/format";
@@ -102,9 +102,10 @@ const ProspectCard = memo(function ProspectCard({ row, schema, stages, layout, a
   const onOpen = () => onOpenRow(row.id);
   const c = row.cells;
   const txt = (k?: string) => (k ? display(c[k]) : "");
-  const title = txt(layout.titleKey) || "Untitled prospect";
-  const contact = schema.nameKey && schema.nameKey !== layout.titleKey ? txt(schema.nameKey) : "";
-  const role = txt(layout.roleKey);
+  const person = contactOf(c, schema);
+  const title = (layout.titleKey === schema.nameKey ? person.name : txt(layout.titleKey)) || "Untitled prospect";
+  const contact = schema.nameKey && schema.nameKey !== layout.titleKey ? person.name : "";
+  const role = person.role;
   const others = txt(layout.otherContactsKey);
   const status = txt(schema.statusKey);
   const tier = txt(layout.tierKey);
@@ -112,7 +113,14 @@ const ProspectCard = memo(function ProspectCard({ row, schema, stages, layout, a
   const phones = layout.phoneKeys.flatMap((k) => split(txt(k)));
   const links = layout.links.flatMap((col) => split(txt(col.key)).map((v) => ({ v, col })));
   const paragraphs = layout.paragraphs.map((col) => ({ col, v: txt(col.key) })).filter((p) => p.v);
-  const facts = layout.facts.map((col) => ({ col, v: txt(col.key) })).filter((f) => f.v);
+  const facts = [
+    ...layout.facts.map((col) => ({ col, v: txt(col.key) })).filter((f) => f.v),
+    // Such as a Title of "Dr." with no name to put it before: shown, never dropped.
+    ...person.rest.flatMap(({ key, value }) => {
+      const col = schema.columns.find((x) => x.key === key);
+      return col ? [{ col, v: value }] : [];
+    }),
+  ];
   const meetingAt = txt(schema.meetingAtKey);
   const intro = txt(schema.introKey);
   const screened = isScreened(row, schema);

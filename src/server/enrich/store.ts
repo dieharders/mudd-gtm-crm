@@ -1,5 +1,7 @@
 /** Recipes, runs and suggestions in SQLite. Stored as JSON documents: small, and read whole. */
 import type { EnrichRun, Recipe, Suggestion, SuggestionStatus } from "../../shared/ai";
+import type { CellValue } from "../../shared/types";
+import { sameValue } from "../../shared/values";
 import { getDb, newId } from "../db";
 
 // ---------- recipes ----------
@@ -71,6 +73,21 @@ export function listSuggestions(campaignId: string, status?: SuggestionStatus): 
     ? (getDb().query("SELECT json FROM suggestions WHERE campaign_id = ? AND status = ? ORDER BY created_at").all(campaignId, status) as { json: string }[])
     : (getDb().query("SELECT json FROM suggestions WHERE campaign_id = ? ORDER BY created_at").all(campaignId) as { json: string }[]);
   return rows.map((r) => JSON.parse(r.json) as Suggestion);
+}
+
+/**
+ * Where a cell's value came from: the source of the newest finding, accepted or auto-filled, of
+ * exactly this value. Null for a value typed, edited or imported, whose source nobody recorded.
+ */
+export function sourceOfValue(campaignId: string, rowId: string, key: string, value: CellValue): string | null {
+  const rows = getDb()
+    .query("SELECT json FROM suggestions WHERE campaign_id = ? AND row_id = ? AND status IN ('accepted', 'auto') AND json_extract(json, '$.key') = ? ORDER BY created_at DESC")
+    .all(campaignId, rowId, key) as { json: string }[];
+  for (const r of rows) {
+    const s = JSON.parse(r.json) as Suggestion;
+    if (sameValue(s.value, value) && s.sources[0]) return s.sources[0].url;
+  }
+  return null;
 }
 
 /** A newer suggestion for the same cell replaces an older one still waiting for review. */

@@ -2,7 +2,9 @@
  * Reading and comparing cell values, shared by the server (import, export, enrichment) and the
  * page (grid, prospect panel), so the two never disagree about what a number or a link is.
  */
-import { CHECKED, type CampaignSchema, type CellValue, type Row } from "./types";
+import { norm } from "./merge";
+import { HONORIFIC_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
+import { CHECKED, type CampaignSchema, type CellValue, type Column, type Row } from "./types";
 
 const NUMERIC_RE = /^-?\d+(?:\.\d+)?$/;
 
@@ -71,9 +73,57 @@ export function applyCellEdits(
 /** A datetime-local input wants "YYYY-MM-DDTHH:mm"; a bare date gets 09:00. */
 export const toLocalInput = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T09:00` : v.slice(0, 16));
 
-/** What to call a prospect: company over name ("Acme / Ann Lee"), else the first column. */
+type ContactKeys = { roleKey?: string; honorificKey?: string; titleKey?: string };
+// Worked out once per column list, not per row: every card and title would compare every
+// header again (50–90 ms per 5k rows). A change to the columns always makes a new list; the
+// length covers columns appended to the same one.
+const contactKeys = new WeakMap<Column[], { length: number; keys: ContactKeys }>();
+
+/** The columns a contact is read from, other than the name. Hidden columns are left out. */
+export function contactColumns(schema: CampaignSchema): ContactKeys {
+  const hit = contactKeys.get(schema.columns);
+  if (hit?.length === schema.columns.length) return hit.keys;
+  const visible = schema.columns.filter((c) => !c.hidden);
+  const first = (names: string[]) => names.map((n) => visible.find((c) => norm(c.header) === n)).find(Boolean)?.key;
+  const keys = { roleKey: first(ROLE_HEADERS), honorificKey: first(HONORIFIC_HEADERS), titleKey: first([TITLE_HEADER]) };
+  contactKeys.set(schema.columns, { length: schema.columns.length, keys });
+  return keys;
+}
+
+export interface Contact {
+  /** The name as addressed: "Dr. Ann Lee". */
+  name: string;
+  /** The job title: the Role column, and a Title cell that holds one. */
+  role: string;
+  /** Contact cells shown in neither, such as an honorific with no name to go before. */
+  rest: { key: string; value: string }[];
+}
+
+/** A row's contact, read the same way wherever a prospect is shown. */
+export function contactOf(cells: Record<string, CellValue>, schema: CampaignSchema): Contact {
+  const { roleKey, honorificKey, titleKey } = contactColumns(schema);
+  const text = (k?: string) => (k ? String(cells[k] ?? "").trim() : "");
+  const bare = text(schema.nameKey);
+  const roles = [text(roleKey)];
+  const rest: Contact["rest"] = [];
+  let honorific = "";
+  for (const key of [honorificKey, titleKey]) {
+    const v = text(key);
+    if (!v) continue;
+    const same = !!honorific && norm(v) === norm(honorific);
+    if (isHonorific(v) && bare && (!honorific || same)) honorific = v;
+    else if (key === titleKey && !isHonorific(v)) roles.push(v);
+    else if (!same) rest.push({ key: key!, value: v });
+  }
+  // A name that already starts with it ("Dr. Ann Lee") keeps it once.
+  const name = honorific && norm(bare.split(/\s+/)[0] ?? "") !== norm(honorific) ? `${honorific} ${bare}` : bare;
+  const role = roles.filter((r, i) => r && roles.findIndex((x) => norm(x) === norm(r)) === i).join(" · ");
+  return { name, role, rest };
+}
+
+/** What to call a prospect: company over name ("Acme / Dr. Ann Lee"), else the first column. */
 export function rowTitle(row: Pick<Row, "cells">, schema: CampaignSchema): { title: string; subtitle: string } {
-  const name = schema.nameKey ? String(row.cells[schema.nameKey] ?? "").trim() : "";
+  const name = contactOf(row.cells, schema).name;
   const company = schema.companyKey ? String(row.cells[schema.companyKey] ?? "").trim() : "";
   const first = schema.columns[0] ? String(row.cells[schema.columns[0].key] ?? "").trim() : "";
   if (company && name) return { title: company, subtitle: name };
