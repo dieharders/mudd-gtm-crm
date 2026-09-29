@@ -147,7 +147,18 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
     else setEditing({ r, c, initial });
   };
 
+  /**
+   * Make a row the one the keys act on (Space opens it), from its checkbox or open button, and
+   * give the keys back to the grid: that box or button keeps no focus of its own.
+   */
+  const pickRow = (r: number) => {
+    setActive({ r, c: active?.c ?? 0 });
+    scroller.current?.focus({ preventScroll: true });
+  };
+
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // Keys pressed on a row's checkbox or open button are theirs (Space ticks the box).
+    if (e.target !== e.currentTarget) return;
     if (editing || !active) return;
     const row = p.rows[active.r];
     const col = p.columns[active.c];
@@ -326,11 +337,18 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                     aria-label="Select row"
                     className="h-3.5 w-3.5 accent-brand-600"
                     checked={isSel}
+                    onMouseDown={(e) => e.preventDefault()}
                     onChange={() => toggleOne(row.id)}
+                    // A click (not Space on the box) also picks the row, so Space then opens it.
+                    onClick={(e) => e.detail > 0 && pickRow(vr.index)}
                   />
                   <button
                     className={cn("rounded-sm p-1 text-ink-faint hover:bg-brand-100 hover:text-brand-700", !isOpen && "opacity-0 group-hover/row:opacity-100")}
-                    onClick={() => p.onOpenRow(row.id)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      pickRow(vr.index);
+                      p.onOpenRow(row.id);
+                    }}
                     title={`${p.openLabel ?? "Open prospect"} (Space)`}
                   >
                     <Maximize2 size={13} />
@@ -357,6 +375,9 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                         if (editing && !isEditing) return;
                         if (e.button !== 0) return;
                         setActive({ r: vr.index, c: ci });
+                        // The keys go to the grid, whatever the engine does with a click (the
+                        // cell being edited keeps them).
+                        if (!isEditing) scroller.current?.focus({ preventScroll: true });
                       }}
                       onDoubleClick={() => startEdit(vr.index, ci)}
                     >
