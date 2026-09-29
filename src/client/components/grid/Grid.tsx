@@ -44,6 +44,10 @@ interface Props {
   readOnly?: boolean;
   /** Rows shown greyed out and read-only (all but the schema's Screened out box). */
   isLocked?: (row: Row) => boolean;
+  /** Columns no row can change here: the prospect's ID, a contact's (derived) company. */
+  readOnlyKeys?: Set<string>;
+  /** What the row's open button says ("Open prospect"). */
+  openLabel?: string;
   /** Cells with an AI suggestion waiting: row id → column keys. */
   pending?: Map<string, Set<string>>;
 }
@@ -123,7 +127,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
 
   /** A cell that can't be changed: the grid is read-only, or its row is locked (bar the Screened out box). */
   const isFixed = (row: Row, col: Column) =>
-    !!p.readOnly || (!!p.isLocked?.(row) && col.key !== p.schema.screenedKey);
+    !!p.readOnly || !!p.readOnlyKeys?.has(col.key) || (!!p.isLocked?.(row) && col.key !== p.schema.screenedKey);
 
   const commit = (r: number, c: number, value: CellValue, dir?: Move) => {
     const row = p.rows[r];
@@ -325,7 +329,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                   <button
                     className={cn("rounded-sm p-1 text-ink-faint hover:bg-brand-100 hover:text-brand-700", !isOpen && "opacity-0 group-hover/row:opacity-100")}
                     onClick={() => p.onOpenRow(row.id)}
-                    title="Open prospect (Space)"
+                    title={`${p.openLabel ?? "Open prospect"} (Space)`}
                   >
                     <Maximize2 size={13} />
                   </button>

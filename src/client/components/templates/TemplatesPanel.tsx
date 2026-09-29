@@ -1,11 +1,14 @@
 /**
  * Intro-message templates for one campaign: as many as you like, with {{Column}} placeholders
- * and a live preview against any prospect.
+ * and a live preview against any prospect. Placeholders name the prospect's columns or its
+ * primary contact's; {{First name}} is the primary contact's.
  */
 import { Braces, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { mergeTemplate, placeholdersFor, tokenize } from "../../../shared/merge";
+import { prospectSchema } from "../../../shared/schema";
 import { isScreened, type CampaignSchema, type Row, type Template } from "../../../shared/types";
+import { primaryOf, prospectCells } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
 import { cn } from "../../lib/cn";
 import { rowTitle } from "../../lib/pipeline";
@@ -23,9 +26,10 @@ Would a 15-minute call next week be useful?
 Best,
 [Your name]`;
 
-export function TemplatesPanel({ schema, rows, templates, state, onClose, previewRowId }: {
+export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onClose, previewRowId }: {
   schema: CampaignSchema;
   rows: Row[];
+  contactsOf: (orgId: string) => Row[];
   templates: Template[];
   state: CampaignState;
   onClose: () => void;
@@ -37,6 +41,14 @@ export function TemplatesPanel({ schema, rows, templates, state, onClose, previe
   const prospects = useMemo(() => rows.filter((r) => !isScreened(r, schema)), [rows, schema]);
   const [previewId, setPreviewId] = useState<string>(previewRowId ?? prospects[0]?.id ?? "");
   const tpl = templates.find((t) => t.id === selected) ?? null;
+  const view = useMemo(() => prospectSchema(schema), [schema]);
+  // The previewed prospect, read with its primary contact as the templates read it.
+  const previewOrg = prospects.find((r) => r.id === previewId) ?? prospects[0] ?? null;
+  const previewContacts = previewOrg ? contactsOf(previewOrg.id) : null;
+  const preview = useMemo(
+    () => (previewOrg ? { ...previewOrg, cells: prospectCells(previewOrg, primaryOf(previewContacts ?? [], schema)) } : null),
+    [previewOrg, previewContacts, schema],
+  );
 
   useEffect(() => {
     if (!tpl && templates[0]) setSelected(templates[0].id);
@@ -90,9 +102,9 @@ export function TemplatesPanel({ schema, rows, templates, state, onClose, previe
             <Editor
               key={tpl.id}
               tpl={tpl}
-              schema={schema}
+              schema={view}
               state={state}
-              preview={prospects.find((r) => r.id === previewId) ?? prospects[0] ?? null}
+              preview={preview}
               previewSelect={
                 <select className="field h-7 max-w-56 py-0 text-xs" value={previewId} onChange={(e) => setPreviewId(e.target.value)}>
                   {prospects.map((r) => <option key={r.id} value={r.id}>{rowTitle(r, schema).title}</option>)}

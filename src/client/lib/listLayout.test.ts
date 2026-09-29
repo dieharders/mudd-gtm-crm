@@ -12,8 +12,9 @@ function sheet(...cols: [string, ColumnType?][]): CampaignSchema {
 const headers = (cols: { header: string }[]) => cols.map((c) => c.header);
 
 describe("card layout", () => {
-  test("the contact's Title, Role and Salutation go in the contact box, not the fact chips", () => {
-    const layout = cardLayout(sheet(["Company"], ["Name"], ["Title"], ["Decision maker title"], ["Salutation"], ["Location"]));
+  test("the title is the company, and the ID is never on the card", () => {
+    const layout = cardLayout(sheet(["ID"], ["Company"], ["Location"]));
+    expect(layout.titleKey).toBe("company");
     expect(headers(layout.facts)).toEqual(["Location"]);
   });
 

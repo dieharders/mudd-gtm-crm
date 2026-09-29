@@ -3,8 +3,9 @@
  *
  *   1. Pick a file: the native Open dialog (which remembers the path, so Save file can later
  *      write straight back to it), a drop anywhere on the window, or a plain file input.
- *   2. Choose the tab that holds the prospects, when the workbook has more than one. Every other
- *      tab stays in the file untouched.
+ *   2. Choose the tab that holds the prospects, when the workbook has more than one. A Contacts
+ *      tab is read too, its people linked to their prospects; every other tab stays in the file
+ *      untouched.
  */
 import { FileSpreadsheet, Info, Upload } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
@@ -144,7 +145,8 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
   const [nameTouched, setNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const kept = candidates.filter((s) => s.name !== prospects);
+  const contactsTab = result.sheets.find((s) => s.guess === "contacts" && s.name !== prospects);
+  const kept = candidates.filter((s) => s.name !== prospects && s !== contactsTab);
 
   const chooseProspects = (n: string) => {
     setProspects(n);
@@ -156,6 +158,10 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
     try {
       const c = await api.importFile(result.token, prospects, name);
       toast.success(`Imported ${c.name}`);
+      if (c.skippedContacts) {
+        const n = c.skippedContacts;
+        toast(`${n} contact${n === 1 ? "" : "s"} matched no prospect in ${prospects}, and stay${n === 1 ? "s" : ""} in the file as ${n === 1 ? "it is" : "they are"}.`, { icon: "⚠️" });
+      }
       onClose();
       void navigate(`/c/${c.id}`);
     } catch (err) {
@@ -234,12 +240,17 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
         <div className="flex gap-2.5 rounded-xl bg-brand-50 p-3 text-sm text-brand-900">
           <Info size={16} className="mt-0.5 shrink-0 text-brand-500" />
           <div className="space-y-1">
+            {contactsTab && (
+              <p>
+                {contactsTab.rows} contact{contactsTab.rows === 1 ? "" : "s"} in <strong>{contactsTab.name}</strong> will be linked to their prospects by Prospect ID.
+              </p>
+            )}
             {kept.length > 0 && (
               <p>
                 Left as they are in the file: <strong>{kept.map((s) => s.name).join(", ")}</strong>.
               </p>
             )}
-            <p>Meeting, Intro message and Screened out columns are added after your last column, so formulas that point at existing columns keep working.</p>
+            <p>Meeting, Intro message, Screened out and ID columns are added after your last column when the tab lacks them, so formulas that point at existing columns keep working.</p>
             {result.templates > 0 && <p>{result.templates} intro template{result.templates === 1 ? "" : "s"} found and will be restored.</p>}
             {!result.path && (
               <p className="text-brand-700">

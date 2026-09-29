@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mergeSources, SOURCES_HEADER } from "../../shared/ai";
-import { genericSchema } from "../../shared/schema";
+import { allColumns, genericSchema } from "../../shared/schema";
 import { enrichRequest, introRequest } from "../enrich/prompts";
 import { parseAuthStatus } from "./claude";
 import { buildArgs } from "./codex";
@@ -63,7 +63,8 @@ describe("sources", () => {
 
 describe("prompts", () => {
   const schema = genericSchema();
-  const k = (h: string) => schema.columns.find((c) => c.header === h)!.key;
+  // The prospect's columns first, then its contacts' (Name is a contact's).
+  const k = (h: string) => allColumns(schema).find((c) => c.header === h)!.key;
   test("enrich request: one schema property per output, select options named, current value shown", () => {
     const recipe = { id: "r", campaignId: "c", name: "t", instructions: "Find it.", inputKeys: [], webSearch: true, createdAt: 0, updatedAt: 0,
       outputs: [{ key: k("Website"), header: "Website" }, { key: k("Status"), header: "Status" }] };
@@ -75,6 +76,17 @@ describe("prompts", () => {
     expect(req.prompt).toContain('currently has "acme.io"');
     const ok = req.schema.safeParse({ fields: { [k("Website")]: { value: "https://acme.io", source: "https://acme.io", confidence: "high" } }, notes: null });
     expect(ok.success).toBe(true);
+  });
+  test("the primary contact goes in nested, so a header both have keeps both values; the ID never goes", () => {
+    const notes = schema.contacts!.columns.find((c) => c.header === "Notes")!.key;
+    const recipe = { id: "r", campaignId: "c", name: "t", instructions: "Find it.", inputKeys: [], webSearch: true, createdAt: 0, updatedAt: 0,
+      outputs: [{ key: k("Email"), header: "Email" }] };
+    const cells = { [k("ID")]: "P-004", [k("Company")]: "Acme", [k("Notes")]: "Big fleet", [k("Name")]: "Ann Lee", [notes]: "Met at AUSA", [k("Primary")]: "TRUE" };
+    const req = enrichRequest(recipe, schema, cells);
+    expect(req.prompt).toContain('"Notes":"Big fleet","Primary contact":{"Name":"Ann Lee","Notes":"Met at AUSA"}');
+    expect(req.prompt).not.toContain("P-004");
+    // A contact column is filled like any other: keyed by its own key.
+    expect(req.columns.map((c) => c.header)).toEqual(["Email"]);
   });
   test("intro request pre-fills templates and limits the pool to the chosen one", () => {
     const templates = [

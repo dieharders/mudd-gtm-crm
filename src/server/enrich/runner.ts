@@ -1,10 +1,12 @@
 /**
  * The enrichment job engine.
  *
- * A run is a list of rows worked by a few parallel workers. Each row is one research turn on
- * the user's CLI. Pause lets the in-flight rows finish and starts no more; Stop aborts them.
+ * A run is a list of prospects worked by a few parallel workers. Each is one research turn on
+ * the user's CLI, which sees the prospect with its primary contact. Pause lets the in-flight
+ * turns finish and starts no more; Stop aborts them.
  * An answer never overwrites a cell on its own: it becomes a SUGGESTION to accept or reject,
- * except with auto-fill on, which fills cells that are EMPTY and nothing else.
+ * except with auto-fill on, which fills cells that are EMPTY and nothing else. A finding for a
+ * contact column is the primary contact's; a prospect with no contact gets one to hold it.
  *
  * A run document holds every row, so nothing sends or stores it whole per row (that is
  * quadratic in the run's size). The page gets the whole run when it starts, changes status
@@ -17,9 +19,9 @@ import { enrichRequest, introRequest } from "./prompts";
 import * as store from "./store";
 import { publish } from "./hub";
 import { mergeSources, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type RunKind, type Source, type Suggestion } from "../../shared/ai";
-import { makeKey } from "../../shared/schema";
-import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column } from "../../shared/types";
-import { parseFlag, sameValue, toNumber } from "../../shared/values";
+import { allColumns, columnOf, isContactKey, makeKey } from "../../shared/schema";
+import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../shared/types";
+import { parseFlag, prospectCells, sameValue, toNumber } from "../../shared/values";
 import { AiError, generateStructured } from "../ai";
 import { getAiSettings } from "../ai/settings";
 import * as db from "../db";
@@ -81,7 +83,7 @@ export function ensureSourcesColumn(campaignId: string): string {
   const existing = sourcesColumn(c.schema);
   if (existing) return existing.key;
   // Not a key a deleted column left values under: the new column would show them.
-  const taken = new Set([...c.schema.columns.map((col) => col.key), ...db.allCellKeys(campaignId)]);
+  const taken = new Set([...allColumns(c.schema).map((col) => col.key), ...db.allCellKeys(campaignId)]);
   const key = makeKey("enrichment_sources", taken);
   const schema: CampaignSchema = { ...c.schema, columns: [...c.schema.columns, { key, header: SOURCES_HEADER, type: "longtext", origin: "enrichment", width: 320 }] };
   db.updateCampaign(campaignId, { schema });
@@ -208,10 +210,12 @@ async function processRow(ctrl: Controller, rowId: string): Promise<void> {
   const { run } = ctrl;
   const state = run.rows[rowId]!;
   const campaign = db.getCampaign(run.campaignId);
-  const row = campaign ? db.getRow(run.campaignId, rowId) : null;
+  const found = campaign ? db.getRow(run.campaignId, rowId) : null;
+  // Runs are on prospects; a contact is researched as part of its prospect.
+  const row = found?.parentId ? null : found;
   if (!campaign || !row || isScreened(row, campaign.schema)) {
     state.state = "skipped";
-    state.error = row ? "Screened out" : "Row was deleted.";
+    state.error = found?.parentId ? "Not a prospect." : row ? "Screened out" : "Row was deleted.";
     emitRow(ctrl, rowId);
     // Nothing above waits, so a long stretch of such rows would hold the event loop (no
     // request answered, no event sent) until it ends. Let everything else in between each.
@@ -230,11 +234,13 @@ async function processRow(ctrl: Controller, rowId: string): Promise<void> {
     }
   };
 
+  // The prospect as the turn sees it: with its primary contact, whom intros address.
+  const cells = prospectCells(row, db.primaryContact(run.campaignId, rowId, campaign.schema));
   for (let attempt = 0; ; attempt++) {
     try {
       const found = run.kind === "intro"
-        ? await doIntro(run, campaign.schema, row.cells, rowId, ctrl.abort.signal, onStep)
-        : await doEnrich(run, campaign.schema, row.cells, rowId, ctrl.abort.signal, onStep);
+        ? await doIntro(run, campaign.schema, cells, rowId, ctrl.abort.signal, onStep)
+        : await doEnrich(run, campaign.schema, cells, rowId, ctrl.abort.signal, onStep);
       state.step = undefined;
       if (found === null) {
         // Deleted while the turn ran: its findings have nowhere to go.
@@ -303,9 +309,11 @@ export function normaliseValue(col: Pick<Column, "type" | "options">, raw: strin
 }
 
 /**
- * File one row's findings. The row is read again first: the turn took seconds, in which the
- * user may have typed into a cell auto-fill would fill, or another run may have added its own
- * sources. Null when the row is gone.
+ * File one prospect's findings. It is read again first, with its primary contact: the turn took
+ * seconds, in which the user may have typed into a cell auto-fill would fill, or another run
+ * may have added its own sources. A contact column's finding goes on the primary contact, which
+ * is created (ticked Primary) when the prospect has none; the sources always go on the
+ * prospect. Null when the prospect is gone.
  */
 function recordResults(
   run: EnrichRun,
@@ -316,6 +324,8 @@ function recordResults(
   const row = schema ? db.getRow(run.campaignId, rowId) : null;
   if (!schema || !row) return null;
   const { cells } = row;
+  let primary = db.primaryContact(run.campaignId, rowId, schema);
+  const created: Row[] = [];
   const sourcesKey = sourcesColumn(schema)?.key;
   const suggestions: Suggestion[] = [];
   const edits: CellEdit[] = [];
@@ -323,17 +333,24 @@ function recordResults(
   let sourcesCell = sourcesBefore === null ? null : String(sourcesBefore);
   for (const r of results) {
     // The column as it is now: it may have been deleted or renamed during the turn.
-    const col = schema.columns.find((c) => c.key === r.col.key);
-    if (!col) continue;
-    const current = cells[col.key] ?? null;
-    if (r.value === null || sameValue(current, r.value)) continue;
-    store.supersedePending(run.campaignId, rowId, col.key);
+    const col = columnOf(schema, r.col.key);
+    if (!col || r.value === null) continue;
+    const forContact = isContactKey(schema, col.key);
+    if (forContact && !primary) {
+      const primaryKey = schema.contacts?.primaryKey;
+      primary = db.insertRows(run.campaignId, [{ parentId: rowId, cells: primaryKey ? { [primaryKey]: CHECKED } : {} }])[0]!;
+      created.push(primary);
+    }
+    const target = forContact ? primary! : row;
+    const current = target.cells[col.key] ?? null;
+    if (sameValue(current, r.value)) continue;
+    store.supersedePending(run.campaignId, target.id, col.key);
     const auto = run.autoFill && (current === null || current === "");
     suggestions.push({
       id: db.newId(),
       campaignId: run.campaignId,
       runId: run.id,
-      rowId,
+      rowId: target.id,
       key: col.key,
       value: r.value,
       previous: current,
@@ -344,10 +361,12 @@ function recordResults(
       createdAt: Date.now(),
     });
     if (auto) {
-      edits.push({ rowId, key: col.key, value: r.value });
+      edits.push({ rowId: target.id, key: col.key, value: r.value });
       if (sourcesKey && r.sources.length) sourcesCell = mergeSources(sourcesCell, col.header, r.sources);
     }
   }
+  // Before the cells and suggestions that point at it.
+  if (created.length) publish(run.campaignId, { type: "rows", rows: created });
   if (edits.length) {
     if (sourcesKey && !sameValue(sourcesCell, sourcesBefore)) edits.push({ rowId, key: sourcesKey, value: sourcesCell });
     db.applyEdits(run.campaignId, edits);

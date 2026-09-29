@@ -12,7 +12,7 @@ import { describe, expect, test } from "bun:test";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import fs from "node:fs";
-import { genericSchema } from "../shared/schema";
+import { allColumns, genericSchema } from "../shared/schema";
 import { CHECKED, isScreened, type Campaign, type Template } from "../shared/types";
 import { exportCampaign, type ExportRow } from "./export";
 import { importWorkbook, inspectWorkbook, loadWorkbook } from "./import";
@@ -40,12 +40,14 @@ async function importFrom(buf: Uint8Array, name = "t.xlsx", prospects?: string) 
   const p = prospects ?? inspected.sheets.find((s) => s.guess === "prospects")!.name;
   const imp = importWorkbook(book, { prospects: p });
   const rows: ExportRow[] = imp.rows.map((r, i) => ({ ...r, id: `r${i}` }));
+  const contacts: ExportRow[] = imp.contacts.map(({ parent, ...c }, i) => ({ ...c, id: `k${i}`, parentId: rows[parent]!.id }));
   const campaign: Campaign = {
     id: "c1", name: "test", createdAt: 0, updatedAt: 0, sourceName: name, sourcePath: null,
     hasOriginal: true, schema: imp.schema, sheets: imp.sheets,
   };
-  const key = (header: string) => imp.schema.columns.find((c) => c.header === header)!.key;
-  return { campaign, rows, templates: imp.templates, inspected, key };
+  // The prospect's columns first, then its contacts'.
+  const key = (header: string) => allColumns(imp.schema).find((c) => c.header === header)!.key;
+  return { campaign, rows, contacts, skipped: imp.skippedContacts, templates: imp.templates, inspected, key };
 }
 
 /** Every part of a package, as text. */
@@ -91,13 +93,13 @@ function wellFormed(xml: string): boolean {
 
 const tpl = (name: string, body: string, i: number): Template => ({ id: `t${i}`, campaignId: "c1", name, body, position: i, updatedAt: 0 });
 
-/** A small tracker: Prospects (formatted, a note, a link, rich text), Summary with formulas. */
+/** A small tracker: Prospects (formatted, a note, a link, rich text, IDs), Summary with formulas. */
 function tracker(wb: ExcelJS.Workbook) {
   const ws = wb.addWorksheet("Prospects");
-  ws.addRow(["Company", "Name", "Status", "Last touch", "Score", "Website", "Notes"]);
-  ws.addRow(["Acme", "Ann Lee", "Contacted", new Date(Date.UTC(2026, 6, 15, 14, 30)), 4.5, { text: "acme.com", hyperlink: "https://acme.com" }, "Warm"]);
-  ws.addRow(["Beta", "Bo Chen", "Not contacted", new Date(Date.UTC(2026, 6, 16, 9, 0)), 3.25, "beta.io", { richText: [{ text: "Bold ", font: { bold: true } }, { text: "plain" }] }]);
-  ws.addRow(["Gamma", "Cy Dee", "Replied", new Date(Date.UTC(2026, 6, 17, 10, 15)), 4.75, "gamma.org", "Hot"]);
+  ws.addRow(["Company", "Name", "Status", "Last touch", "Score", "Website", "Notes", "ID"]);
+  ws.addRow(["Acme", "Ann Lee", "Contacted", new Date(Date.UTC(2026, 6, 15, 14, 30)), 4.5, { text: "acme.com", hyperlink: "https://acme.com" }, "Warm", "P-001"]);
+  ws.addRow(["Beta", "Bo Chen", "Not contacted", new Date(Date.UTC(2026, 6, 16, 9, 0)), 3.25, "beta.io", { richText: [{ text: "Bold ", font: { bold: true } }, { text: "plain" }] }, "P-002"]);
+  ws.addRow(["Gamma", "Cy Dee", "Replied", new Date(Date.UTC(2026, 6, 17, 10, 15)), 4.75, "gamma.org", "Hot", "P-003"]);
   ws.getColumn(4).numFmt = "d mmm yyyy h:mm";
   ws.getColumn(4).width = 18;
   ws.getColumn(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
@@ -105,7 +107,7 @@ function tracker(wb: ExcelJS.Workbook) {
   (ws as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations.add("C2:C1000", {
     type: "list", allowBlank: true, formulae: ['"Not contacted,Contacted,Replied,Dead"'],
   });
-  ws.autoFilter = "A1:G4";
+  ws.autoFilter = "A1:H4";
   const s = wb.addWorksheet("Summary");
   s.addRow(["Contacted", { formula: 'COUNTIF(Prospects!$C$2:$C$2000,"Contacted")', result: 1 }]);
   s.addRow(["Total", { formula: "COUNTA(Prospects!$A$2:$A$2000)", result: 3 }]);
@@ -127,7 +129,7 @@ describe("Save file patches the imported workbook", () => {
   test("an unedited save changes nothing but the appended Mudd columns", async () => {
     const original = await xlsxOf(tracker, withCustomParts);
     const { campaign, rows } = await importFrom(original);
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const before = await partsOf(original);
     const after = await partsOf(out);
     const prospectsText = await sheetXml(original, "Prospects");
@@ -148,7 +150,7 @@ describe("Save file patches the imported workbook", () => {
     // Mudd's columns are appended after the last used column, headers only.
     const wb = await read(out);
     const header = (wb.getWorksheet("Prospects")!.getRow(1).values as unknown[]).slice(1);
-    expect(header).toEqual(["Company", "Name", "Status", "Last touch", "Score", "Website", "Notes", "Meeting URL", "Meeting at", "Intro message", "Screened out", "Screened reason"]);
+    expect(header).toEqual(["Company", "Name", "Status", "Last touch", "Score", "Website", "Notes", "ID", "Meeting URL", "Meeting at", "Intro message", "Screened out", "Screened reason"]);
     for (const [name, text] of after) if (name.endsWith(".xml") || name.endsWith(".rels")) expect({ name, ok: wellFormed(text) }).toEqual({ name, ok: true });
     expect(after.get("xl/workbook.xml")).toContain('fullCalcOnLoad="1"');
   });
@@ -163,7 +165,7 @@ describe("Save file patches the imported workbook", () => {
     rows[2]!.cells[s.meetingAtKey!] = "2026-10-02T14:30";
     rows[2]!.cells[s.meetingUrlKey!] = "https://meet.google.com/abc-defg-hij";
     const before = await sheetXml(original, "Prospects");
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const after = await sheetXml(out, "Prospects");
     // Untouched cells: identical, rich text and links included.
     for (const ref of ["A2", "B2", "E2", "F2", "G2", "A3", "G3", "A4", "F4"]) expect(cellXml(after, ref)).toBe(cellXml(before, ref));
@@ -177,10 +179,10 @@ describe("Save file patches the imported workbook", () => {
     expect(ws.getCell("D2").value).toEqual(new Date(Date.UTC(2026, 7, 1, 11, 45)));
     expect(ws.getCell("D2").numFmt).toBe("d mmm yyyy h:mm");
     expect(ws.getCell("E3").value).toBe(3.5);
-    const at = ws.getCell(`${String.fromCharCode(64 + 9)}4`);
+    const at = ws.getCell(`${String.fromCharCode(64 + 10)}4`);
     expect(at.value).toEqual(new Date(Date.UTC(2026, 9, 2, 14, 30)));
     expect(at.numFmt).toMatch(/h/);
-    expect((ws.getCell("H4").value as { hyperlink: string }).hyperlink).toBe("https://meet.google.com/abc-defg-hij");
+    expect((ws.getCell("I4").value as { hyperlink: string }).hyperlink).toBe("https://meet.google.com/abc-defg-hij");
     // The note is still on Gamma's row.
     expect(ws.getCell("A4").note).toBeTruthy();
   });
@@ -190,7 +192,7 @@ describe("Save file patches the imported workbook", () => {
     const { campaign, rows } = await importFrom(original);
     const kept = rows.filter((r) => r.sourceRow !== 3); // delete Beta
     const before = await sheetXml(original, "Prospects");
-    const out = await exportCampaign(campaign, original, kept, []);
+    const out = await exportCampaign(campaign, original, kept, [], []);
     const after = await sheetXml(out, "Prospects");
     expect(rowXml(after, 2)).toBe(rowXml(before, 2));
     expect(rowXml(after, 4)).toBe(rowXml(before, 4));
@@ -217,7 +219,7 @@ describe("Save file patches the imported workbook", () => {
     expect(campaign.sheets[0]!.trailer).toEqual({ from: 5, to: 5 });
     rows.push({ id: "n1", position: 10, cells: { [key("Company")]: "New Co", [key("Status")]: "Contacted" } });
     rows.push({ id: "n2", position: 11, cells: { [key("Company")]: "Newer Co" } });
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const ws = (await read(out)).getWorksheet("Leads")!;
     expect(ws.getCell("A4").value).toBe("New Co");
     expect(ws.getCell("A5").value).toBe("Newer Co");
@@ -241,7 +243,7 @@ describe("Save file patches the imported workbook", () => {
     expect(campaign.schema.columns.map((c) => c.header).slice(0, 4)).toEqual(["Company", "Contact", "Status", "Column D"]);
     const meta = campaign.sheets.find((s) => s.role === "prospects")!;
     expect(meta.lastCol).toBe(5); // the Yes/No dropdown on E counts as used
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const ws = (await read(out)).getWorksheet("Prospects")!;
     expect(ws.getCell("D2").value).toBe("call back Tue");
     expect(ws.getCell("F1").value).toBe("Meeting URL");
@@ -252,7 +254,7 @@ describe("Save file patches the imported workbook", () => {
     const { campaign, rows, key } = await importFrom(original);
     campaign.schema.columns.find((c) => c.key === key("Last touch"))!.type = "date";
     const before = await sheetXml(original, "Prospects");
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const after = await sheetXml(out, "Prospects");
     for (const ref of ["D2", "D3", "D4"]) expect(cellXml(after, ref)).toBe(cellXml(before, ref));
   });
@@ -265,7 +267,7 @@ describe("Save file patches the imported workbook", () => {
     const notes = campaign.schema.columns.find((c) => c.key === key("Notes"))!;
     notes.type = "select";
     notes.options = ["Warm", "Hot", "Cold"];
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const xml = await sheetXml(out, "Prospects");
     expect(xml).toContain("&quot;Not contacted,Contacted,Nurture,Replied,Dead&quot;");
     expect(xml).toMatch(/sqref="G2:G1000"><formula1>&quot;Warm,Hot,Cold&quot;/);
@@ -279,7 +281,7 @@ describe("Save file patches the imported workbook", () => {
     const s = campaign.schema;
     rows[1]!.cells[s.screenedKey!] = CHECKED;
     rows[1]!.cells[s.reasonKey!] = "Has an agency of record";
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const ws = (await read(out)).getWorksheet("Prospects")!;
     const headers = ws.getRow(1).values as unknown[];
     const col = headers.indexOf("Screened out");
@@ -302,20 +304,20 @@ describe("Save file patches the imported workbook", () => {
     const { campaign, rows, inspected } = await importFrom(original);
     expect(inspected.sheets.find((s) => s.name === "Screened out")!.guess).toBe("passthrough");
     expect(rows.every((r) => r.sourceSheet === "Prospects")).toBe(true);
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     expect(await sheetXml(out, "Screened out")).toBe(await sheetXml(original, "Screened out"));
   });
 
   test("templates: a new tab, then updated in place", async () => {
     const original = await xlsxOf(tracker);
     const first = await importFrom(original);
-    const out1 = await exportCampaign(first.campaign, original, first.rows, [tpl("Warm", "Hi {{First name}},\nshort intro.", 0)]);
+    const out1 = await exportCampaign(first.campaign, original, first.rows, [tpl("Warm", "Hi {{First name}},\nshort intro.", 0)], []);
     const again = await importFrom(out1);
     expect(again.templates).toEqual([{ name: "Warm", body: "Hi {{First name}},\nshort intro." }]);
-    const out2 = await exportCampaign(again.campaign, out1, again.rows, [tpl("Cold", "Hello {{Company}}", 0), tpl("Warm", "Hi again", 1)]);
+    const out2 = await exportCampaign(again.campaign, out1, again.rows, [tpl("Cold", "Hello {{Company}}", 0), tpl("Warm", "Hi again", 1)], []);
     const third = await importFrom(out2);
     expect(third.templates).toEqual([{ name: "Cold", body: "Hello {{Company}}" }, { name: "Warm", body: "Hi again" }]);
-    const out3 = await exportCampaign(third.campaign, out2, third.rows, []);
+    const out3 = await exportCampaign(third.campaign, out2, third.rows, [], []);
     expect((await read(out3)).worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary", "Intro templates"]);
     expect((await importFrom(out3)).templates).toEqual([]);
   });
@@ -326,7 +328,7 @@ describe("Save file patches the imported workbook", () => {
       wb.addWorksheet("INTRO TEMPLATES").addRow(["Subject", "Notes"]);
     });
     const { campaign, rows } = await importFrom(original);
-    const out = await exportCampaign(campaign, original, rows, [tpl("One", "Hello", 0)]);
+    const out = await exportCampaign(campaign, original, rows, [tpl("One", "Hello", 0)], []);
     const names = (await read(out)).worksheets.map((w) => w.name);
     expect(names).toEqual(["Prospects", "Summary", "INTRO TEMPLATES", "Intro templates 2"]);
     expect(await sheetXml(out, "INTRO TEMPLATES")).toBe(await sheetXml(original, "INTRO TEMPLATES"));
@@ -337,7 +339,7 @@ describe("Save file patches the imported workbook", () => {
     const original = await xlsxOf(tracker);
     const { campaign, rows, key } = await importFrom(original);
     rows[2]!.cells[key("Website")] = "https://gamma.org/about";
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const ws = (await read(out)).getWorksheet("Prospects")!;
     expect((ws.getCell("F4").value as { hyperlink: string }).hyperlink).toBe("https://gamma.org/about");
     expect((ws.getCell("F2").value as { hyperlink: string }).hyperlink).toBe("https://acme.com");
@@ -355,12 +357,14 @@ describe("Save file patches the imported workbook", () => {
     const { campaign, rows, key } = await importFrom(original);
     campaign.schema.columns.find((c) => c.key === key("Status"))!.header = "Stage";
     rows.push({ id: "n", position: 9, cells: { [key("Company")]: "Gamma" } });
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const parts = await partsOf(out);
     const table = [...parts.entries()].find(([k]) => k.startsWith("xl/tables/"))![1];
-    expect(table).toMatch(/ref="A1:G4"/);
+    expect(table).toMatch(/ref="A1:H4"/);
     expect(table).toContain('name="Stage"');
     expect(table).toContain('name="Screened reason"');
+    // The prospects had no ID column: one is added, last, with an ID for each.
+    expect(table).toContain('name="ID"');
   });
 
   test("a tab with formulas cannot be imported", async () => {
@@ -384,7 +388,7 @@ describe("Save file patches the imported workbook", () => {
     });
     const { campaign, rows, key } = await importFrom(original);
     rows[1]!.cells[key("Next date")] = "2026-02-01";
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     const cell = (await read(out)).getWorksheet("Prospects")!.getCell("B3");
     expect(cell.value).toEqual(new Date(Date.UTC(2026, 1, 1)));
     expect(cell.numFmt).toMatch(/y/);
@@ -427,7 +431,7 @@ describe("import", () => {
     expect(opts("Stage")).toEqual(["Cold", "Warm", "Hot"]);
     expect(opts("Tier")).toEqual(["1", "2", "3"]);
     expect(opts("Region")).toEqual(["EU", "US"]);
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     expect(await sheetXml(out, "Prospects")).toContain("<xm:f>Lists!$A$1:$A$3</xm:f>");
   });
 
@@ -478,7 +482,7 @@ describe("import", () => {
     });
     const { campaign, rows } = await importFrom(original, "t.xlsx", "History");
     expect(rows).toHaveLength(1);
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], []);
     expect((await partsOf(out)).get("xl/workbook.xml")).toContain('name="History"');
   });
 
@@ -507,43 +511,176 @@ describe("import", () => {
 // ---------- campaigns with no workbook of their own ----------
 
 describe("campaigns created in Mudd", () => {
-  test("export in the base-tracker look and re-import losslessly", async () => {
+  test("export in the base-tracker look, contacts on their own tab, and re-import losslessly", async () => {
     const schema = genericSchema();
-    const k = (h: string) => schema.columns.find((c) => c.header === h)!.key;
+    const k = (h: string) => allColumns(schema).find((c) => c.header === h)!.key;
     const rows: ExportRow[] = [
-      { id: "a", position: 0, cells: { [k("Name")]: "Ann Lee", [k("Company")]: "Acme", [k("Status")]: "Replied", [k("Next date")]: "2026-10-01", [k("Meeting at")]: "2026-10-03T09:15" } },
-      { id: "b", position: 1, cells: { [k("Name")]: "Bo Chen", [k("Company")]: "Beta", [k("Status")]: "Not contacted", [k("Email")]: "bo@beta.io" } },
-      { id: "c", position: 2, cells: { [k("Name")]: "Cy Dee", [k("Company")]: "Gamma", [k("Screened out")]: CHECKED, [k("Screened reason")]: "Too big" } },
+      { id: "a", position: 0, cells: { [k("ID")]: "P-001", [k("Company")]: "Acme", [k("Status")]: "Replied", [k("Next date")]: "2026-10-01", [k("Meeting at")]: "2026-10-03T09:15" } },
+      { id: "b", position: 1, cells: { [k("ID")]: "P-002", [k("Company")]: "Beta", [k("Status")]: "Not contacted" } },
+      { id: "c", position: 2, cells: { [k("ID")]: "P-003", [k("Company")]: "Gamma", [k("Screened out")]: CHECKED, [k("Screened reason")]: "Too big" } },
+    ];
+    // Al first, but Ann is Acme's primary contact: she is listed first.
+    const contacts: ExportRow[] = [
+      { id: "x", position: 3, parentId: "a", cells: { [k("Name")]: "Al Ng", [k("Email")]: "al@acme.io" } },
+      { id: "y", position: 4, parentId: "a", cells: { [k("Name")]: "Ann Lee", [k("Contact type")]: "Economic Buyer", [k("Primary")]: CHECKED } },
+      { id: "z", position: 5, parentId: "b", cells: { [k("Name")]: "Bo Chen", [k("Email")]: "bo@beta.io", [k("Primary")]: CHECKED } },
     ];
     const campaign: Campaign = { id: "c", name: "Fresh", createdAt: 0, updatedAt: 0, sourceName: null, sourcePath: null, hasOriginal: false, schema, sheets: [] };
-    const out = await exportCampaign(campaign, null, rows, [tpl("One", "Hello {{Company}}", 0)]);
+    const out = await exportCampaign(campaign, null, rows, [tpl("One", "Hello {{Company}}", 0)], contacts);
     const wb = await read(out);
-    expect(wb.worksheets.map((w) => w.name)).toEqual(["Prospects", "Intro templates"]);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["Prospects", "Contacts", "Intro templates"]);
     const ws = wb.getWorksheet("Prospects")!;
-    expect(ws.getCell("A1").value).toBe("Name");
+    expect(ws.getCell("A1").value).toBe("ID");
+    expect(ws.getCell("B1").value).toBe("Company");
     expect(ws.getCell("A1").fill).toMatchObject({ fgColor: { argb: "FF1C1B18" } });
     expect(ws.views[0]).toMatchObject({ state: "frozen", xSplit: 2, ySplit: 1 });
+    const people = wb.getWorksheet("Contacts")!;
+    expect((people.getRow(1).values as unknown[]).slice(1, 6)).toEqual(["Prospect ID", "Company", "Name", "Contact type", "Primary"]);
+    expect([2, 3, 4].map((r) => [people.getCell(r, 1).value, people.getCell(r, 2).value, people.getCell(r, 3).value]))
+      .toEqual([["P-001", "Acme", "Ann Lee"], ["P-001", "Acme", "Al Ng"], ["P-002", "Beta", "Bo Chen"]]);
 
     const again = await importFrom(out, "fresh.xlsx", "Prospects");
     const s2 = again.campaign.schema;
-    const ann = again.rows.find((r) => r.cells[s2.nameKey!] === "Ann Lee")!;
-    expect(ann.cells[s2.meetingAtKey!]).toBe("2026-10-03T09:15");
-    expect(ann.cells[s2.statusKey!]).toBe("Replied");
-    const cy = again.rows.find((r) => r.cells[s2.nameKey!] === "Cy Dee")!;
-    expect(isScreened(cy, s2)).toBe(true);
-    expect(cy.cells[s2.reasonKey!]).toBe("Too big");
+    const byCompany = (name: string) => again.rows.find((r) => r.cells[s2.companyKey!] === name)!;
+    expect(byCompany("Acme").cells[s2.meetingAtKey!]).toBe("2026-10-03T09:15");
+    expect(byCompany("Acme").cells[s2.statusKey!]).toBe("Replied");
+    expect(isScreened(byCompany("Gamma"), s2)).toBe(true);
+    expect(byCompany("Gamma").cells[s2.reasonKey!]).toBe("Too big");
     expect(s2.columns.find((c) => c.key === s2.statusKey)!.options).toContain("Dead");
     expect(again.templates).toEqual([{ name: "One", body: "Hello {{Company}}" }]);
+    // The people are back with their prospects, typed and ticked as they were.
+    const cs = s2.contacts!;
+    const ann = again.contacts.find((c) => c.cells[cs.nameKey!] === "Ann Lee")!;
+    expect(ann.parentId).toBe(byCompany("Acme").id);
+    expect(ann.cells[cs.typeKey!]).toBe("Economic Buyer");
+    expect(ann.cells[cs.primaryKey!]).toBe(CHECKED);
+    expect(again.contacts.find((c) => c.cells[cs.nameKey!] === "Bo Chen")!.parentId).toBe(byCompany("Beta").id);
+    expect(again.skipped).toBe(0);
   });
 
-  test("CSV imports gain Status and the Mudd columns", async () => {
+  test("CSV imports gain Status, an ID and the Mudd columns", async () => {
     const csv = new TextEncoder().encode('Name,Company,Email\n"Lee, Ann",Acme,ann@acme.io\nBo,Beta,\n');
     const imp = importWorkbook(await loadWorkbook(csv, "list.csv"), { prospects: "Prospects" });
     expect(imp.rows).toHaveLength(2);
-    expect(imp.rows[0]!.cells[imp.schema.nameKey!]).toBe("Lee, Ann");
+    const name = imp.schema.columns.find((c) => c.header === "Name")!.key;
+    expect(imp.rows[0]!.cells[name]).toBe("Lee, Ann");
+    expect(imp.rows.map((r) => r.cells[imp.schema.idKey!])).toEqual(["P-001", "P-002"]);
     expect(imp.schema.columns.map((c) => c.header)).toEqual(
-      expect.arrayContaining(["Status", "Meeting URL", "Meeting at", "Intro message", "Screened out", "Screened reason"]),
+      expect.arrayContaining(["Status", "Meeting URL", "Meeting at", "Intro message", "Screened out", "Screened reason", "ID"]),
     );
+  });
+});
+
+// ---------- the Contacts tab ----------
+
+/** Prospects (with IDs) and a Contacts tab naming each person's prospect, as Mudd lays them out. */
+function withContacts(wb: ExcelJS.Workbook, people: (string | boolean | null)[][]) {
+  const ws = wb.addWorksheet("Prospects");
+  ws.addRow(["ID", "Company", "Status"]);
+  ws.addRow(["P-001", "Acme", "Contacted"]);
+  ws.addRow(["P-002", "Beta", "Replied"]);
+  const c = wb.addWorksheet("Contacts");
+  c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email"]);
+  for (const p of people) c.addRow(p);
+  (c as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations.add("D2:D1000", {
+    type: "list", allowBlank: true, formulae: ['"Economic Buyer,Technical Buyer,End User,Influencer,Blocker,Gatekeeper"'],
+  });
+}
+
+describe("the Contacts tab", () => {
+  const people = [
+    ["P-001", "Acme", "Ann Lee", "Economic Buyer", true, "ann@acme.io"],
+    ["P-001", "Acme", "Al Ng", "End User", null, null],
+    ["P-002", "Beta", "Bo Chen", null, true, "bo@beta.io"],
+  ];
+
+  test("links each person to their prospect by ID: a stale company name, a missing ID, an unknown one", async () => {
+    const original = await xlsxOf((wb) => withContacts(wb, [
+      ["P-001", "Acme Inc (renamed since)", "Ann Lee", "Economic Buyer", true, null],
+      [null, "beta", "Bo Chen", null, null, null],
+      ["P-099", "Acme", "Nobody Here", null, null, null],
+    ]));
+    const { campaign, rows, contacts, skipped, inspected } = await importFrom(original);
+    expect(inspected.sheets.map((s) => s.guess)).toEqual(["prospects", "contacts"]);
+    const cs = campaign.schema.contacts!;
+    expect(contacts.map((c) => [c.cells[cs.nameKey!], c.parentId])).toEqual([["Ann Lee", rows[0]!.id], ["Bo Chen", rows[1]!.id]]);
+    expect(skipped).toBe(1);
+    expect(cs.columns.find((c) => c.key === cs.primaryKey)!.type).toBe("checkbox");
+    expect(contacts[0]!.cells[cs.primaryKey!]).toBe(CHECKED);
+    // The two link columns are the tab's, not the contacts'; the prospect's ID is hidden in the app.
+    expect(cs.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Email"]);
+    expect(campaign.schema.columns.find((c) => c.key === campaign.schema.idKey)).toMatchObject({ header: "ID", hidden: true });
+    const tab = campaign.sheets.find((s) => s.role === "contacts")!;
+    expect(tab.dataRows).toEqual([2, 3]);
+  });
+
+  test("an unedited save leaves the Contacts tab exactly as it was", async () => {
+    const original = await xlsxOf((wb) => withContacts(wb, people));
+    const { campaign, rows, contacts } = await importFrom(original);
+    const out = await exportCampaign(campaign, original, rows, [], contacts);
+    expect(await sheetXml(out, "Contacts")).toBe(await sheetXml(original, "Contacts"));
+    expect((await read(out)).getWorksheet("Prospects")!.getCell("A3").value).toBe("P-002");
+  });
+
+  test("a save patches it in place: one edited cell, a renamed company, a deleted and a new contact, the skipped row untouched", async () => {
+    const original = await xlsxOf((wb) => withContacts(wb, [...people, ["P-777", "Elsewhere", "Zed", null, null, null]]));
+    const { campaign, rows, contacts, key } = await importFrom(original);
+    rows[1]!.cells[key("Company")] = "Beta Labs";
+    contacts[0]!.cells[key("Email")] = "ann@acme.com";
+    const kept = contacts.filter((c) => c.cells[key("Name")] !== "Al Ng");
+    kept.push({ id: "new", position: 99, parentId: rows[1]!.id, cells: { [key("Name")]: "Bea Moss", [key("Contact type")]: "Gatekeeper" } });
+    const before = await sheetXml(original, "Contacts");
+    const out = await exportCampaign(campaign, original, rows, [], kept);
+    const after = await sheetXml(out, "Contacts");
+    for (const ref of ["A2", "B2", "C2", "D2", "E2", "A4", "C4", "A5", "B5", "C5"]) expect(cellXml(after, ref)).toBe(cellXml(before, ref));
+    const ws = (await read(out)).getWorksheet("Contacts")!;
+    expect(ws.getCell("F2").value).toBe("ann@acme.com");
+    expect(ws.getCell("C3").value ?? null).toBeNull();
+    expect(ws.getCell("B4").value).toBe("Beta Labs");
+    expect([ws.getCell("A6").value, ws.getCell("B6").value, ws.getCell("C6").value, ws.getCell("D6").value]).toEqual(["P-002", "Beta Labs", "Bea Moss", "Gatekeeper"]);
+    // Re-imported: the rename is everywhere and every link still holds.
+    const again = await importFrom(out);
+    const cs = again.campaign.schema.contacts!;
+    const beta = again.rows.find((r) => r.cells[again.key("Company")] === "Beta Labs")!;
+    expect(again.contacts.filter((c) => c.parentId === beta.id).map((c) => c.cells[cs.nameKey!])).toEqual(["Bo Chen", "Bea Moss"]);
+    expect(again.skipped).toBe(1);
+  });
+
+  test("a workbook without one gets a Contacts tab once there are people", async () => {
+    const original = await xlsxOf(tracker);
+    const { campaign, rows } = await importFrom(original);
+    const none = await exportCampaign(campaign, original, rows, [], []);
+    expect((await read(none)).worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary"]);
+    // This tracker's prospects have a Name column of their own: the contact's is another.
+    const cs = campaign.schema.contacts!;
+    const contacts: ExportRow[] = [{ id: "k", position: 9, parentId: rows[2]!.id, cells: { [cs.nameKey!]: "Cy Dee", [cs.typeKey!]: "Influencer", [cs.primaryKey!]: CHECKED } }];
+    const out = await exportCampaign(campaign, original, rows, [tpl("One", "Hi", 0)], contacts);
+    const wb = await read(out);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary", "Contacts", "Intro templates"]);
+    const ws = wb.getWorksheet("Contacts")!;
+    expect([ws.getCell("A1").value, ws.getCell("B1").value, ws.getCell("C1").value]).toEqual(["Prospect ID", "Company", "Name"]);
+    expect([ws.getCell("A2").value, ws.getCell("B2").value, ws.getCell("C2").value]).toEqual(["P-003", "Gamma", "Cy Dee"]);
+    // The Contact type column is a dropdown there too.
+    expect(await sheetXml(out, "Contacts")).toContain("Economic Buyer,Technical Buyer");
+    for (const [name, text] of await partsOf(out)) if (name.endsWith(".xml") || name.endsWith(".rels")) expect({ name, ok: wellFormed(text) }).toEqual({ name, ok: true });
+    const again = await importFrom(out);
+    const cs2 = again.campaign.schema.contacts!;
+    expect(again.contacts.map((c) => [c.cells[cs2.nameKey!], c.cells[cs2.typeKey!], c.parentId])).toEqual([["Cy Dee", "Influencer", again.rows[2]!.id]]);
+  });
+
+  test("a missing or repeated prospect ID gets the next one, and the next save writes it in", async () => {
+    const original = await xlsxOf((wb) => {
+      const ws = wb.addWorksheet("Prospects");
+      ws.addRow(["ID", "Company"]);
+      ws.addRow(["P-004", "Acme"]);
+      ws.addRow([null, "Beta"]);
+      ws.addRow(["P-004", "Gamma"]);
+    });
+    const { campaign, rows } = await importFrom(original);
+    const id = campaign.schema.idKey!;
+    expect(rows.map((r) => r.cells[id])).toEqual(["P-004", "P-005", "P-006"]);
+    const ws = (await read(await exportCampaign(campaign, original, rows, [], []))).getWorksheet("Prospects")!;
+    expect([ws.getCell("A2").value, ws.getCell("A3").value, ws.getCell("A4").value]).toEqual(["P-004", "P-005", "P-006"]);
   });
 });
 
@@ -553,9 +690,9 @@ describe.skipIf(!hasFixture)("round trip with MUDD_FIXTURE", () => {
   const original = hasFixture ? new Uint8Array(fs.readFileSync(FIXTURE!)) : new Uint8Array();
 
   test("an unedited save keeps every other part and every original cell", async () => {
-    const { campaign, rows } = await importFrom(original);
+    const { campaign, rows, contacts } = await importFrom(original);
     const meta = campaign.sheets.find((s) => s.role === "prospects")!;
-    const out = await exportCampaign(campaign, original, rows, []);
+    const out = await exportCampaign(campaign, original, rows, [], contacts);
     const before = await partsOf(original);
     const after = await partsOf(out);
     const prospects = await sheetXml(original, meta.name);
@@ -569,7 +706,7 @@ describe.skipIf(!hasFixture)("round trip with MUDD_FIXTURE", () => {
   });
 
   test("edits, new rows, deletes and screening survive a save and re-import", async () => {
-    const { campaign, rows } = await importFrom(original);
+    const { campaign, rows, contacts } = await importFrom(original);
     const s = campaign.schema;
     const [first, second, third] = rows;
     first!.cells[s.statusKey!] = "Meeting booked";
@@ -580,7 +717,7 @@ describe.skipIf(!hasFixture)("round trip with MUDD_FIXTURE", () => {
     third!.cells[s.reasonKey!] = "Has an agency of record";
     const kept = rows.filter((r) => r.id !== second!.id);
     kept.push({ id: "new", position: 9_999, cells: { [s.companyKey!]: "New Co", [s.statusKey!]: "Contacted" } });
-    const out = await exportCampaign(campaign, original, kept, [tpl("Warm", "Hi {{First name}}", 0)]);
+    const out = await exportCampaign(campaign, original, kept, [tpl("Warm", "Hi {{First name}}", 0)], contacts);
     const meta = campaign.sheets.find((x) => x.role === "prospects")!;
     const again = await importFrom(out, "fixture.xlsx", meta.name);
     const s2 = again.campaign.schema;

@@ -2,27 +2,40 @@
  * What a research turn is told, and the shape its answer must take.
  *
  * Short on purpose (the Altclay lesson: every token here is paid once per row). The prospect
- * goes in as compact JSON keyed by the sheet's own headers, the fields come out keyed by column
- * key, and every value carries the URL it came from so the user can check it before accepting.
+ * goes in as compact JSON keyed by the sheet's own headers, its primary contact nested under
+ * "Primary contact"; the fields come out keyed by column key, and every value carries the URL it
+ * came from so the user can check it before accepting.
+ *
+ * `cells` here are a prospect's with its primary contact's (prospectCells).
  */
 import { z } from "zod";
 import type { Recipe } from "../../shared/ai";
 import { mergeTemplate, norm } from "../../shared/merge";
-import { hookColumns } from "../../shared/schema";
+import { columnOf, contactSchema, hookColumns, prospectSchema } from "../../shared/schema";
 import type { CampaignSchema, CellValue, Column, Template } from "../../shared/types";
 
 const display = (v: CellValue | undefined) => (v === null || v === undefined ? "" : String(v).trim());
 /** A long cell (a pasted article) is cut: it is sent on every row of a run. */
 const clip = (v: string) => (v.length > 600 ? `${v.slice(0, 600)}…` : v);
 
-export function prospectData(schema: CampaignSchema, cells: Record<string, CellValue>, keys?: string[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  const skip = new Set([schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey].filter(Boolean));
-  for (const col of schema.columns) {
-    if (keys ? !keys.includes(col.key) : skip.has(col.key) || col.origin === "enrichment") continue;
-    const v = display(cells[col.key]);
-    if (v) out[col.header] = clip(v);
-  }
+/** The contact's fields go under this, so a header both have (Notes) keeps both values. */
+export const CONTACT_FIELD = "Primary contact";
+
+export function prospectData(schema: CampaignSchema, cells: Record<string, CellValue>, keys?: string[]): Record<string, string | Record<string, string>> {
+  // The ID is Mudd's, not about the prospect; the Primary box says nothing the nesting doesn't.
+  const skip = new Set([schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, schema.idKey, schema.contacts?.primaryKey].filter(Boolean));
+  const fields = (cols: Column[]) => {
+    const out: Record<string, string> = {};
+    for (const col of cols) {
+      if (keys ? !keys.includes(col.key) : skip.has(col.key) || col.origin === "enrichment") continue;
+      const v = display(cells[col.key]);
+      if (v) out[col.header] = clip(v);
+    }
+    return out;
+  };
+  const out: Record<string, string | Record<string, string>> = fields(schema.columns);
+  const contact = fields(contactSchema(schema).columns);
+  if (Object.keys(contact).length) out[CONTACT_FIELD] = contact;
   return out;
 }
 
@@ -51,7 +64,7 @@ const nullableString = { anyOf: [{ type: "string" }, { type: "null" }] };
 
 export function enrichRequest(recipe: Recipe, schema: CampaignSchema, cells: Record<string, CellValue>) {
   const cols = recipe.outputs
-    .map((o) => ({ out: o, col: schema.columns.find((c) => c.key === o.key) }))
+    .map((o) => ({ out: o, col: columnOf(schema, o.key) }))
     .filter((x): x is { out: Recipe["outputs"][number]; col: Column } => !!x.col);
   const inputs = prospectData(schema, cells, recipe.inputKeys.length ? recipe.inputKeys : undefined);
   const prompt = `Task: ${recipe.instructions.trim()}
@@ -98,7 +111,7 @@ Answer as JSON: {"fields": {"<field key>": {"value": string or null, "source": s
 const INTRO_RULES = (web: boolean) => `You write short, warm, specific cold introduction messages for a founder. You work from the user's own templates and keep their voice, structure, length and sign-off.
 
 Rules:
-- Fill every {{placeholder}} from the prospect data. Placeholders name spreadsheet columns; {{First name}} is the contact's first name; {{Column|fallback}} uses the fallback when the value is missing. If a value is missing and there is no fallback, rewrite that phrase so it reads naturally without it.
+- Fill every {{placeholder}} from the prospect data. Placeholders name spreadsheet columns, the prospect's or its primary contact's; {{First name}} is the primary contact's first name; {{Column|fallback}} uses the fallback when the value is missing. If a value is missing and there is no fallback, rewrite that phrase so it reads naturally without it.
 - If a Hook is given, it is the researched reason to write to this prospect: make it the inspiration for the message and work it in naturally (where its placeholder is, if the template has one), in the user's voice, rather than pasting it word for word. Report it in "hooks" with the source given for it (null if none).
 - Without a Hook, add one or two specific, true hooks about this prospect ${web ? "that you verified with a web search" : "from the prospect data"} (a recent contract, launch, hire, talk or post). Each must be backed by a source URL.
 - Never invent facts, numbers, names or shared history.
@@ -128,7 +141,9 @@ export function introRequest(
   // The Hook is sent once, on its own line, so it reads as the point of the message rather than
   // one more fact. A template's {{Hook}} is left for the model to write it into, not pasted.
   const hook = hookOf(schema, cells, sourceOf);
-  const mergeSchema = hook ? { ...schema, columns: schema.columns.filter((c) => c.key !== hook.col.key) } : schema;
+  // Placeholders read the prospect and its primary contact ({{First name}} is the contact's).
+  const view = prospectSchema(schema);
+  const mergeSchema = hook ? { ...view, columns: view.columns.filter((c) => c.key !== hook.col.key) } : view;
   const pool = choice === "auto" ? templates : templates.filter((t) => t.id === choice);
   const shown = pool.map((t) => ({ id: t.id, name: t.name, body: t.body, prefilled: mergeTemplate(t.body, mergeSchema, cells).text }));
   const data = prospectData(schema, cells);

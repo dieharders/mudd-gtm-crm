@@ -1,9 +1,14 @@
-/** Review everything the AI found: accept into the sheet, or reject. Grouped by prospect. */
+/**
+ * Review everything the AI found: accept into the sheet, or reject. Grouped by prospect, a
+ * contact's findings under its prospect, named by the contact.
+ */
 import { CheckCheck, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { Suggestion } from "../../../shared/ai";
+import { columnOf } from "../../../shared/schema";
+import { contactLabel, primaryOf, prospectTitle } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
-import { rowTitle } from "../../lib/pipeline";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { SuggestionItem } from "./SuggestionItem";
@@ -25,13 +30,23 @@ export function ReviewPanel({ state, enrich, onClose, onOpenRow }: {
 
   const list = enrich.suggestions.filter((s) => !column || s.key === column);
   const columns = [...new Set(enrich.suggestions.map((s) => s.key))];
+  const { rowById } = state;
   const groups = useMemo(() => {
     const order = new Map(state.rows.map((r, i) => [r.id, i]));
     const map = new Map<string, typeof list>();
-    for (const s of list) map.set(s.rowId, [...(map.get(s.rowId) ?? []), s]);
+    for (const s of list) {
+      const org = rowById.get(s.rowId)?.parentId ?? s.rowId;
+      map.set(org, [...(map.get(org) ?? []), s]);
+    }
     return [...map.entries()].sort(([a], [b]) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
-  }, [list, state.rows]);
-  const colOf = (k: string) => schema.columns.find((c) => c.key === k);
+  }, [list, state.rows, rowById]);
+  const colOf = (k: string) => columnOf(schema, k);
+  /** A suggestion's column, named for its contact when it is one of a contact's. */
+  const colFor = (s: Suggestion) => {
+    const col = colOf(s.key);
+    const row = rowById.get(s.rowId);
+    return col && row?.parentId ? { ...col, header: `${contactLabel(row, schema)} · ${col.header}` } : col;
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-zinc-900/20 animate-fade-in" onMouseDown={onClose}>
@@ -69,8 +84,8 @@ export function ReviewPanel({ state, enrich, onClose, onOpenRow }: {
           ) : (
             <div className="space-y-5">
               {groups.map(([rowId, items]) => {
-                const row = state.rows.find((r) => r.id === rowId);
-                const t = row ? rowTitle(row, schema) : { title: "Deleted row", subtitle: "" };
+                const row = rowById.get(rowId);
+                const t = row ? prospectTitle(row, primaryOf(state.contactsOf(rowId), schema), schema) : { title: "Deleted row", subtitle: "" };
                 return (
                   <section key={rowId}>
                     <div className="mb-2 flex items-center gap-2">
@@ -85,7 +100,7 @@ export function ReviewPanel({ state, enrich, onClose, onOpenRow }: {
                     </div>
                     <div className="space-y-2">
                       {items.map((s) => (
-                        <SuggestionItem key={s.id} s={s} col={colOf(s.key)} onAccept={() => fire(enrich.accept([s]))} onReject={() => fire(enrich.reject([s]))} />
+                        <SuggestionItem key={s.id} s={s} col={colFor(s)} onAccept={() => fire(enrich.accept([s]))} onReject={() => fire(enrich.reject([s]))} />
                       ))}
                     </div>
                   </section>

@@ -9,8 +9,9 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { presetTargets, PRESETS, type Preset } from "../../../shared/presets";
 import { isSourcesColumn, PROVIDERS, type EnrichRun, type Recipe } from "../../../shared/ai";
-import { typeFromHeader } from "../../../shared/schema";
+import { allColumns, columnOf, contactSchema, typeFromHeader } from "../../../shared/schema";
 import { COLUMN_TYPES, isScreened, type CampaignSchema, type ColumnType, type Row } from "../../../shared/types";
+import { primaryOf, prospectCells } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
@@ -23,6 +24,9 @@ import { RunProgress } from "./RunProgress";
 import { fire } from "../../lib/fire";
 
 const NEW = "__new";
+/** A new column among the contact columns: for a person's detail, filled on the primary contact. */
+const NEW_CONTACT = "__newcontact";
+const isNew = (target: string) => target === NEW || target === NEW_CONTACT;
 const PRESET_ICONS = { building: Building2, news: Newspaper, person: UserRound, mail: Mail, hook: Anchor };
 
 interface OutputDraft {
@@ -52,7 +56,7 @@ function draftFromPreset(p: Preset, schema: CampaignSchema, rows: Row[]): Draft 
   const outputs = p.outputs.map((o, i) => {
     const match = targets[i];
     return {
-      target: match?.key ?? NEW,
+      target: match?.key ?? (o.person ? NEW_CONTACT : NEW),
       header: match?.header ?? o.header,
       hint: o.hint,
       type: o.type,
@@ -69,7 +73,7 @@ function draftFromRecipe(r: Recipe, schema: CampaignSchema): Draft {
     inputKeys: r.inputKeys,
     webSearch: r.webSearch,
     outputs: r.outputs.map((o) => {
-      const col = schema.columns.find((c) => c.key === o.key);
+      const col = columnOf(schema, o.key);
       return { target: col ? o.key : NEW, header: col?.header ?? o.header, hint: o.hint ?? "", type: col?.type ?? headerType(o.header) };
     }),
   };
@@ -85,7 +89,10 @@ function toApi(d: Draft): RecipeDraft {
     webSearch: d.webSearch,
     outputs: d.outputs
       .filter((o) => o.header.trim())
-      .map((o) => ({ key: o.target === NEW ? undefined : o.target, header: o.header.trim(), hint: o.hint, type: o.type, options: o.options })),
+      .map((o) => ({
+        key: isNew(o.target) ? undefined : o.target, header: o.header.trim(), hint: o.hint, type: o.type, options: o.options,
+        ...(o.target === NEW_CONTACT ? { contact: true } : {}),
+      })),
   };
 }
 
@@ -218,7 +225,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
               <p className="eyebrow mb-1.5 px-1">Start from a preset</p>
               <div className="space-y-1.5">
                 {PRESETS.map((p) => (
-                  <button key={p.id} onClick={() => pick({ kind: "draft", from: p.id }, draftFromPreset(p, schema, state.rows))}
+                  <button key={p.id} onClick={() => pick({ kind: "draft", from: p.id }, draftFromPreset(p, schema, [...state.rows, ...state.contacts]))}
                     className={cn("flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left transition", sel?.kind === "draft" && sel.from === p.id ? "border-brand-300 bg-brand-50/60" : "border-line bg-white hover:border-brand-200")}>
                     <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", p.tone)}>{(() => { const I = PRESET_ICONS[p.icon]; return <I size={14} />; })()}</span>
                     <span className="min-w-0">
@@ -269,6 +276,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                   draft={draft}
                   schema={schema}
                   rows={state.rows}
+                  contactsOf={state.contactsOf}
                   selectedIds={selectedIds}
                   filteredIds={filteredIds}
                   ready={ready}
@@ -301,8 +309,11 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
 }
 
 function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: CampaignSchema; onChange: (p: Partial<Draft>) => void }) {
-  const skipInputs = new Set([schema.introKey, schema.reasonKey, schema.screenedKey]);
-  const inputCols = schema.columns.filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
+  const skipInputs = new Set([schema.introKey, schema.reasonKey, schema.screenedKey, schema.idKey, schema.contacts?.primaryKey]);
+  // The primary contact's columns go along as context too.
+  const inputCols = allColumns(schema).filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
+  const orgTargets = schema.columns.filter((c) => !isSourcesColumn(c) && c.key !== schema.idKey);
+  const contactTargets = contactSchema(schema).columns;
   const [showInputs, setShowInputs] = useState(draft.inputKeys.length > 0);
   const setOutput = (i: number, patch: Partial<OutputDraft>) => onChange({ outputs: draft.outputs.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
 
@@ -337,13 +348,21 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
               <div className="space-y-1.5">
                 <select className="field h-8 py-0 text-xs" value={o.target}
                   onChange={(e) => {
-                    const col = schema.columns.find((c) => c.key === e.target.value);
-                    setOutput(i, col ? { target: col.key, header: col.header, type: col.type } : { target: NEW, header: "", type: "text" });
+                    const col = columnOf(schema, e.target.value);
+                    setOutput(i, col ? { target: col.key, header: col.header, type: col.type } : { target: e.target.value === NEW_CONTACT ? NEW_CONTACT : NEW, header: "", type: "text" });
                   }}>
                   <option value={NEW}>+ New column</option>
-                  {schema.columns.filter((c) => !isSourcesColumn(c)).map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+                  <option value={NEW_CONTACT}>+ New contact column</option>
+                  <optgroup label="Prospect">
+                    {orgTargets.map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+                  </optgroup>
+                  {contactTargets.length > 0 && (
+                    <optgroup label="Primary contact">
+                      {contactTargets.map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+                    </optgroup>
+                  )}
                 </select>
-                {o.target === NEW && (
+                {isNew(o.target) && (
                   <div className="flex gap-1">
                     <input className="field h-8 py-0 text-xs" placeholder="Column name" value={o.header}
                       onChange={(e) => setOutput(i, { header: e.target.value, ...(o.type === headerType(o.header) ? { type: headerType(e.target.value) } : {}) })} />
@@ -390,10 +409,11 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
   );
 }
 
-function RunBox({ draft, schema, rows, selectedIds, filteredIds, ready, onSetup, onRun, busy }: {
+function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, ready, onSetup, onRun, busy }: {
   draft: Draft;
   schema: CampaignSchema;
   rows: Row[];
+  contactsOf: (orgId: string) => Row[];
   selectedIds: string[];
   filteredIds: string[];
   ready: boolean;
@@ -406,9 +426,14 @@ function RunBox({ draft, schema, rows, selectedIds, filteredIds, ready, onSetup,
   const inPlay = new Set(prospects.map((r) => r.id));
   const selected = selectedIds.filter((id) => inPlay.has(id));
   const filtered = filteredIds.filter((id) => inPlay.has(id));
-  const targets = draft.outputs.filter((o) => o.target !== NEW).map((o) => o.target);
-  const hasNew = draft.outputs.some((o) => o.target === NEW && o.header.trim());
-  const missing = prospects.filter((r) => hasNew || targets.some((k) => r.cells[k] === undefined || r.cells[k] === null || r.cells[k] === ""));
+  const targets = draft.outputs.filter((o) => !isNew(o.target)).map((o) => o.target);
+  const hasNew = draft.outputs.some((o) => isNew(o.target) && o.header.trim());
+  // A contact column is missing when the prospect's primary contact lacks it (or it has none).
+  const missing = prospects.filter((r) => {
+    if (hasNew) return true;
+    const cells = prospectCells(r, primaryOf(contactsOf(r.id), schema));
+    return targets.some((k) => cells[k] === undefined || cells[k] === null || cells[k] === "");
+  });
   const scopes = [
     ...(selected.length ? [{ id: "selected", label: `Selected rows`, ids: selected }] : []),
     { id: "missing", label: "Prospects missing these fields", ids: missing.map((r) => r.id) },

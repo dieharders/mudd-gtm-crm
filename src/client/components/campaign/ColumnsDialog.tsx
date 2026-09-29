@@ -3,24 +3,30 @@
  *
  * Columns that exist in the spreadsheet can be hidden but not deleted: they are still in the
  * file, and export writes every row back to them. Columns Mudd itself relies on (Status, Intro
- * message, the meeting pair, the Screened out box and its reason) can be renamed or hidden, not
- * removed.
+ * message, the meeting pair, the Screened out box and its reason, the prospect's ID; a contact's
+ * name, Contact type and Primary box) can be renamed or hidden, not removed.
+ *
+ * It edits one list at a time: the prospects' columns, or their contacts'.
  */
 import { Eye, EyeOff, Lock, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { makeKey } from "../../../shared/schema";
-import { COLUMN_TYPES, type CampaignSchema, type Column, type ColumnType } from "../../../shared/types";
+import { COLUMN_TYPES, type CampaignSchema, type Column, type ColumnType, type ContactSchema } from "../../../shared/types";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
-export function ColumnsDialog({ open, onClose, schema, onSave, inSheet, usedKeys }: {
+type Editable = CampaignSchema & Partial<ContactSchema>;
+
+export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, usedKeys }: {
   open: boolean;
   onClose: () => void;
-  schema: CampaignSchema;
-  onSave: (s: CampaignSchema) => void;
+  kind: "prospects" | "contacts";
+  schema: Editable;
+  onSave: (s: Editable) => void;
   inSheet: Set<string>;
-  /** Keys any row holds a value for, deleted columns' included: a new column never reuses one. */
+  /** Keys any row holds a value for, deleted columns' included, and every column's, prospects'
+   *  and contacts' alike: a new column never reuses one. */
   usedKeys: Set<string>;
 }) {
   const [cols, setCols] = useState<Column[]>(schema.columns);
@@ -30,12 +36,16 @@ export function ColumnsDialog({ open, onClose, schema, onSave, inSheet, usedKeys
     if (open) setCols(schema.columns.map((c) => ({ ...c })));
   }, [open, schema]);
 
-  const roleKeys = new Set(
-    [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean),
-  );
-  const role = (k: string) =>
-    k === schema.statusKey ? "Pipeline status" : k === schema.introKey ? "Intro message" : k === schema.meetingAtKey ? "Meeting time"
-      : k === schema.meetingUrlKey ? "Meeting link" : k === schema.screenedKey ? "Screened out" : k === schema.reasonKey ? "Screened reason" : null;
+  const roles: Record<string, string> = kind === "contacts"
+    ? Object.fromEntries([[schema.nameKey, "Contact name"], [schema.typeKey, "Contact type"], [schema.primaryKey, "Primary contact"]].filter(([k]) => k))
+    : Object.fromEntries([
+      [schema.statusKey, "Pipeline status"], [schema.introKey, "Intro message"], [schema.meetingAtKey, "Meeting time"], [schema.meetingUrlKey, "Meeting link"],
+      [schema.screenedKey, "Screened out"], [schema.reasonKey, "Screened reason"], [schema.idKey, "Prospect ID: the Contacts tab links by it"],
+    ].filter(([k]) => k));
+  const roleKeys = new Set(Object.keys(roles));
+  const role = (k: string) => roles[k] ?? null;
+  // Their type is what makes them work: a dropdown of stages or contact types, a box, an ID.
+  const fixedType = new Set([schema.statusKey, schema.screenedKey, schema.idKey, schema.typeKey, schema.primaryKey].filter(Boolean));
 
   const patch = (key: string, p: Partial<Column>) => setCols((cs) => cs.map((c) => (c.key === key ? { ...c, ...p } : c)));
   const add = () => {
@@ -57,7 +67,7 @@ export function ColumnsDialog({ open, onClose, schema, onSave, inSheet, usedKeys
       open={open}
       onClose={onClose}
       width="max-w-3xl"
-      title="Columns"
+      title={kind === "contacts" ? "Contact columns" : "Columns"}
       subtitle="New columns are added after your last spreadsheet column on export, so existing formulas keep working."
       footer={
         <>
@@ -93,7 +103,7 @@ export function ColumnsDialog({ open, onClose, schema, onSave, inSheet, usedKeys
                     {role(c.key) && <span className="mt-0.5 block text-[10px] text-brand-600">{role(c.key)}</span>}
                   </td>
                   <td className="py-1.5 pr-2">
-                    <select className="field h-8 py-0" value={c.type} disabled={c.key === schema.statusKey || c.key === schema.screenedKey}
+                    <select className="field h-8 py-0" value={c.type} disabled={fixedType.has(c.key)}
                       onChange={(e) => patch(c.key, { type: e.target.value as ColumnType, options: e.target.value === "select" ? c.options ?? [] : c.options })}>
                       {COLUMN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>

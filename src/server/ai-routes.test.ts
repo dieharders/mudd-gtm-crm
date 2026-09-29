@@ -46,3 +46,24 @@ test("a recipe's new columns are typed as import types the header, on keys no de
   expect(col("Fleet size").type).toBe("longtext");
   expect(col("Fleet type").type).toBe("text");
 });
+
+test("a person's detail becomes a contact column, keyed apart from every other column", async () => {
+  const c = db.createCampaign({ name: "Test", schema: genericSchema(), sheets: [] });
+  // "Mobile" left values under its key; "Notes" is both the company's and a contact's.
+  db.insertRows(c.id, [{ id: "r1", cells: { mobile: "555" } }]);
+  const outputs = [
+    { header: "Mobile", contact: true },
+    { header: "Notes", contact: true },
+    { header: "Headcount" },
+    { header: "ID", key: c.schema.idKey },
+  ];
+  const req = new Request("http://mudd.local/", { method: "POST", body: JSON.stringify({ name: "R", instructions: "Find it.", inputKeys: [], webSearch: false, outputs }) });
+  const res = await routes.get("POST /api/campaigns/:id/recipes")!(req, [c.id]);
+  const { recipe, campaign } = (await res.json()) as { recipe: { outputs: { key: string; header: string }[] }; campaign: Campaign };
+  const contactCol = (header: string) => campaign.schema.contacts!.columns.find((x) => x.header === header);
+  expect(contactCol("Mobile")).toMatchObject({ key: "mobile_2", type: "phone", origin: "enrichment" });
+  expect(campaign.schema.columns.some((x) => x.header === "Mobile")).toBe(false);
+  expect(campaign.schema.columns.find((x) => x.header === "Headcount")).toBeDefined();
+  // The contacts' own Notes, not the company's; nothing is researched into the ID.
+  expect(recipe.outputs.map((o) => o.key)).toEqual(["mobile_2", "notes_2", campaign.schema.columns.find((x) => x.header === "Headcount")!.key]);
+});

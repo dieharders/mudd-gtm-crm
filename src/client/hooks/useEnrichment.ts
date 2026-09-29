@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { applyRunRow, mergeSources, sourcesColumn, type CampaignEvent, type EnrichRun, type IntroOptions, type Recipe, type Suggestion } from "../../shared/ai";
+import { columnOf } from "../../shared/schema";
 import type { CellEdit } from "../../shared/types";
 import { api, ApiError, type RecipeDraft } from "../lib/api";
 import type { CampaignState } from "./useCampaign";
@@ -47,7 +48,7 @@ export function useEnrichment(state: CampaignState) {
   }, [id]);
 
   // Live updates while the campaign is open.
-  const { applyRemote } = state;
+  const { applyRemote, applyRemoteRows } = state;
   useEffect(() => {
     if (!id) return;
     const es = new EventSource(`/api/campaigns/${id}/events`);
@@ -79,10 +80,12 @@ export function useEnrichment(state: CampaignState) {
         });
       } else if (ev.type === "cells") {
         applyRemote(ev.edits);
+      } else if (ev.type === "rows") {
+        applyRemoteRows(ev.rows);
       }
     };
     return () => es.close();
-  }, [id, applyRemote]);
+  }, [id, applyRemote, applyRemoteRows]);
 
   const pendingByRow = useMemo(() => {
     const map = new Map<string, Suggestion[]>();
@@ -99,10 +102,12 @@ export function useEnrichment(state: CampaignState) {
     for (const s of list) {
       edits.push({ rowId: s.rowId, key: s.key, value: s.value });
       if (sourcesCol && s.sources.length) {
-        const row = state.rows.find((r) => r.id === s.rowId);
-        const cur = sourcesByRow.has(s.rowId) ? sourcesByRow.get(s.rowId)! : ((row?.cells[sourcesCol.key] as string | undefined) ?? null);
-        const header = schema.columns.find((c) => c.key === s.key)?.header ?? s.key;
-        sourcesByRow.set(s.rowId, mergeSources(cur, header, s.sources));
+        // A contact's finding: its sources go on its prospect, where the column is.
+        const orgId = state.rowById.get(s.rowId)?.parentId ?? s.rowId;
+        const row = state.rowById.get(orgId);
+        const cur = sourcesByRow.has(orgId) ? sourcesByRow.get(orgId)! : ((row?.cells[sourcesCol.key] as string | undefined) ?? null);
+        const header = columnOf(schema, s.key)?.header ?? s.key;
+        sourcesByRow.set(orgId, mergeSources(cur, header, s.sources));
       }
     }
     if (sourcesCol) for (const [rowId, v] of sourcesByRow) edits.push({ rowId, key: sourcesCol.key, value: v });

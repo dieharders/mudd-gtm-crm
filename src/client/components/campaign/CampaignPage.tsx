@@ -1,12 +1,13 @@
 import {
-  ArchiveRestore, ArrowLeft, CheckCircle2, Columns3, FileSpreadsheet, Link2, Loader2, MessageSquareText, Plus,
-  Loader2 as Spinner, MessageSquarePlus, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, X,
+  ArchiveRestore, ArrowLeft, Building2, CheckCircle2, Columns3, FileSpreadsheet, Link2, Loader2, MessageSquareText, Plus,
+  Loader2 as Spinner, MessageSquarePlus, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { allColumns, contactSchema } from "../../../shared/schema";
 import {
-  DEAD, isChecked, isScreened, stagesOf, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
+  DEAD, isChecked, isScreened, ORG_KEY, stagesOf, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
 } from "../../../shared/types";
 import { sameValue } from "../../../shared/values";
 import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
@@ -41,6 +42,10 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
 // An imported workbook's old Screened-out tab is not part of the campaign: never listed here.
 const SCREENED_TAB = /screen|disqual|reject|exclu|do.?not|dnc|dropped/i;
 const NO_KEYS = new Set<string>();
+/** The Contacts grid's Company column comes from the prospect: read-only there. */
+const CONTACT_FIXED = new Set([ORG_KEY]);
+
+type Tab = "prospects" | "contacts";
 
 export function CampaignPage() {
   const { id } = useParams();
@@ -95,6 +100,10 @@ function CampaignView({ state }: { state: CampaignState }) {
   const [sort, setSort] = useState<SortState | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openRowId, setOpenRowId] = useState<string | null>(initialRow);
+  // A contact open in the prospect panel, drilled into from the prospect, a card or the Contacts tab.
+  const [openContactId, setOpenContactId] = useState<string | null>(null);
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [contactSort, setContactSort] = useState<SortState | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
   const [showEnrich, setShowEnrich] = useState(false);
@@ -109,6 +118,9 @@ function CampaignView({ state }: { state: CampaignState }) {
   const grid = useRef<GridHandle>(null);
   const { refresh: refreshList } = useCampaignList();
   const [view, setView] = useStoredState<"table" | "reading">(`mudd:view:${campaign.id}`, "table");
+  const [stored, setTab] = useStoredState<Tab>(`mudd:tab:${campaign.id}`, "prospects");
+  const tab: Tab = stored === "contacts" ? "contacts" : "prospects";
+  const onContacts = tab === "contacts";
   const groupable = useMemo(() => groupableColumns(schema), [schema]);
   const [groupBy, setGroupBy] = useStoredState<string>(`mudd:group:${campaign.id}`, cardLayout(schema).tierKey ?? "");
   const groupKey = groupable.some((c) => c.key === groupBy) ? groupBy : null;
@@ -148,20 +160,55 @@ function CampaignView({ state }: { state: CampaignState }) {
   const screenedCount = counts.screened;
   const prospectCount = state.rows.length - screenedCount;
 
+  const { contactsOf } = state;
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = state.rows;
     if (statusFilter && statusKey) {
       list = list.filter((r) => !isScreened(r, schema) && chipOf(r) === statusFilter);
     }
-    if (q) list = list.filter((r) => Object.values(r.cells).some((v) => display(v).toLowerCase().includes(q)));
+    // A prospect matches on its own cells or any of its people's.
+    const hit = (cells: Row["cells"]) => Object.values(cells).some((v) => display(v).toLowerCase().includes(q));
+    if (q) list = list.filter((r) => hit(r.cells) || contactsOf(r.id).some((c) => hit(c.cells)));
     if (sort) {
       const col = schema.columns.find((c) => c.key === sort.key);
       const dir = sort.dir === "asc" ? 1 : -1;
       list = [...list].sort((a, b) => compare(a, b, col, stages, schema) * dir);
     }
     return list;
-  }, [state.rows, statusFilter, statusKey, query, sort, schema, stages, chipOf]);
+  }, [state.rows, statusFilter, statusKey, query, sort, schema, stages, chipOf, contactsOf]);
+
+  // ----- the Contacts tab: every prospect's people, with the prospect's company beside them -----
+  const contactGridSchema = useMemo<CampaignSchema>(() => {
+    const company = schema.columns.find((c) => c.key === schema.companyKey);
+    const org: Column = { key: ORG_KEY, header: company?.header ?? "Company", type: "text", width: company?.width ?? 190 };
+    const cs = contactSchema(schema);
+    return { ...cs, columns: [org, ...cs.columns] };
+  }, [schema]);
+  const contactColumns = useMemo(() => contactGridSchema.columns.filter((c) => !c.hidden), [contactGridSchema]);
+  const { rowById } = state;
+  const contactRows = useMemo(() => state.contacts.map((c) => {
+    const org = c.parentId ? rowById.get(c.parentId) : undefined;
+    return { ...c, cells: { ...c.cells, [ORG_KEY]: org && schema.companyKey ? org.cells[schema.companyKey] ?? null : null } };
+  }), [state.contacts, rowById, schema.companyKey]);
+  const filteredContacts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = contactRows;
+    if (q) list = list.filter((r) => Object.values(r.cells).some((v) => display(v).toLowerCase().includes(q)));
+    if (contactSort) {
+      const col = contactGridSchema.columns.find((c) => c.key === contactSort.key);
+      const dir = contactSort.dir === "asc" ? 1 : -1;
+      list = [...list].sort((a, b) => compare(a, b, col, stages, contactGridSchema) * dir);
+    }
+    return list;
+  }, [contactRows, query, contactSort, contactGridSchema, stages]);
+  // A screened-out prospect's people are greyed out and read-only, as it is.
+  const isContactLocked = useCallback((r: Row) => {
+    const org = r.parentId ? rowById.get(r.parentId) : undefined;
+    return !!org && isScreened(org, schema);
+  }, [rowById, schema]);
+  const selectedContactRows = useMemo(() => state.contacts.filter((c) => selectedContacts.has(c.id)), [state.contacts, selectedContacts]);
+  const idFixed = useMemo(() => new Set([schema.idKey].filter((k): k is string => !!k)), [schema.idKey]);
 
   // Selection only ever refers to rows that still exist. It may mix prospects in play with
   // screened-out ones; enrichment and status changes take only the ones in play.
@@ -187,7 +234,22 @@ function CampaignView({ state }: { state: CampaignState }) {
 
   const openRow = openRowId ? state.rows.find((r) => r.id === openRowId) ?? null : null;
   const openIdx = openRow ? filtered.findIndex((r) => r.id === openRow.id) : -1;
-  const closeDrawer = useCallback(() => setOpenRowId(null), []);
+  /** Open a prospect in the panel (null closes it), on the prospect itself. */
+  const showRow = useCallback((id: string | null) => {
+    setOpenRowId(id);
+    setOpenContactId(null);
+  }, []);
+  const closeDrawer = useCallback(() => showRow(null), [showRow]);
+  // Read through a ref: a stable callback keeps every card from re-rendering on each edit.
+  const rowByIdRef = useRef(rowById);
+  rowByIdRef.current = rowById;
+  /** Open a contact: its prospect's panel, drilled into that person. */
+  const openContact = useCallback((id: string) => {
+    const parent = rowByIdRef.current.get(id)?.parentId;
+    if (!parent) return;
+    setOpenRowId(parent);
+    setOpenContactId(id);
+  }, []);
 
   const addRow = () => {
     const cells: Row["cells"] = {};
@@ -196,7 +258,7 @@ function CampaignView({ state }: { state: CampaignState }) {
     const row = state.addRow(cells);
     setQuery("");
     setSort(null);
-    if (view === "reading") setOpenRowId(row.id);
+    if (view === "reading") showRow(row.id);
     else setTimeout(() => grid.current?.focusCell(row.id), 50);
   };
 
@@ -228,15 +290,21 @@ function CampaignView({ state }: { state: CampaignState }) {
   }, [edit, rows, schema, screenedKey, stages, statusKey]);
   const isLocked = useCallback((row: Row) => isScreened(row, schema), [schema]);
 
-  const inSheet = useMemo(() => new Set(campaign.sheets.flatMap((s) => Object.keys(s.colMap))), [campaign.sheets]);
+  // The columns each tab of the workbook has: kept, not deleted, in the Columns dialog.
+  const sheetKeys = useMemo(() => {
+    const of = (role: Tab) => new Set(campaign.sheets.filter((s) => s.role === role).flatMap((s) => Object.keys(s.colMap)));
+    return { prospects: of("prospects"), contacts: of("contacts") };
+  }, [campaign.sheets]);
+  const inSheet = sheetKeys[tab];
   const passthrough = campaign.sheets.filter((s) => s.role === "passthrough" && !SCREENED_TAB.test(s.name)).map((s) => s.name);
-  // Every key a row holds a value for, deleted columns' too, so a new column never inherits one.
+  // Every key a row holds a value for, deleted columns' too, so a new column never inherits one;
+  // and every column's, prospects' and contacts' alike: they share one namespace.
   const usedKeys = useMemo(() => {
     if (!showColumns) return NO_KEYS;
-    const keys = new Set<string>();
-    for (const r of state.rows) for (const k of Object.keys(r.cells)) keys.add(k);
+    const keys = new Set(allColumns(schema).map((c) => c.key));
+    for (const r of [...state.rows, ...state.contacts]) for (const k of Object.keys(r.cells)) keys.add(k);
     return keys;
-  }, [showColumns, state.rows]);
+  }, [showColumns, state.rows, state.contacts, schema]);
 
   return (
     <div className="flex h-full flex-col">
@@ -288,7 +356,9 @@ function CampaignView({ state }: { state: CampaignState }) {
 
       {/* toolbar */}
       <div className="flex min-h-14 flex-wrap items-center gap-2 px-6 py-3">
-        {selectedRows.length > 0 ? (
+        {onContacts && selectedContactRows.length > 0 ? (
+          <ContactBulkBar rows={selectedContactRows} state={state} onDone={() => setSelectedContacts(new Set())} />
+        ) : !onContacts && selectedRows.length > 0 ? (
           <BulkBar
             rows={selectedRows}
             schema={schema}
@@ -300,17 +370,18 @@ function CampaignView({ state }: { state: CampaignState }) {
           />
         ) : (
           <>
+            <TabSwitch tab={tab} onChange={setTab} prospects={state.rows.length} contacts={state.contacts.length} />
             <div className="relative">
               <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-faint" />
               <input
                 className="field h-8 w-56 py-0 pl-8 text-xs"
-                placeholder="Search prospects"
+                placeholder={onContacts ? "Search contacts" : "Search prospects"}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
               {query && <button className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-faint hover:text-ink" onClick={() => setQuery("")}><X size={13} /></button>}
             </div>
-            {statusKey && (
+            {!onContacts && statusKey && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} tone="bg-brand-100 text-brand-700" />
                 {[...stages, DEAD].map((s) => (counts.byStatus[s] ? (
@@ -322,13 +393,13 @@ function CampaignView({ state }: { state: CampaignState }) {
                 {counts.byStatus[NOT_SET] ? <Chip active={statusFilter === NOT_SET} onClick={() => setStatusFilter(statusFilter === NOT_SET ? null : NOT_SET)} label="No status" count={counts.byStatus[NOT_SET]!} tone="bg-zinc-100 text-zinc-600" /> : null}
               </div>
             )}
-            {screenedCount > 0 && (
+            {!onContacts && screenedCount > 0 && (
               <span className="text-xs text-ink-faint tabular-nums" title="Screened-out prospects stay in the list, greyed out. Open one to restore it.">
                 {screenedCount} screened out
               </span>
             )}
             <div className="ml-auto flex items-center gap-1.5">
-              {view === "reading" && groupable.length > 0 && (
+              {!onContacts && view === "reading" && groupable.length > 0 && (
                 <label className="flex items-center gap-1.5 text-xs text-ink-faint">
                   Group by
                   <select className="field h-8 w-auto py-0 pr-7 text-xs" value={groupKey ?? ""} onChange={(e) => setGroupBy(e.target.value)}>
@@ -337,11 +408,11 @@ function CampaignView({ state }: { state: CampaignState }) {
                   </select>
                 </label>
               )}
-              <ViewToggle view={view} onChange={setView} />
+              {!onContacts && <ViewToggle view={view} onChange={setView} />}
               <Button size="sm" variant="ghost" disabled={!state.canUndo} onClick={() => { const l = state.undo(); if (l) toast(`Undid: ${l}`, { id: "undo" }); }} title="Undo (Ctrl+Z)">
                 <Undo2 size={13} /> Undo
               </Button>
-              <Button size="sm" variant="primary" onClick={addRow}><Plus size={13} /> Add prospect</Button>
+              {!onContacts && <Button size="sm" variant="primary" onClick={addRow}><Plus size={13} /> Add prospect</Button>}
             </div>
           </>
         )}
@@ -349,12 +420,45 @@ function CampaignView({ state }: { state: CampaignState }) {
 
       {/* grid + drawer */}
       <div className="relative mx-6 mb-6 min-h-0 flex-1 overflow-hidden rounded-2xl border border-line bg-white shadow-[0_1px_2px_rgba(23,22,29,0.04)]">
-        {state.rows.length === 0 ? (
+        {onContacts ? (
+          state.contacts.length === 0 ? (
+            <EmptyContacts />
+          ) : (
+            <>
+              <Grid
+                columns={contactColumns}
+                rows={filteredContacts}
+                schema={contactGridSchema}
+                stages={stages}
+                pinned={Math.min(2, contactColumns.length)}
+                selected={selectedContacts}
+                onSelect={setSelectedContacts}
+                onEdit={state.editContacts}
+                onOpenRow={openContact}
+                onResize={(key, width) => {
+                  const cs = contactSchema(schema);
+                  if (key !== ORG_KEY) state.setSchema({ ...schema, contacts: { ...cs, columns: cs.columns.map((c) => (c.key === key ? { ...c, width } : c)) } }, "Resize column", false);
+                }}
+                sort={contactSort}
+                onSort={setContactSort}
+                openRowId={openContactId}
+                isLocked={isContactLocked}
+                pending={pendingKeys}
+                readOnlyKeys={CONTACT_FIXED}
+                openLabel="Open contact"
+              />
+              {filteredContacts.length === 0 && (
+                <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-sm text-ink-faint">No contacts match.</div>
+              )}
+            </>
+          )
+        ) : state.rows.length === 0 ? (
           <EmptyList onAdd={addRow} />
         ) : (
           <>
             {view === "reading" ? (
-              <ProspectList rows={filtered} schema={schema} stages={stages} groupBy={groupKey} openRowId={openRowId} onOpenRow={setOpenRowId} pending={pendingKeys} />
+              <ProspectList rows={filtered} schema={schema} stages={stages} groupBy={groupKey} openRowId={openRowId} onOpenRow={showRow}
+                contactsOf={contactsOf} onOpenContact={openContact} pending={pendingKeys} />
             ) : (
             <Grid
               ref={grid}
@@ -366,13 +470,14 @@ function CampaignView({ state }: { state: CampaignState }) {
               selected={selected}
               onSelect={setSelected}
               onEdit={gridEdit}
-              onOpenRow={setOpenRowId}
+              onOpenRow={showRow}
               onResize={(key, width) => state.setSchema({ ...schema, columns: schema.columns.map((c) => (c.key === key ? { ...c, width } : c)) }, "Resize column", false)}
               sort={sort}
               onSort={setSort}
               openRowId={openRowId}
               isLocked={isLocked}
               pending={pendingKeys}
+              readOnlyKeys={idFixed}
             />
             )}
             {filtered.length === 0 && (
@@ -387,9 +492,12 @@ function CampaignView({ state }: { state: CampaignState }) {
             stages={stages}
             templates={state.templates}
             state={state}
+            contacts={contactsOf(openRow.id)}
+            openContactId={openContactId}
+            onOpenContact={setOpenContactId}
             onClose={closeDrawer}
-            onPrev={openIdx > 0 ? () => setOpenRowId(filtered[openIdx - 1]!.id) : undefined}
-            onNext={openIdx >= 0 && openIdx < filtered.length - 1 ? () => setOpenRowId(filtered[openIdx + 1]!.id) : undefined}
+            onPrev={openIdx > 0 ? () => showRow(filtered[openIdx - 1]!.id) : undefined}
+            onNext={openIdx >= 0 && openIdx < filtered.length - 1 ? () => showRow(filtered[openIdx + 1]!.id) : undefined}
             onOpenTemplates={() => setShowTemplates(true)}
             enrich={enrich}
           />
@@ -397,15 +505,20 @@ function CampaignView({ state }: { state: CampaignState }) {
       </div>
 
       {showTemplates && (
-        <TemplatesPanel schema={schema} rows={state.rows} templates={state.templates} state={state} previewRowId={openRowId} onClose={() => setShowTemplates(false)} />
+        <TemplatesPanel schema={schema} rows={state.rows} contactsOf={contactsOf} templates={state.templates} state={state} previewRowId={openRowId} onClose={() => setShowTemplates(false)} />
       )}
       {showEnrich && (
         <EnrichPanel state={state} enrich={enrich} selectedIds={selectedActiveIds} filteredIds={filtered.filter((r) => !isScreened(r, schema)).map((r) => r.id)}
-          onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }} onOpenRow={(id) => { setShowEnrich(false); setOpenRowId(id); }} />
+          onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }} onOpenRow={(id) => { setShowEnrich(false); showRow(id); }} />
       )}
-      {showReview && <ReviewPanel state={state} enrich={enrich} onClose={() => setShowReview(false)} onOpenRow={setOpenRowId} />}
+      {showReview && <ReviewPanel state={state} enrich={enrich} onClose={() => setShowReview(false)} onOpenRow={showRow} />}
       <ConsentDialog open={!!enrich.needsConsent} onConfirm={() => enrich.needsConsent?.confirm()} onCancel={() => enrich.needsConsent?.cancel()} />
-      <ColumnsDialog open={showColumns} onClose={() => setShowColumns(false)} schema={schema} inSheet={inSheet} usedKeys={usedKeys} onSave={(s) => state.setSchema(s)} />
+      {onContacts ? (
+        <ColumnsDialog open={showColumns} onClose={() => setShowColumns(false)} kind="contacts" schema={contactSchema(schema)} inSheet={inSheet} usedKeys={usedKeys}
+          onSave={(s) => state.setSchema({ ...schema, contacts: { ...contactSchema(schema), columns: s.columns } })} />
+      ) : (
+        <ColumnsDialog open={showColumns} onClose={() => setShowColumns(false)} kind="prospects" schema={schema} inSheet={inSheet} usedKeys={usedKeys} onSave={(s) => state.setSchema(s)} />
+      )}
     </div>
   );
 }
@@ -439,6 +552,29 @@ function SaveIndicator({ state }: { state: CampaignState }) {
   if (s === "error") return <span className="inline-flex items-center gap-1 text-rose-600"><TriangleAlert size={11} /> Not saved</span>;
   if (s === "saved" && at) return <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 size={11} /> Saved {timeAgo(at)}</span>;
   return <span>Saved on this computer</span>;
+}
+
+/** Prospects or their contacts: the two lists of the campaign, as the workbook's two tabs. */
+function TabSwitch({ tab, onChange, prospects, contacts }: { tab: Tab; onChange: (t: Tab) => void; prospects: number; contacts: number }) {
+  const opt = (t: Tab, icon: ReactNode, label: string, count: number) => (
+    <button
+      role="tab"
+      aria-selected={tab === t}
+      onClick={() => onChange(t)}
+      className={cn(
+        "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition",
+        tab === t ? "bg-white text-ink shadow-[0_1px_2px_rgba(23,22,29,0.12)]" : "text-ink-faint hover:text-ink",
+      )}
+    >
+      {icon} {label} <span className="opacity-60 tabular-nums">{count}</span>
+    </button>
+  );
+  return (
+    <div role="tablist" className="flex rounded-lg bg-zinc-200/60 p-0.5">
+      {opt("prospects", <Building2 size={13} />, "Prospects", prospects)}
+      {opt("contacts", <Users size={13} />, "Contacts", contacts)}
+    </div>
+  );
 }
 
 function ViewToggle({ view, onChange }: { view: "table" | "reading"; onChange: (v: "table" | "reading") => void }) {
@@ -505,6 +641,35 @@ function EmptyList({ onAdd }: { onAdd: () => void }) {
       <p className="max-w-sm text-xs text-ink-faint">Add your first prospect, or paste rows straight from Excel into the grid.</p>
       <Button size="sm" variant="primary" className="mt-2" onClick={onAdd}><Plus size={13} /> Add prospect</Button>
     </div>
+  );
+}
+
+function EmptyContacts() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+      <Users className="text-brand-300" size={32} />
+      <p className="text-sm font-medium">No contacts yet</p>
+      <p className="max-w-sm text-xs text-ink-faint">Open a prospect and add its people there: who holds the budget, who evaluates, who uses it. Everyone you add is listed here.</p>
+    </div>
+  );
+}
+
+/** Actions on the selected contacts. */
+function ContactBulkBar({ rows, state, onDone }: { rows: Row[]; state: CampaignState; onDone: () => void }) {
+  const n = rows.length;
+  const label = `${n} ${n === 1 ? "contact" : "contacts"}`;
+  return (
+    <>
+      <span className="text-sm font-medium">{n} selected</span>
+      <Button size="sm" variant="danger" onClick={() => {
+        state.deleteRows(rows.map((r) => r.id), `Delete ${label}`);
+        onDone();
+        undoToast(`Deleted ${label}`, () => state.undo());
+      }}>
+        <Trash2 size={13} /> Delete
+      </Button>
+      <Button size="sm" variant="ghost" className="ml-auto" onClick={onDone}>Clear selection</Button>
+    </>
   );
 }
 

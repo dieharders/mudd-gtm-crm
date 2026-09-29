@@ -49,3 +49,19 @@ export function tileFor(id: string): string {
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return TILES[h % TILES.length]!;
 }
+
+/** Colours for contact types: one per type, in the Contact type dropdown's order. */
+const TYPE_TONES = [
+  "bg-violet-100 text-violet-800",
+  "bg-sky-100 text-sky-800",
+  "bg-emerald-100 text-emerald-800",
+  "bg-amber-100 text-amber-800",
+  "bg-rose-100 text-rose-700",
+  "bg-zinc-200 text-zinc-700",
+  "bg-pink-100 text-pink-800",
+  "bg-cyan-100 text-cyan-800",
+];
+export function typeTone(type: string, options: string[] = []): string {
+  const i = options.findIndex((o) => o.toLowerCase() === type.toLowerCase());
+  return TYPE_TONES[(i < 0 ? type.length : i) % TYPE_TONES.length]!;
+}

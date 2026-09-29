@@ -1,12 +1,15 @@
 /**
  * Starting recipes for prospect research. Each output lists header ALIASES so a preset fills
- * the sheet's existing column when there is one (base-tracker's "Primary contact", "Role")
- * instead of adding a near-duplicate. Aliases are in order of preference. A job title goes in
- * a Title column only when the sheet has no Role, and not when its Title holds Mr. or Dr.
+ * the sheet's existing column when there is one ("Role", "Email source") instead of adding a
+ * near-duplicate. Aliases are in order of preference. A job title goes in a Title column only
+ * when there is no Role, and not when its Title holds Mr. or Dr.
+ *
+ * A person's details (who decides, their email) belong to a contact: those outputs fill the
+ * prospect's primary contact, and look only among the contact columns.
  */
 import { isSourcesColumn } from "./ai";
 import { norm } from "./merge";
-import { HOOK_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
+import { contactSchema, HOOK_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
 import type { CampaignSchema, Column, ColumnType, Row } from "./types";
 
 export interface PresetOutput {
@@ -14,6 +17,10 @@ export interface PresetOutput {
   aliases: string[];
   type: ColumnType;
   hint: string;
+  /** A detail of the person: filled on the primary contact. */
+  person?: boolean;
+  /** The person's name: the contacts' name column when no alias matches. */
+  name?: boolean;
 }
 
 export interface Preset {
@@ -63,9 +70,9 @@ export const PRESETS: Preset[] = [
     instructions:
       "Identify the person most likely to make the buying decision: the founder or CEO at a small company, otherwise the head of marketing, growth or business development. Give their full name, job title and LinkedIn profile URL.",
     outputs: [
-      { header: "Decision maker", aliases: ["primarycontact", "contact", "decisionmaker", "name", "contactname"], type: "text", hint: "Full name of one person." },
-      { header: "Role", aliases: [...ROLE_HEADERS, TITLE_HEADER], type: "text", hint: "Their current job title." },
-      { header: "LinkedIn", aliases: ["linkedin", "linkedinurl"], type: "url", hint: "Their personal LinkedIn profile URL." },
+      { header: "Decision maker", aliases: ["primarycontact", "contact", "decisionmaker", "name", "contactname"], type: "text", hint: "Full name of one person.", person: true, name: true },
+      { header: "Role", aliases: [...ROLE_HEADERS, TITLE_HEADER], type: "text", hint: "Their current job title.", person: true },
+      { header: "LinkedIn", aliases: ["linkedin", "linkedinurl"], type: "url", hint: "Their personal LinkedIn profile URL.", person: true },
     ],
   },
   {
@@ -77,8 +84,8 @@ export const PRESETS: Preset[] = [
     instructions:
       "Find a work email address for this prospect's primary contact that is published on the web (company site, press release, filings, conference pages). If none is published for the person, a published general contact address for the company is acceptable. Never construct or guess an address from a naming pattern.",
     outputs: [
-      { header: "Email", aliases: ["email", "workemail", "emailaddress"], type: "email", hint: "Only an address you actually found published. Null if none." },
-      { header: "Email source", aliases: ["emailsource"], type: "select", hint: "Published if you saw it on a page; Reported if a data site reports it." },
+      { header: "Email", aliases: ["email", "workemail", "emailaddress"], type: "email", hint: "Only an address you actually found published. Null if none.", person: true },
+      { header: "Email source", aliases: ["emailsource"], type: "select", hint: "Published if you saw it on a page; Reported if a data site reports it.", person: true },
     ],
   },
   {
@@ -95,15 +102,21 @@ export const PRESETS: Preset[] = [
   },
 ];
 
-/** The sheet column each of a preset's outputs fills, if it has one: the most preferred header. */
+/**
+ * The column each of a preset's outputs fills, if there is one: the most preferred header, among
+ * the contact columns for a person's details and the prospect's for the rest. `rows` are the
+ * prospects and contacts, to tell a Title of honorifics from one of job titles.
+ */
 export function presetTargets(p: Preset, schema: CampaignSchema, rows: Pick<Row, "cells">[]): (Column | undefined)[] {
   const used = new Set<string>();
+  const contacts = contactSchema(schema);
   // A Title column holding Mr. or Dr. is how contacts are addressed: no job title goes there.
   const addresses = (c: Column) => norm(c.header) === TITLE_HEADER && rows.some((r) => isHonorific(String(r.cells[c.key] ?? "")));
+  const open = (c: Column) => !used.has(c.key) && !isSourcesColumn(c) && c.key !== schema.idKey && !addresses(c);
   return p.outputs.map((o) => {
-    const match = [norm(o.header), ...o.aliases]
-      .map((n) => schema.columns.find((c) => !used.has(c.key) && !isSourcesColumn(c) && norm(c.header) === n && !addresses(c)))
-      .find(Boolean);
+    const pool = o.person ? contacts.columns : schema.columns;
+    let match = [norm(o.header), ...o.aliases].map((n) => pool.find((c) => open(c) && norm(c.header) === n)).find(Boolean);
+    if (!match && o.name) match = contacts.columns.find((c) => c.key === contacts.nameKey && open(c));
     if (match) used.add(match.key);
     return match;
   });

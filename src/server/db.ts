@@ -8,17 +8,22 @@
  * Each row imported from a sheet also keeps its cells as they were imported (`orig_json`).
  * Export compares against that to find what the user changed, and writes only those cells back
  * into the workbook, so everything else in the file (rich text, links, formats) stays as it was.
+ *
+ * Prospects and their contacts are both rows: `bucket` says which, and a contact's `parent_id`
+ * is its prospect's row id. There is no foreign key on it: `insertRows` replaces a row it
+ * re-inserts (INSERT OR REPLACE), which a cascading key would take as deleting the prospect's
+ * contacts. Deleting a prospect deletes its contacts explicitly instead (`deleteRows`).
  */
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ensureAppColumns, isReservedKey } from "../shared/schema";
+import { ensureAppColumns, isReservedKey, newProspectId } from "../shared/schema";
 import type {
   Campaign, CampaignSchema, CampaignSummary, CellEdit, CellValue, Meeting, Row, SheetMeta, Template,
 } from "../shared/types";
 import { CHECKED, DEAD, isScreened, stagesOf } from "../shared/types";
-import { applyCellEdits, rowTitle } from "../shared/values";
+import { applyCellEdits, primaryOf, prospectTitle } from "../shared/values";
 
 export function dataDir(): string {
   if (process.env.MUDD_DATA_DIR) return process.env.MUDD_DATA_DIR;
@@ -28,7 +33,7 @@ export function dataDir(): string {
 
 let db: Database | null = null;
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 export function getDb(): Database {
   if (db) return db;
@@ -57,7 +62,8 @@ export function getDb(): Database {
       source_sheet TEXT,
       source_row INTEGER,
       cells_json TEXT NOT NULL,
-      orig_json TEXT
+      orig_json TEXT,
+      parent_id TEXT
     );
     CREATE INDEX IF NOT EXISTS rows_campaign ON rows(campaign_id);
     CREATE TABLE IF NOT EXISTS templates (
@@ -101,60 +107,95 @@ export function getDb(): Database {
   return db;
 }
 
+function migrate(d: Database): void {
+  const version = (d.query("PRAGMA user_version").get() as { user_version: number }).user_version;
+  if (version >= SCHEMA_VERSION) return;
+  d.transaction(() => {
+    if (version < 2) migrateV2(d);
+    if (version < 3) migrateV3(d);
+    d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  })();
+}
+
+const tableColumns = (d: Database) => (d.query("PRAGMA table_info(rows)").all() as { name: string }[]).map((c) => c.name);
+
 /**
  * Version 2 dropped the separate Screened-out list: a screened prospect is now a row with its
  * "Screened out" box ticked. Rows that lived on the old list are ticked and, because their sheet
  * row belonged to the Screened-out tab, written to the prospects tab as new rows on the next save.
  */
-function migrate(d: Database): void {
-  const version = (d.query("PRAGMA user_version").get() as { user_version: number }).user_version;
-  if (version >= SCHEMA_VERSION) return;
-  const cols = d.query("PRAGMA table_info(rows)").all() as { name: string }[];
-  d.transaction(() => {
-    if (!cols.some((c) => c.name === "orig_json")) d.exec("ALTER TABLE rows ADD COLUMN orig_json TEXT");
-    const campaigns = d.query("SELECT id, schema_json, sheets_json FROM campaigns").all() as { id: string; schema_json: string; sheets_json: string }[];
-    for (const c of campaigns) {
-      const schema = JSON.parse(c.schema_json) as CampaignSchema;
-      const sheets = JSON.parse(c.sheets_json) as (Omit<SheetMeta, "role"> & { role: string })[];
-      // Keys that shadow Object.prototype ("constructor") read back as functions: rename them.
-      const renamed = new Map<string, string>();
-      for (const col of schema.columns) {
-        if (!isReservedKey(col.key)) continue;
-        const next = `${col.key}_col`;
-        renamed.set(col.key, next);
-        col.key = next;
-      }
-      for (const role of ["statusKey", "reasonKey", "introKey", "meetingUrlKey", "meetingAtKey", "nameKey", "companyKey"] as const) {
-        const k = schema[role];
-        if (k && renamed.has(k)) schema[role] = renamed.get(k);
-      }
-      ensureAppColumns(schema);
-      const prospectsSheet = sheets.find((s) => s.role === "prospects")?.name ?? null;
-      const fixed = sheets.map((s) => {
-        const colMap = Object.fromEntries(Object.entries(s.colMap).map(([k, v]) => [renamed.get(k) ?? k, v]));
-        return s.role === "screened" ? { ...s, role: "passthrough", colMap: {} } : { ...s, colMap };
-      });
-      d.query("UPDATE campaigns SET schema_json = ?, sheets_json = ? WHERE id = ?").run(JSON.stringify(schema), JSON.stringify(fixed), c.id);
-
-      const rows = d.query("SELECT id, bucket, source_sheet, cells_json FROM rows WHERE campaign_id = ?").all(c.id) as { id: string; bucket: string; source_sheet: string | null; cells_json: string }[];
-      const upd = d.query("UPDATE rows SET bucket = 'prospects', cells_json = ?, source_sheet = ?, source_row = ? WHERE id = ?");
-      const keep = d.query("UPDATE rows SET cells_json = ? WHERE id = ?");
-      for (const r of rows) {
-        const cells = JSON.parse(r.cells_json) as Record<string, CellValue>;
-        for (const [from, to] of renamed) {
-          if (Object.hasOwn(cells, from)) {
-            cells[to] = cells[from]!;
-            delete cells[from];
-          }
-        }
-        if (r.bucket === "screened" && schema.screenedKey) cells[schema.screenedKey] = CHECKED;
-        const fromOtherTab = r.bucket === "screened" || (r.source_sheet !== null && r.source_sheet !== prospectsSheet);
-        if (fromOtherTab) upd.run(JSON.stringify(cells), null, null, r.id);
-        else keep.run(JSON.stringify(cells), r.id);
-      }
+function migrateV2(d: Database): void {
+  if (!tableColumns(d).includes("orig_json")) d.exec("ALTER TABLE rows ADD COLUMN orig_json TEXT");
+  const campaigns = d.query("SELECT id, schema_json, sheets_json FROM campaigns").all() as { id: string; schema_json: string; sheets_json: string }[];
+  for (const c of campaigns) {
+    const schema = JSON.parse(c.schema_json) as CampaignSchema;
+    const sheets = JSON.parse(c.sheets_json) as (Omit<SheetMeta, "role"> & { role: string })[];
+    // Keys that shadow Object.prototype ("constructor") read back as functions: rename them.
+    const renamed = new Map<string, string>();
+    for (const col of schema.columns) {
+      if (!isReservedKey(col.key)) continue;
+      const next = `${col.key}_col`;
+      renamed.set(col.key, next);
+      col.key = next;
     }
-    d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-  })();
+    for (const role of ["statusKey", "reasonKey", "introKey", "meetingUrlKey", "meetingAtKey", "nameKey", "companyKey"] as const) {
+      const k = schema[role];
+      if (k && renamed.has(k)) schema[role] = renamed.get(k);
+    }
+    ensureAppColumns(schema);
+    const prospectsSheet = sheets.find((s) => s.role === "prospects")?.name ?? null;
+    const fixed = sheets.map((s) => {
+      const colMap = Object.fromEntries(Object.entries(s.colMap).map(([k, v]) => [renamed.get(k) ?? k, v]));
+      return s.role === "screened" ? { ...s, role: "passthrough", colMap: {} } : { ...s, colMap };
+    });
+    d.query("UPDATE campaigns SET schema_json = ?, sheets_json = ? WHERE id = ?").run(JSON.stringify(schema), JSON.stringify(fixed), c.id);
+
+    const rows = d.query("SELECT id, bucket, source_sheet, cells_json FROM rows WHERE campaign_id = ?").all(c.id) as { id: string; bucket: string; source_sheet: string | null; cells_json: string }[];
+    const upd = d.query("UPDATE rows SET bucket = 'prospects', cells_json = ?, source_sheet = ?, source_row = ? WHERE id = ?");
+    const keep = d.query("UPDATE rows SET cells_json = ? WHERE id = ?");
+    for (const r of rows) {
+      const cells = JSON.parse(r.cells_json) as Record<string, CellValue>;
+      for (const [from, to] of renamed) {
+        if (Object.hasOwn(cells, from)) {
+          cells[to] = cells[from]!;
+          delete cells[from];
+        }
+      }
+      if (r.bucket === "screened" && schema.screenedKey) cells[schema.screenedKey] = CHECKED;
+      const fromOtherTab = r.bucket === "screened" || (r.source_sheet !== null && r.source_sheet !== prospectsSheet);
+      if (fromOtherTab) upd.run(JSON.stringify(cells), null, null, r.id);
+      else keep.run(JSON.stringify(cells), r.id);
+    }
+  }
+}
+
+/**
+ * Version 3 gave prospects contacts (rows with a `parent_id`) and IDs. Every campaign gets the
+ * contact columns and the ID column, and every prospect an ID. Nothing else is converted: a
+ * contact still held in a prospect's own columns stays there.
+ */
+function migrateV3(d: Database): void {
+  // After the column exists: in a database from before version 3, CREATE TABLE left it out.
+  if (!tableColumns(d).includes("parent_id")) d.exec("ALTER TABLE rows ADD COLUMN parent_id TEXT");
+  d.exec("CREATE INDEX IF NOT EXISTS rows_parent ON rows(campaign_id, parent_id)");
+  const campaigns = d.query("SELECT id, schema_json FROM campaigns").all() as { id: string; schema_json: string }[];
+  for (const c of campaigns) {
+    const schema = JSON.parse(c.schema_json) as CampaignSchema;
+    const leftover = d.query("SELECT DISTINCT j.key AS key FROM rows, json_each(rows.cells_json) AS j WHERE rows.campaign_id = ?").all(c.id) as { key: string }[];
+    ensureAppColumns(schema, leftover.map((r) => r.key));
+    d.query("UPDATE campaigns SET schema_json = ? WHERE id = ?").run(JSON.stringify(schema), c.id);
+    const idKey = schema.idKey!;
+    const rows = (d.query("SELECT id, cells_json FROM rows WHERE campaign_id = ? AND bucket = 'prospects' ORDER BY position").all(c.id) as { id: string; cells_json: string }[])
+      .map((r) => ({ id: r.id, cells: JSON.parse(r.cells_json) as Record<string, CellValue> }));
+    const taken = new Set(rows.map((r) => String(r.cells[idKey] ?? "").trim()).filter(Boolean));
+    const set = d.query("UPDATE rows SET cells_json = ? WHERE id = ?");
+    for (const r of rows) {
+      if (String(r.cells[idKey] ?? "").trim()) continue;
+      const id = newProspectId(taken);
+      taken.add(id);
+      set.run(JSON.stringify({ ...r.cells, [idKey]: id }), r.id);
+    }
+  }
 }
 
 /** For tests: close and forget the handle so the next call reopens under a new MUDD_DATA_DIR. */
@@ -226,6 +267,8 @@ export function createCampaign(input: {
   sourceMtime?: number | null;
   original?: Uint8Array | null;
   rows?: NewRow[];
+  /** Each with the index in `rows` of its prospect. */
+  contacts?: (NewRow & { parent: number })[];
   templates?: { name: string; body: string }[];
 }): Campaign {
   const d = getDb();
@@ -239,13 +282,19 @@ export function createCampaign(input: {
       id, input.name, now, now, input.sourceName ?? null, input.sourcePath ?? null, input.sourceMtime ?? null,
       input.original ?? null, JSON.stringify(input.schema), JSON.stringify(input.sheets),
     );
-    // `bucket` is a leftover of version 1 (NOT NULL in databases created then): always "prospects".
     const ins = d.query(
-      "INSERT INTO rows (id, campaign_id, bucket, position, source_sheet, source_row, cells_json, orig_json) VALUES (?, ?, 'prospects', ?, ?, ?, ?, ?)",
+      "INSERT INTO rows (id, campaign_id, bucket, position, source_sheet, source_row, cells_json, orig_json, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
-    (input.rows ?? []).forEach((r, i) =>
-      ins.run(newId(), id, r.position ?? i, r.sourceSheet ?? null, r.sourceRow ?? null, JSON.stringify(r.cells), r.orig ? JSON.stringify(r.orig) : null),
-    );
+    const orgIds = (input.rows ?? []).map((r, i) => {
+      const rowId = newId();
+      ins.run(rowId, id, "prospects", r.position ?? i, r.sourceSheet ?? null, r.sourceRow ?? null, JSON.stringify(r.cells), r.orig ? JSON.stringify(r.orig) : null, null);
+      return rowId;
+    });
+    (input.contacts ?? []).forEach((r, i) => {
+      const parent = orgIds[r.parent];
+      if (!parent) return;
+      ins.run(newId(), id, "contacts", r.position ?? i, r.sourceSheet ?? null, r.sourceRow ?? null, JSON.stringify(r.cells), r.orig ? JSON.stringify(r.orig) : null, parent);
+    });
     const tpl = d.query("INSERT INTO templates (id, campaign_id, name, body, position, updated_at) VALUES (?, ?, ?, ?, ?, ?)");
     (input.templates ?? []).forEach((t, i) => tpl.run(newId(), id, t.name, t.body, i, now));
   })();
@@ -324,6 +373,7 @@ interface RowRecord {
   source_sheet: string | null;
   source_row: number | null;
   cells_json: string;
+  parent_id: string | null;
   orig_json?: string | null;
 }
 
@@ -333,14 +383,30 @@ const toRow = (r: RowRecord): Row => ({
   sourceSheet: r.source_sheet,
   sourceRow: r.source_row,
   cells: JSON.parse(r.cells_json),
+  ...(r.parent_id ? { parentId: r.parent_id } : {}),
 });
 
-const ROW_COLS = "id, position, source_sheet, source_row, cells_json";
+const ROW_COLS = "id, position, source_sheet, source_row, cells_json, parent_id";
 
-export function listRows(campaignId: string): Row[] {
+/** Which rows: the prospects, or their contacts. */
+export type RowKind = "prospects" | "contacts";
+
+export function listRows(campaignId: string, kind: RowKind = "prospects"): Row[] {
   return (
-    getDb().query(`SELECT ${ROW_COLS} FROM rows WHERE campaign_id = ? ORDER BY position`).all(campaignId) as RowRecord[]
+    getDb().query(`SELECT ${ROW_COLS} FROM rows WHERE campaign_id = ? AND bucket = ? ORDER BY position`).all(campaignId, kind) as RowRecord[]
   ).map(toRow);
+}
+
+/** A prospect's contacts, in order. */
+export function contactsOf(campaignId: string, orgId: string): Row[] {
+  return (
+    getDb().query(`SELECT ${ROW_COLS} FROM rows WHERE campaign_id = ? AND parent_id = ? ORDER BY position`).all(campaignId, orgId) as RowRecord[]
+  ).map(toRow);
+}
+
+/** The contact a prospect's intro addresses (see primaryOf). */
+export function primaryContact(campaignId: string, orgId: string, schema: CampaignSchema): Row | null {
+  return primaryOf(contactsOf(campaignId, orgId), schema) ?? null;
 }
 
 export function getRow(campaignId: string, rowId: string): Row | null {
@@ -351,13 +417,16 @@ export function getRow(campaignId: string, rowId: string): Row | null {
 /** A row for export: with its cells as imported (`null` for rows made in the app). */
 export type ExportRow = Row & { orig: Record<string, CellValue> | null };
 
-export function listRowsForExport(campaignId: string): ExportRow[] {
+export function listRowsForExport(campaignId: string, kind: RowKind = "prospects"): ExportRow[] {
   return (
-    getDb().query(`SELECT ${ROW_COLS}, orig_json FROM rows WHERE campaign_id = ? ORDER BY position`).all(campaignId) as RowRecord[]
+    getDb().query(`SELECT ${ROW_COLS}, orig_json FROM rows WHERE campaign_id = ? AND bucket = ? ORDER BY position`).all(campaignId, kind) as RowRecord[]
   ).map((r) => ({ ...toRow(r), orig: r.orig_json ? JSON.parse(r.orig_json) : null }));
 }
 
-/** Every key any row has a value for, deleted columns included, so a new column never inherits one. */
+/**
+ * Every key any row, prospect or contact, has a value for, deleted columns included, so a new
+ * column never inherits one. Both kinds share one key namespace.
+ */
 export function allCellKeys(campaignId: string): Set<string> {
   const rows = getDb()
     .query("SELECT DISTINCT j.key AS key FROM rows, json_each(rows.cells_json) AS j WHERE rows.campaign_id = ?")
@@ -376,7 +445,7 @@ export function insertRows(campaignId: string, rows: Partial<Row>[]): Row[] {
   const out: Row[] = [];
   d.transaction(() => {
     const ins = d.query(
-      "INSERT OR REPLACE INTO rows (id, campaign_id, bucket, position, source_sheet, source_row, cells_json, orig_json) VALUES (?, ?, 'prospects', ?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO rows (id, campaign_id, bucket, position, source_sheet, source_row, cells_json, orig_json, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     rows.forEach((r, i) => {
       const row: Row = {
@@ -385,10 +454,12 @@ export function insertRows(campaignId: string, rows: Partial<Row>[]): Row[] {
         cells: r.cells ?? {},
         sourceSheet: r.sourceSheet ?? null,
         sourceRow: r.sourceRow ?? null,
+        ...(r.parentId ? { parentId: r.parentId } : {}),
       };
       const orig = row.sourceRow ? deletedOrig.get(row.id) ?? null : null;
       deletedOrig.delete(row.id);
-      ins.run(row.id, campaignId, row.position, row.sourceSheet ?? null, row.sourceRow ?? null, JSON.stringify(row.cells), orig);
+      const bucket: RowKind = row.parentId ? "contacts" : "prospects";
+      ins.run(row.id, campaignId, bucket, row.position, row.sourceSheet ?? null, row.sourceRow ?? null, JSON.stringify(row.cells), orig, row.parentId ?? null);
       out.push(row);
     });
   })();
@@ -416,12 +487,16 @@ export function applyEdits(campaignId: string, edits: CellEdit[]): number {
   return touchCampaign(campaignId);
 }
 
+/** Delete rows. A prospect's contacts go with it (the page deletes them too, for Undo). */
 export function deleteRows(campaignId: string, ids: string[]): void {
   const d = getDb();
   d.transaction(() => {
     const get = d.query("SELECT orig_json FROM rows WHERE id = ? AND campaign_id = ?");
     const del = d.query("DELETE FROM rows WHERE id = ? AND campaign_id = ?");
-    for (const id of ids) {
+    const children = d.query("SELECT id FROM rows WHERE campaign_id = ? AND parent_id = ?");
+    const all = new Set(ids);
+    for (const id of ids) for (const c of children.all(campaignId, id) as { id: string }[]) all.add(c.id);
+    for (const id of all) {
       const r = get.get(id, campaignId) as { orig_json: string | null } | null;
       if (!r) continue;
       if (deletedOrig.size >= DELETED_LIMIT) deletedOrig.delete(deletedOrig.keys().next().value!);
@@ -501,7 +576,7 @@ export function listMeetings(): Meeting[] {
     if (s.meetingAtKey) {
       // Only rows with a meeting time are read in full.
       const rows = (
-        d.query(`SELECT ${ROW_COLS} FROM rows WHERE campaign_id = ? AND json_extract(cells_json, ?) IS NOT NULL`)
+        d.query(`SELECT ${ROW_COLS} FROM rows WHERE campaign_id = ? AND bucket = 'prospects' AND json_extract(cells_json, ?) IS NOT NULL`)
           .all(c.id, `$."${s.meetingAtKey}"`) as RowRecord[]
       ).map(toRow);
       for (const row of rows) {
@@ -510,7 +585,7 @@ export function listMeetings(): Meeting[] {
         if (!at || typeof at !== "string") continue;
         const status = s.statusKey ? (row.cells[s.statusKey] as string | undefined) ?? null : null;
         if (status === DEAD) continue;
-        const { title, subtitle } = rowTitle(row, s);
+        const { title, subtitle } = prospectTitle(row, primaryContact(c.id, row.id, s), s);
         meetings.push({
           campaignId: c.id,
           campaignName: c.name,

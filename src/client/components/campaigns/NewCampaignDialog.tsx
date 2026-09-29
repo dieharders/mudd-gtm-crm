@@ -9,7 +9,11 @@ import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { fire } from "../../lib/fire";
 
-const GENERIC = ["Name", "Company", "Title", "Email", "LinkedIn", "Phone", "Location", "Website", "Status", "Next step", "Next date", "Meeting URL", "Meeting at", "Notes", "Source", "Intro message", "Screened out", "Screened reason"];
+// What genericSchema() makes: the company's columns, and each of its contacts'.
+const GENERIC = {
+  Prospect: ["Company", "Rank", "Type", "Location", "Website", "Status", "Next step", "Next date", "Meeting URL", "Meeting at", "Hook", "Notes", "Source", "Intro message", "Screened out", "Screened reason"],
+  Contacts: ["Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Notes"],
+};
 
 export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean; onClose: () => void; campaigns: CampaignSummary[] }) {
   const navigate = useNavigate();
@@ -45,7 +49,7 @@ export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean;
       open={open}
       onClose={onClose}
       title="New campaign"
-      subtitle="One list of prospects. Screening one out keeps it in the list, greyed out, until you restore it."
+      subtitle="One list of prospects, each with its contacts. Screening one out keeps it in the list, greyed out, until you restore it."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -63,13 +67,18 @@ export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean;
         <div>
           <span className="label">Starting columns</span>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Choice active={layout === "generic"} onClick={() => setLayout("generic")} icon={<LayoutList size={16} />} title="Generic prospect list" desc="Name, company, contact details, status, meeting and intro message." />
+            <Choice active={layout === "generic"} onClick={() => setLayout("generic")} icon={<LayoutList size={16} />} title="Generic prospect list" desc="Companies with their contacts, status, meeting and intro message." />
             <Choice active={layout === "copy"} onClick={() => setLayout("copy")} disabled={!campaigns.length} icon={<Copy size={16} />} title="Copy another campaign" desc={campaigns.length ? "Same columns and dropdowns, no rows." : "No campaigns to copy yet."} />
           </div>
         </div>
         {layout === "generic" ? (
-          <div className="flex flex-wrap gap-1.5">
-            {GENERIC.map((h) => <span key={h} className="rounded-md border border-line bg-zinc-50 px-1.5 py-0.5 text-xs text-ink-soft">{h}</span>)}
+          <div className="space-y-2">
+            {Object.entries(GENERIC).map(([list, headers]) => (
+              <div key={list} className="flex flex-wrap items-center gap-1.5">
+                <span className="w-16 shrink-0 text-xs font-medium text-ink-faint">{list}</span>
+                {headers.map((h) => <span key={h} className="rounded-md border border-line bg-zinc-50 px-1.5 py-0.5 text-xs text-ink-soft">{h}</span>)}
+              </div>
+            ))}
           </div>
         ) : (
           <div>

@@ -1,7 +1,9 @@
 /** The prospect panel's AI parts: findings waiting for review, and "Write with AI" for the intro. */
 import { CheckCheck, ExternalLink, Loader2, RotateCcw, Sparkles, Square, Wand2 } from "lucide-react";
 import { useState } from "react";
+import { columnOf } from "../../../shared/schema";
 import type { CampaignSchema, Row, Template } from "../../../shared/types";
+import { contactLabel } from "../../../shared/values";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { hrefOf, openLink } from "../grid/cells";
@@ -9,9 +11,16 @@ import { SuggestionItem } from "../enrich/SuggestionItem";
 import { Button } from "../ui/Button";
 import { fire } from "../../lib/fire";
 
-export function RowSuggestions({ row, schema, enrich }: { row: Row; schema: CampaignSchema; enrich: EnrichmentState }) {
-  const list = (enrich.pendingByRow.get(row.id) ?? []).filter((s) => s.key !== schema.introKey);
+/** Findings waiting for review: the row's own, and its contacts', each named by its contact. */
+export function RowSuggestions({ row, contacts, schema, enrich }: { row: Row; contacts: Row[]; schema: CampaignSchema; enrich: EnrichmentState }) {
+  const whose = new Map(contacts.map((c) => [c.id, contactLabel(c, schema)]));
+  const list = [row, ...contacts].flatMap((r) => enrich.pendingByRow.get(r.id) ?? []).filter((s) => s.key !== schema.introKey);
   if (!list.length) return null;
+  const colFor = (rowId: string, key: string) => {
+    const col = columnOf(schema, key);
+    const name = whose.get(rowId);
+    return col && name ? { ...col, header: `${name} · ${col.header}` } : col;
+  };
   return (
     <section className="rounded-2xl border border-brand-200 bg-brand-50/50 p-3">
       <div className="mb-2 flex items-center gap-2">
@@ -24,7 +33,7 @@ export function RowSuggestions({ row, schema, enrich }: { row: Row; schema: Camp
       </div>
       <div className="space-y-1.5">
         {list.map((s) => (
-          <SuggestionItem key={s.id} compact s={s} col={schema.columns.find((c) => c.key === s.key)} onAccept={() => fire(enrich.accept([s]))} onReject={() => fire(enrich.reject([s]))} />
+          <SuggestionItem key={s.id} compact s={s} col={colFor(s.rowId, s.key)} onAccept={() => fire(enrich.accept([s]))} onReject={() => fire(enrich.reject([s]))} />
         ))}
       </div>
     </section>

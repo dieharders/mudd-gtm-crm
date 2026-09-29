@@ -1,26 +1,29 @@
 /**
- * The prospect panel: the pipeline stepper, the meeting, the intro message, and every field.
- * A screened-out prospect shows only why it was screened out, with Restore, and its fields
- * read-only.
+ * The prospect panel: the pipeline stepper, the prospect's contacts, the meeting, the intro
+ * message, and the company's own fields. A contact opens in the panel itself, and Back (or Esc)
+ * returns to the prospect. A screened-out prospect shows only why it was screened out, with
+ * Restore, and its fields and contacts read-only.
  */
 import {
-  ArchiveRestore, Ban, CalendarPlus, Check, ChevronDown, ChevronUp, ClipboardCopy, Copy, ExternalLink, MoreHorizontal,
-  Pencil, Send, Trash2, Undo2, Video, X,
+  ArchiveRestore, ArrowLeft, Ban, CalendarPlus, Check, ChevronDown, ChevronRight, ChevronUp, ClipboardCopy, Copy, ExternalLink, MoreHorizontal,
+  Pencil, Send, Star, Trash2, Undo2, UserPlus, Video, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { mergeTemplate, placeholderNames } from "../../../shared/merge";
+import { CONTACT_TYPE_HINTS, contactSchema, prospectSchema } from "../../../shared/schema";
 import { DEAD, isScreened, MEETING_STAGE, type CampaignSchema, type CellEdit, type Column, type Row, type Template } from "../../../shared/types";
-import { toLocalInput } from "../../../shared/values";
+import { contactLabel, contactOf, orderedContacts, primaryOf, prospectCells, prospectTitle, toLocalInput } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { formatDateTime, isSameDay, parseLocal, relative } from "../../lib/format";
-import { contactedStage, rowTitle, shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
-import { toneFor } from "../../lib/stages";
+import { contactedStage, shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
+import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { AiIntro, RowSuggestions } from "./AiSections";
 import { hrefOf, openLink } from "../grid/cells";
 import { Button } from "../ui/Button";
+import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
 import { undoToast } from "../ui/Toaster";
 import { FieldInput } from "./FieldInput";
@@ -32,6 +35,11 @@ interface Props {
   stages: string[];
   templates: Template[];
   state: CampaignState;
+  /** The prospect's contacts, in their order. */
+  contacts: Row[];
+  /** The contact open in the panel, in place of the prospect. */
+  openContactId: string | null;
+  onOpenContact: (id: string | null) => void;
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
@@ -39,9 +47,12 @@ interface Props {
   enrich: EnrichmentState;
 }
 
-export function RowDrawer({ row, schema, stages, templates, state, onClose, onPrev, onNext, onOpenTemplates, enrich }: Props) {
-  const { title, subtitle } = rowTitle(row, schema);
+export function RowDrawer({ row, schema, stages, templates, state, contacts, openContactId, onOpenContact, onClose, onPrev, onNext, onOpenTemplates, enrich }: Props) {
+  const primary = primaryOf(contacts, schema);
+  const { title, subtitle } = prospectTitle(row, primary, schema);
   const screened = isScreened(row, schema);
+  const contact = openContactId ? contacts.find((c) => c.id === openContactId) ?? null : null;
+  const inContact = !!contact;
   const special = new Set(
     [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean),
   );
@@ -55,13 +66,17 @@ export function RowDrawer({ row, schema, stages, templates, state, onClose, onPr
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, select")) return;
-      if (e.key === "Escape") onClose();
+      // Esc steps back from a contact to its prospect, and only then closes.
+      if (e.key === "Escape") {
+        if (inContact) onOpenContact(null);
+        else onClose();
+      }
       if (e.key === "ArrowDown" && e.altKey) onNext?.();
       if (e.key === "ArrowUp" && e.altKey) onPrev?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onNext, onPrev]);
+  }, [inContact, onOpenContact, onClose, onNext, onPrev]);
 
   return (
     <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(460px,100%)] flex-col border-l border-line bg-panel shadow-2xl shadow-zinc-900/10 animate-slide-in">
@@ -69,7 +84,7 @@ export function RowDrawer({ row, schema, stages, templates, state, onClose, onPr
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-base font-semibold">{title}</h2>
           <p className="truncate text-xs text-ink-soft">
-            {subtitle || " "}
+            {subtitle || " "}
             {screened && <span className="ml-2 rounded-sm bg-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 uppercase">Screened out</span>}
           </p>
         </div>
@@ -80,44 +95,52 @@ export function RowDrawer({ row, schema, stages, templates, state, onClose, onPr
         )}
         <Button size="icon" variant="ghost" onClick={onPrev} disabled={!onPrev} title="Previous (Alt+↑)"><ChevronUp size={16} /></Button>
         <Button size="icon" variant="ghost" onClick={onNext} disabled={!onNext} title="Next (Alt+↓)"><ChevronDown size={16} /></Button>
-        <RowMenu row={row} state={state} onClose={onClose} />
+        <RowMenu row={row} contacts={contacts.length} state={state} onClose={onClose} />
         <Button size="icon" variant="ghost" onClick={onClose} title="Close (Esc)" aria-label="Close prospect"><X size={16} /></Button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 scroll-thin">
-        {!screened && <RowSuggestions row={row} schema={schema} enrich={enrich} />}
-        {screened ? (
-          <ScreenedBanner row={row} schema={schema} state={state} />
-        ) : (
-          schema.statusKey && <Stepper row={row} schema={schema} stages={stages} onEdit={edit} />
-        )}
+      {contact ? (
+        <ContactPanel key={`contact-${contact.id}`} contact={contact} orgTitle={title} schema={schema} state={state} enrich={enrich}
+          disabled={screened} isPrimary={contact === primary} onBack={() => onOpenContact(null)} />
+      ) : (
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 scroll-thin">
+          {!screened && <RowSuggestions row={row} contacts={contacts} schema={schema} enrich={enrich} />}
+          {screened ? (
+            <ScreenedBanner row={row} schema={schema} state={state} />
+          ) : (
+            schema.statusKey && <Stepper row={row} schema={schema} stages={stages} onEdit={edit} />
+          )}
 
-        {/* Sibling sections need keys of their own: with one shared key, React never removes the
-            previous prospect's section when the next one opens, and they pile up. */}
-        {!screened && schema.meetingAtKey && <MeetingSection key={`meeting-${row.id}`} row={row} schema={schema} stages={stages} onEdit={edit} />}
+          {/* Sibling sections need keys of their own: with one shared key, React never removes the
+              previous prospect's section when the next one opens, and they pile up. */}
+          <ContactsSection key={`contacts-${row.id}`} org={row} contacts={contacts} primary={primary} schema={schema} state={state} enrich={enrich}
+            disabled={screened} onOpenContact={onOpenContact} />
 
-        {!screened && schema.introKey && (
-          <IntroSection key={`intro-${row.id}`} row={row} schema={schema} stages={stages} templates={templates} onEdit={edit} onOpenTemplates={onOpenTemplates}
-            ai={<AiIntro key={row.id} row={row} schema={schema} templates={templates} enrich={enrich} />} />
-        )}
+          {!screened && schema.meetingAtKey && <MeetingSection key={`meeting-${row.id}`} row={row} schema={schema} stages={stages} onEdit={edit} />}
 
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">Details</h3>
-            {screened && <span className="text-xs text-ink-faint">Restore the prospect to edit</span>}
-          </div>
-          <div className="space-y-3">
-            {fields.map((col) => (
-              <Field key={col.key} col={col} row={row} onEdit={edit} disabled={screened} />
-            ))}
-          </div>
-        </section>
-      </div>
+          {!screened && schema.introKey && (
+            <IntroSection key={`intro-${row.id}`} row={row} primary={primary} schema={schema} stages={stages} templates={templates} onEdit={edit} onOpenTemplates={onOpenTemplates}
+              ai={<AiIntro key={row.id} row={row} schema={schema} templates={templates} enrich={enrich} />} />
+          )}
+
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">Company</h3>
+              {screened && <span className="text-xs text-ink-faint">Restore the prospect to edit</span>}
+            </div>
+            <div className="space-y-3">
+              {fields.map((col) => (
+                <Field key={col.key} col={col} row={row} onEdit={edit} disabled={screened || col.key === schema.idKey} />
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </aside>
   );
 }
 
-function Field({ col, row, onEdit, disabled }: { col: Column; row: Row; onEdit: (e: CellEdit[], l: string) => void; disabled?: boolean }) {
+function Field({ col, row, onEdit, disabled, autoFocus }: { col: Column; row: Row; onEdit: (e: CellEdit[], l: string) => void; disabled?: boolean; autoFocus?: boolean }) {
   const v = row.cells[col.key];
   const href = (col.type === "url" || col.type === "email") && v ? hrefOf(String(v), col.type) : null;
   return (
@@ -130,12 +153,12 @@ function Field({ col, row, onEdit, disabled }: { col: Column; row: Row; onEdit: 
           </button>
         )}
       </label>
-      <FieldInput col={col} value={v} onCommit={(value) => onEdit([{ rowId: row.id, key: col.key, value }], `Edit ${col.header}`)} rows={2} disabled={disabled} />
+      <FieldInput col={col} value={v} onCommit={(value) => onEdit([{ rowId: row.id, key: col.key, value }], `Edit ${col.header}`)} rows={2} disabled={disabled} autoFocus={autoFocus} />
     </div>
   );
 }
 
-function RowMenu({ row, state, onClose }: { row: Row; state: CampaignState; onClose: () => void }) {
+function RowMenu({ row, contacts, state, onClose }: { row: Row; contacts: number; state: CampaignState; onClose: () => void }) {
   return (
     <Popover align="right" trigger={({ toggle }) => (
       <Button size="icon" variant="ghost" onClick={toggle} title="More"><MoreHorizontal size={16} /></Button>
@@ -147,11 +170,144 @@ function RowMenu({ row, state, onClose }: { row: Row; state: CampaignState; onCl
             close();
             state.deleteRows([row.id]);
             onClose();
-            undoToast("Row deleted", () => state.undo());
+            undoToast(contacts ? `Row and its ${contacts === 1 ? "contact" : `${contacts} contacts`} deleted` : "Row deleted", () => state.undo());
           }}>Delete row</MenuItem>
         </>
       )}
     </Popover>
+  );
+}
+
+// ---------- contacts ----------
+
+/** The prospect's people, primary first: each opens in the panel. */
+function ContactsSection({ org, contacts, primary, schema, state, enrich, disabled, onOpenContact }: {
+  org: Row; contacts: Row[]; primary: Row | undefined; schema: CampaignSchema; state: CampaignState; enrich: EnrichmentState;
+  disabled: boolean; onOpenContact: (id: string) => void;
+}) {
+  const cs = contactSchema(schema);
+  const typeCol = cs.columns.find((c) => c.key === cs.typeKey);
+  const emailCols = cs.columns.filter((c) => c.type === "email");
+  const add = () => onOpenContact(state.addContact(org.id).id);
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">
+          Contacts{contacts.length > 0 && <span className="ml-1.5 font-normal tabular-nums">{contacts.length}</span>}
+        </h3>
+        {!disabled && contacts.length > 0 && <button className="text-xs text-brand-700 hover:underline" onClick={add}>+ Add contact</button>}
+      </div>
+      {contacts.length > 0 ? (
+        <ul className="space-y-1.5">
+          {orderedContacts(contacts, schema).map((c) => {
+            const label = contactLabel(c, schema);
+            const role = contactOf(c.cells, cs).role;
+            const email = emailCols.map((col) => String(c.cells[col.key] ?? "").trim()).find(Boolean) ?? "";
+            const type = cs.typeKey ? String(c.cells[cs.typeKey] ?? "").trim() : "";
+            const pending = enrich.pendingByRow.get(c.id)?.length ?? 0;
+            return (
+              <li key={c.id}>
+                <button onClick={() => onOpenContact(c.id)}
+                  className="group flex w-full items-center gap-2.5 rounded-xl border border-line bg-white px-3 py-2 text-left transition hover:border-brand-200 hover:bg-brand-50/30">
+                  <Tile size="sm" className={tileFor(c.id)}>{label[0]?.toUpperCase() ?? "?"}</Tile>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate text-sm font-medium">{label}</span>
+                      {c === primary && <PrimaryStar />}
+                    </span>
+                    {(role || email) && <span className="block truncate text-xs text-ink-soft">{[role, email].filter(Boolean).join(" · ")}</span>}
+                  </span>
+                  {pending > 0 && <span className="tag shrink-0 bg-brand-500 text-white">✨ {pending}</span>}
+                  {type && <span className={cn("tag shrink-0", typeTone(type, typeCol?.options))}>{type}</span>}
+                  <ChevronRight size={14} className="shrink-0 text-ink-faint group-hover:text-brand-600" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="flex items-center justify-between rounded-xl border border-dashed border-line-strong px-3 py-2.5">
+          <span className="text-sm text-ink-faint">No contacts yet</span>
+          {!disabled && <Button size="sm" onClick={add}><UserPlus size={13} /> Add contact</Button>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PrimaryStar() {
+  return (
+    <span className="shrink-0" title="Primary contact: intros and templates address them">
+      <Star size={12} className="fill-amber-400 text-amber-400" />
+    </span>
+  );
+}
+
+/** One contact, open in the panel: every field, Make primary and Delete. */
+function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPrimary, onBack }: {
+  contact: Row; orgTitle: string; schema: CampaignSchema; state: CampaignState; enrich: EnrichmentState;
+  disabled: boolean; isPrimary: boolean; onBack: () => void;
+}) {
+  const cs = contactSchema(schema);
+  const label = contactLabel(contact, schema);
+  const role = contactOf(contact.cells, cs).role;
+  const type = cs.typeKey ? String(contact.cells[cs.typeKey] ?? "").trim() : "";
+  // Primary is the button below, not a field.
+  const fields = cs.columns.filter((c) => c.key !== cs.primaryKey);
+  const onEdit = (edits: CellEdit[], l: string) => state.editContacts(edits, l);
+  const remove = () => {
+    state.deleteRows([contact.id], "Delete contact");
+    onBack();
+    undoToast("Contact deleted", () => state.undo());
+  };
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 scroll-thin">
+      <button onClick={onBack} className="mb-3 inline-flex max-w-full items-center gap-1 text-xs font-medium text-ink-soft hover:text-brand-700" title="Back to the prospect (Esc)">
+        <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{orgTitle}</span>
+      </button>
+      <div className="flex items-start gap-3">
+        <Tile size="lg" className={tileFor(contact.id)}>{label[0]?.toUpperCase() ?? "?"}</Tile>
+        <div className="min-w-0 flex-1">
+          <h3 className="flex items-center gap-1.5 text-base font-semibold">
+            <span className="truncate">{label}</span>
+            {isPrimary && <PrimaryStar />}
+          </h3>
+          <p className="truncate text-xs text-ink-soft">{[type, role].filter(Boolean).join(" · ") || "Contact"}</p>
+        </div>
+      </div>
+      {!disabled && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {isPrimary ? (
+            <span className="tag bg-amber-100 text-amber-800"><Star size={11} className="fill-current" /> Primary contact</span>
+          ) : (
+            <Button size="sm" variant="subtle" onClick={() => state.makePrimary(contact.id)} title="Intros and templates address the primary contact">
+              <Star size={13} /> Make primary
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="ml-auto text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={remove}>
+            <Trash2 size={13} /> Delete contact
+          </Button>
+        </div>
+      )}
+
+      <div className="mt-5 space-y-6">
+        {!disabled && <RowSuggestions row={contact} contacts={[]} schema={schema} enrich={enrich} />}
+        <section>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">Details</h3>
+            {disabled && <span className="text-xs text-ink-faint">Restore the prospect to edit</span>}
+          </div>
+          <div className="space-y-3">
+            {fields.map((col) => (
+              <div key={col.key}>
+                <Field col={col} row={contact} onEdit={onEdit} disabled={disabled} autoFocus={col.key === cs.nameKey && !contact.cells[col.key] && !disabled} />
+                {col.key === cs.typeKey && type && CONTACT_TYPE_HINTS[type] && <p className="mt-1 text-[11px] text-ink-faint">{CONTACT_TYPE_HINTS[type]}</p>}
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -345,8 +501,8 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
 
 // ---------- intro message ----------
 
-function IntroSection({ row, schema, stages, templates, onEdit, onOpenTemplates, ai }: {
-  row: Row; schema: CampaignSchema; stages: string[]; templates: Template[];
+function IntroSection({ row, primary, schema, stages, templates, onEdit, onOpenTemplates, ai }: {
+  row: Row; primary: Row | undefined; schema: CampaignSchema; stages: string[]; templates: Template[];
   onEdit: (e: CellEdit[], l: string, t?: string) => void; onOpenTemplates: () => void; ai?: ReactNode;
 }) {
   const introCol = schema.columns.find((c) => c.key === schema.introKey)!;
@@ -356,7 +512,8 @@ function IntroSection({ row, schema, stages, templates, onEdit, onOpenTemplates,
     if (!templates.some((t) => t.id === pick)) setPick(templates[0]?.id ?? "");
   }, [templates, pick]);
   const tpl = templates.find((t) => t.id === pick);
-  const merged = useMemo(() => (tpl ? mergeTemplate(tpl.body, schema, row.cells) : null), [tpl, schema, row.cells]);
+  // {{First name}} and the contact's other columns are the primary contact's.
+  const merged = useMemo(() => (tpl ? mergeTemplate(tpl.body, prospectSchema(schema), prospectCells(row, primary)) : null), [tpl, schema, row, primary]);
   const leftovers = placeholderNames(intro);
   const status = schema.statusKey ? String(row.cells[schema.statusKey] ?? "") : "";
   const contacted = contactedStage(stages);

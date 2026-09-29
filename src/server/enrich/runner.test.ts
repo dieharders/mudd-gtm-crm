@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { CampaignEvent, Suggestion } from "../../shared/ai";
-import { genericSchema } from "../../shared/schema";
+import { allColumns, genericSchema } from "../../shared/schema";
 import { CHECKED, type CellValue } from "../../shared/types";
 import * as ai from "../ai";
 import * as db from "../db";
@@ -39,7 +39,8 @@ afterAll(() => {
 });
 
 const schema = genericSchema();
-const k = (header: string) => schema.columns.find((c) => c.header === header)!.key;
+// The prospect's columns, then its contacts' (Role and LinkedIn are a contact's).
+const k = (header: string) => allColumns(schema).find((c) => c.header === header)!.key;
 
 function campaign(rows: { id: string; cells: Record<string, CellValue> }[]): string {
   const c = db.createCampaign({ name: "Test", schema, sheets: [] });
@@ -47,8 +48,8 @@ function campaign(rows: { id: string; cells: Record<string, CellValue> }[]): str
   return c.id;
 }
 
-const recipeFor = (campaignId: string) =>
-  store.saveRecipe({ campaignId, name: "Find", instructions: "Find it.", inputKeys: [], webSearch: false, outputs: [{ key: k("Role"), header: "Role" }, { key: k("Location"), header: "Location" }] });
+const recipeFor = (campaignId: string, headers = ["Type", "Location"]) =>
+  store.saveRecipe({ campaignId, name: "Find", instructions: "Find it.", inputKeys: [], webSearch: false, outputs: headers.map((h) => ({ key: k(h), header: h })) });
 
 /** Read a campaign's event stream as the page would. */
 function listen(campaignId: string, snapshot?: () => CampaignEvent[]) {
@@ -170,8 +171,8 @@ describe("runs", () => {
     let listed: { live: string | undefined; stored: string | undefined } | null = null;
     fakeTurn = async () => {
       await Bun.sleep(0);
-      // During the turn, the user types a title and another run files a source of its own.
-      db.applyEdits(id, [{ rowId: "r1", key: k("Role"), value: "CEO" }, { rowId: "r1", key: sourcesKey, value: "Website: https://other.io" }]);
+      // During the turn, the user types a type and another run files a source of its own.
+      db.applyEdits(id, [{ rowId: "r1", key: k("Type"), value: "Accelerator" }, { rowId: "r1", key: sourcesKey, value: "Website: https://other.io" }]);
       // A page connecting now starts from the live run, this row mid-turn.
       const sse = listen(id, () => liveRuns(id).map((run): CampaignEvent => ({ type: "run", run })));
       await until(() => sse.events.length > 0);
@@ -180,7 +181,7 @@ describe("runs", () => {
       const runId = liveRuns(id)[0]!.id;
       listed = { live: recentRuns(id).find((r) => r.id === runId)?.rows.r1?.state, stored: store.getRun(runId)?.rows.r1?.state };
       return {
-        data: { fields: { [k("Role")]: { value: "Founder", source: "https://a.io", confidence: "high" }, [k("Location")]: { value: "Austin", source: "https://b.io", confidence: "medium" } }, notes: null },
+        data: { fields: { [k("Type")]: { value: "Incubator", source: "https://a.io", confidence: "high" }, [k("Location")]: { value: "Austin", source: "https://b.io", confidence: "medium" } }, notes: null },
         costUsd: 0.01,
       };
     };
@@ -193,12 +194,12 @@ describe("runs", () => {
     expect(listed!).toEqual({ live: "running", stored: "pending" });
 
     const cells = db.getRow(id, "r1")!.cells;
-    expect(cells[k("Role")]).toBe("CEO");
+    expect(cells[k("Type")]).toBe("Accelerator");
     expect(cells[k("Location")]).toBe("Austin");
     expect(cells[sourcesKey]).toBe("Website: https://other.io\nLocation: https://b.io");
     const pending = store.listSuggestions(id, "pending");
     expect(pending).toHaveLength(1);
-    expect(pending[0]).toMatchObject({ key: k("Role"), value: "Founder", previous: "CEO" });
+    expect(pending[0]).toMatchObject({ key: k("Type"), value: "Incubator", previous: "Accelerator" });
     expect(run).toMatchObject({ completed: 1, suggestions: 1, autoFilled: 1, costUsd: 0.01 });
   });
 
@@ -230,7 +231,7 @@ describe("runs", () => {
     const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme" } }]);
     fakeTurn = async () => {
       db.deleteRows(id, ["r1"]);
-      return { data: { fields: { [k("Role")]: { value: "Founder", source: null, confidence: "low" } }, notes: null }, costUsd: null };
+      return { data: { fields: { [k("Type")]: { value: "Incubator", source: null, confidence: "low" } }, notes: null }, costUsd: null };
     };
     const run = startRun({ campaignId: id, kind: "enrich", recipeId: recipeFor(id).id, rowIds: ["r1"], test: false, autoFill: true, concurrency: 1 });
     await until(() => run.status === "done");
@@ -238,5 +239,54 @@ describe("runs", () => {
     expect(run.rows.r1).toEqual({ state: "skipped", error: "Row was deleted." });
     expect(run.completed).toBe(0);
     expect(store.listSuggestions(id)).toHaveLength(0);
+  });
+
+  test("a person's details go on the primary contact, made for a prospect that has none", async () => {
+    const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme" } }]);
+    const sourcesKey = ensureSourcesColumn(id);
+    const recipe = recipeFor(id, ["Role", "LinkedIn", "Location"]);
+    const sse = listen(id);
+    fakeTurn = async () => ({
+      data: { fields: {
+        [k("Role")]: { value: "CEO", source: "https://a.io", confidence: "high" },
+        [k("LinkedIn")]: { value: "https://linkedin.com/in/ann", source: "https://b.io", confidence: "high" },
+        [k("Location")]: { value: "Austin", source: "https://c.io", confidence: "medium" },
+      }, notes: null },
+      costUsd: null,
+    });
+    const run = startRun({ campaignId: id, kind: "enrich", recipeId: recipe.id, rowIds: ["r1"], test: false, autoFill: true, concurrency: 1 });
+    await until(() => run.status === "done");
+
+    const [contact, ...more] = db.contactsOf(id, "r1");
+    expect(more).toHaveLength(0);
+    expect(contact!.cells).toEqual({ [schema.contacts!.primaryKey!]: CHECKED, [k("Role")]: "CEO", [k("LinkedIn")]: "https://linkedin.com/in/ann" });
+    const org = db.getRow(id, "r1")!;
+    expect(org.cells[k("Location")]).toBe("Austin");
+    // The sources column is the prospect's, whoever the finding was for.
+    expect(org.cells[sourcesKey]).toBe("Role: https://a.io\nLinkedIn: https://b.io\nLocation: https://c.io");
+    expect(store.listSuggestions(id, "auto").filter((x) => x.rowId === contact!.id).map((x) => x.key).sort()).toEqual([k("LinkedIn"), k("Role")].sort());
+
+    // The page hears of the contact before the cells that fill it.
+    await until(() => sse.events.some((e) => e.type === "cells"));
+    const types = sse.events.map((e) => e.type);
+    expect(types.indexOf("rows")).toBeGreaterThanOrEqual(0);
+    expect(types.indexOf("rows")).toBeLessThan(types.indexOf("cells"));
+    void sse.close();
+
+    // The next run finds the same contact: a changed value waits for review there.
+    fakeTurn = async () => ({ data: { fields: { [k("Role")]: { value: "Founder", source: null, confidence: "low" } }, notes: null }, costUsd: null });
+    const again = startRun({ campaignId: id, kind: "enrich", recipeId: recipe.id, rowIds: ["r1"], test: false, autoFill: true, concurrency: 1 });
+    await until(() => again.status === "done");
+    fakeTurn = null;
+    expect(db.contactsOf(id, "r1")).toHaveLength(1);
+    expect(store.listSuggestions(id, "pending")).toMatchObject([{ rowId: contact!.id, key: k("Role"), value: "Founder", previous: "CEO" }]);
+  });
+
+  test("a contact's id is not a prospect to research", async () => {
+    const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme" } }]);
+    db.insertRows(id, [{ id: "c1", parentId: "r1", cells: { [k("Name")]: "Ann Lee" } }]);
+    const run = startRun({ campaignId: id, kind: "enrich", recipeId: recipeFor(id).id, rowIds: ["c1"], test: false, autoFill: false, concurrency: 1 });
+    await until(() => run.status === "done");
+    expect(run.rows.c1).toEqual({ state: "skipped", error: "Not a prospect." });
   });
 });

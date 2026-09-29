@@ -4,7 +4,7 @@
  * Mudd never holds an API key. It drives the user's own signed-in agent CLI — Claude Code or
  * Codex — the way motionbuff-native-app does, so enrichment bills the user's plan.
  */
-import type { CampaignSchema, CellValue, Column } from "./types";
+import type { CampaignSchema, CellValue, Column, Row } from "./types";
 
 export type ProviderId = "claude" | "codex";
 export const PROVIDER_IDS: ProviderId[] = ["claude", "codex"];
@@ -195,6 +195,8 @@ export type CampaignEvent =
   | RunRowEvent
   | { type: "suggestions"; suggestions: Suggestion[] }
   | { type: "cells"; edits: { rowId: string; key: string; value: CellValue }[] }
+  /** Rows the server added (a run's first contact for a prospect that had none). */
+  | { type: "rows"; rows: Row[] }
   | { type: "ping" };
 
 /** The runs with one row update applied. The same array when the run isn't among them. */

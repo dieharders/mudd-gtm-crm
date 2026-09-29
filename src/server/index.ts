@@ -126,10 +126,11 @@ async function doImport(req: Request) {
     sourceMtime: csv ? null : s.mtime,
     original: csv ? null : s.buf,
     rows: imp.rows,
+    contacts: imp.contacts,
     templates: imp.templates,
   });
   staged.delete(b.token);
-  return campaign;
+  return { ...campaign, skippedContacts: imp.skippedContacts };
 }
 
 // ---------- Save file ----------
@@ -201,7 +202,7 @@ async function saveFile(id: string, req: Request) {
     }
   }
 
-  const bytes = await exportCampaign(c, db.getOriginal(id), db.listRowsForExport(id), db.listTemplates(id));
+  const bytes = await exportCampaign(c, db.getOriginal(id), db.listRowsForExport(id), db.listTemplates(id), db.listRowsForExport(id, "contacts"));
   if (inPlace) {
     backUp(id, c.sourcePath!);
     writeFileSafely(c.sourcePath!, bytes);
@@ -235,7 +236,7 @@ on("POST", "/api/campaigns", async (req) => {
 });
 on("GET", "/api/campaigns/:id", (_req, [id]) => {
   const campaign = mustCampaign(id!);
-  return json({ campaign, rows: db.listRows(id!), templates: db.listTemplates(id!) });
+  return json({ campaign, rows: db.listRows(id!), contacts: db.listRows(id!, "contacts"), templates: db.listTemplates(id!) });
 });
 on("PATCH", "/api/campaigns/:id", async (req, [id]) => {
   mustCampaign(id!);

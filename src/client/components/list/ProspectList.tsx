@@ -1,18 +1,24 @@
 /**
  * The reading view: each prospect as a card you can read top to bottom, grouped by tier (or
  * status, or any dropdown). Same rows, filters and prospect panel as the grid. A screened-out
- * prospect's card is greyed out, with the reason, and still opens.
+ * prospect's card is greyed out, with the reason, and still opens. Its people are chips, each
+ * opening that contact in the prospect panel.
  */
-import { AlertTriangle, Ban, CalendarClock, ExternalLink, Mail, MessageSquareText, Phone, Users } from "lucide-react";
+import { AlertTriangle, Ban, CalendarClock, ExternalLink, Mail, MessageSquareText, Phone, Star, Users } from "lucide-react";
 import { memo, useMemo, type ReactNode } from "react";
+import { contactSchema } from "../../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Column, type Row } from "../../../shared/types";
-import { contactOf, toNumber } from "../../../shared/values";
+import { contactLabel, orderedContacts, primaryOf, toNumber } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { cueFor } from "../../lib/cues";
 import { formatDate, formatDateTime, relative } from "../../lib/format";
 import { cardLayout, type CardLayout } from "../../lib/listLayout";
-import { toneFor } from "../../lib/stages";
+import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import { display, hrefOf, openLink, StatusPill } from "../grid/cells";
+import { Tile } from "../ui/Logo";
+
+/** Contact chips a card shows before "+N more". */
+const CHIPS = 4;
 
 const split = (v: string) => v.split(/\s*;\s*|\s*\n\s*/).map((s) => s.trim()).filter(Boolean);
 
@@ -23,10 +29,13 @@ interface Props {
   groupBy: string | null;
   openRowId: string | null;
   onOpenRow: (id: string) => void;
+  /** A prospect's contacts: the same array while they are unchanged. */
+  contactsOf: (orgId: string) => Row[];
+  onOpenContact: (id: string) => void;
   pending?: Map<string, Set<string>>;
 }
 
-export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenRow, pending }: Props) {
+export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenRow, contactsOf, onOpenContact, pending }: Props) {
   const layout = useMemo(() => cardLayout(schema), [schema]);
   const groups = useMemo(() => groupRows(rows, schema, stages, groupBy), [rows, schema, stages, groupBy]);
   const groupCol = schema.columns.find((c) => c.key === groupBy);
@@ -48,19 +57,25 @@ export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenR
               </div>
             )}
             <div className="space-y-3">
-              {g.rows.map((row) => (
-                <ProspectCard
-                  key={row.id}
-                  row={row}
-                  schema={schema}
-                  stages={stages}
-                  layout={layout}
-                  active={row.id === openRowId}
-                  onOpenRow={onOpenRow}
-                  hideTier={groupBy === layout.tierKey}
-                  pendingCount={pending?.get(row.id)?.size ?? 0}
-                />
-              ))}
+              {g.rows.map((row) => {
+                const contacts = contactsOf(row.id);
+                const pendingCount = [row, ...contacts].reduce((n, r) => n + (pending?.get(r.id)?.size ?? 0), 0);
+                return (
+                  <ProspectCard
+                    key={row.id}
+                    row={row}
+                    contacts={contacts}
+                    schema={schema}
+                    stages={stages}
+                    layout={layout}
+                    active={row.id === openRowId}
+                    onOpenRow={onOpenRow}
+                    onOpenContact={onOpenContact}
+                    hideTier={groupBy === layout.tierKey}
+                    pendingCount={pendingCount}
+                  />
+                );
+              })}
             </div>
           </section>
         ))}
@@ -95,32 +110,23 @@ function groupRows(rows: Row[], schema: CampaignSchema, stages: string[], key: s
     .map((v, index) => ({ label: v || "Not set", value: v, index, rows: map.get(v)! }));
 }
 
-// Memoized, with a stable onOpenRow: an edit re-renders only the card whose row changed.
-const ProspectCard = memo(function ProspectCard({ row, schema, stages, layout, active, onOpenRow, hideTier, pendingCount }: {
-  row: Row; schema: CampaignSchema; stages: string[]; layout: CardLayout; active: boolean; onOpenRow: (id: string) => void; hideTier: boolean; pendingCount: number;
+// Memoized, with stable callbacks and contact lists: an edit re-renders only the card whose
+// prospect or contacts changed.
+const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages, layout, active, onOpenRow, onOpenContact, hideTier, pendingCount }: {
+  row: Row; contacts: Row[]; schema: CampaignSchema; stages: string[]; layout: CardLayout; active: boolean;
+  onOpenRow: (id: string) => void; onOpenContact: (id: string) => void; hideTier: boolean; pendingCount: number;
 }) {
   const onOpen = () => onOpenRow(row.id);
   const c = row.cells;
   const txt = (k?: string) => (k ? display(c[k]) : "");
-  const person = contactOf(c, schema);
-  const title = (layout.titleKey === schema.nameKey ? person.name : txt(layout.titleKey)) || "Untitled prospect";
-  const contact = schema.nameKey && schema.nameKey !== layout.titleKey ? person.name : "";
-  const role = person.role;
-  const others = txt(layout.otherContactsKey);
+  const title = txt(layout.titleKey) || "Untitled prospect";
   const status = txt(schema.statusKey);
   const tier = txt(layout.tierKey);
   const emails = layout.emailKeys.flatMap((k) => split(txt(k)).map((v) => ({ v, col: schema.columns.find((x) => x.key === k)! })));
   const phones = layout.phoneKeys.flatMap((k) => split(txt(k)));
   const links = layout.links.flatMap((col) => split(txt(col.key)).map((v) => ({ v, col })));
   const paragraphs = layout.paragraphs.map((col) => ({ col, v: txt(col.key) })).filter((p) => p.v);
-  const facts = [
-    ...layout.facts.map((col) => ({ col, v: txt(col.key) })).filter((f) => f.v),
-    // Such as a Title of "Dr." with no name to put it before: shown, never dropped.
-    ...person.rest.flatMap(({ key, value }) => {
-      const col = schema.columns.find((x) => x.key === key);
-      return col ? [{ col, v: value }] : [];
-    }),
-  ];
+  const facts = layout.facts.map((col) => ({ col, v: txt(col.key) })).filter((f) => f.v);
   const meetingAt = txt(schema.meetingAtKey);
   const intro = txt(schema.introKey);
   const screened = isScreened(row, schema);
@@ -132,7 +138,8 @@ const ProspectCard = memo(function ProspectCard({ row, schema, stages, layout, a
       role="button"
       tabIndex={0}
       onClick={onOpen}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
+      // Only the card's own keys: Enter on a chip or link inside opens that, not the prospect.
+      onKeyDown={(e) => e.target === e.currentTarget && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 220px" }}
       className={cn(
         "group grid cursor-pointer gap-5 rounded-2xl border bg-white p-5 transition sm:grid-cols-[124px_1fr]",
@@ -177,16 +184,7 @@ const ProspectCard = memo(function ProspectCard({ row, schema, stages, layout, a
           </div>
         )}
 
-        {(contact || role || others) && (
-          <div className="mt-4 rounded-xl border border-line bg-zinc-50/70 px-3.5 py-3">
-            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-              <Users size={13} className="self-center text-ink-faint" />
-              {contact && <span className="text-sm font-semibold">{contact}</span>}
-              {role && <span className="text-[13px] text-ink-soft">{role}</span>}
-            </div>
-            {others && <p className="mt-1.5 text-xs leading-relaxed text-ink-faint">Also: {others}</p>}
-          </div>
-        )}
+        {contacts.length > 0 && <ContactChips contacts={contacts} schema={schema} onOpenContact={onOpenContact} onMore={onOpen} />}
 
         {(emails.length > 0 || phones.length > 0) && (
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px]">
@@ -236,6 +234,42 @@ const ProspectCard = memo(function ProspectCard({ row, schema, stages, layout, a
     </article>
   );
 });
+
+/** The prospect's people as chips, primary first: each opens that contact. */
+function ContactChips({ contacts, schema, onOpenContact, onMore }: { contacts: Row[]; schema: CampaignSchema; onOpenContact: (id: string) => void; onMore: () => void }) {
+  const cs = contactSchema(schema);
+  const options = cs.columns.find((col) => col.key === cs.typeKey)?.options;
+  const primary = primaryOf(contacts, schema);
+  const list = orderedContacts(contacts, schema);
+  const more = list.length - CHIPS;
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-1.5">
+      <Users size={13} className="mr-0.5 text-ink-faint" aria-label="Contacts" />
+      {list.slice(0, CHIPS).map((p) => {
+        const label = contactLabel(p, schema);
+        const type = cs.typeKey ? display(p.cells[cs.typeKey]).trim() : "";
+        return (
+          <button
+            key={p.id}
+            onClick={(e) => { e.stopPropagation(); onOpenContact(p.id); }}
+            title={`Open ${label}${type ? ` · ${type}` : ""}${p === primary ? " · primary contact" : ""}`}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-line bg-white py-0.5 pr-2 pl-0.5 text-xs transition hover:border-brand-300 hover:bg-brand-50"
+          >
+            <Tile size="sm" className={cn("h-5 w-5 rounded-full text-[10px]", tileFor(p.id))}>{label[0]?.toUpperCase() ?? "?"}</Tile>
+            <span className="truncate font-medium">{label}</span>
+            {p === primary && <Star size={10} className="shrink-0 fill-amber-400 text-amber-400" />}
+            {type && <span className={cn("shrink-0 rounded-full px-1.5 text-[10.5px] font-medium", typeTone(type, options))}>{type}</span>}
+          </button>
+        );
+      })}
+      {more > 0 && (
+        <button onClick={(e) => { e.stopPropagation(); onMore(); }} className="rounded-full px-2 py-0.5 text-xs text-ink-soft hover:bg-zinc-100 hover:text-ink">
+          +{more} more
+        </button>
+      )}
+    </div>
+  );
+}
 
 function Fact({ col, v, cells, schema }: { col: Column; v: string; cells: Record<string, CellValue>; schema: CampaignSchema }) {
   const cue = cueFor(col, cells, schema);

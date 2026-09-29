@@ -1,22 +1,20 @@
 /**
  * How a prospect card is laid out, worked out from the column headers.
  *
- * Every sheet names things differently (Org vs Company, Contact vs Primary contact), so the
- * reading view assigns columns to slots by header — title, rank, tier, type line, contact box,
+ * Every sheet names things differently (Org vs Company, Tier vs Priority), so the reading view
+ * assigns the prospect's columns to slots by header — title, rank, tier, type line,
  * paragraphs, links, small facts — and anything it can't place becomes a fact chip, so no data
- * is ever hidden from the card.
+ * is ever hidden from the card. The prospect's people are its contacts, shown as chips.
  */
 import { norm } from "../../shared/merge";
 import { HOOK_HEADERS } from "../../shared/schema";
 import type { CampaignSchema, Column } from "../../shared/types";
-import { contactColumns } from "../../shared/values";
 
 export interface CardLayout {
   titleKey?: string;
   rankKey?: string;
   tierKey?: string;
   subtitleKey?: string;
-  otherContactsKey?: string;
   emailKeys: string[];
   phoneKeys: string[];
   links: Column[];
@@ -34,19 +32,15 @@ const hookRank = (c: Column) => {
 
 export function cardLayout(schema: CampaignSchema): CardLayout {
   const cols = schema.columns.filter((c) => !c.hidden);
-  const titleKey = schema.companyKey ?? schema.nameKey ?? cols[0]?.key;
+  const titleKey = schema.companyKey ?? cols.find((c) => c.key !== schema.idKey)?.key;
   const rankKey = find(cols, /^(rank|#|no|number|order|priorityrank)$/);
   const tierKey = find(cols, /^(tier|priority|grade|segment|band)$/);
   // The line under the name: a type if the sheet has one, else what the company does.
   const subtitleKey =
     find(cols, /^(type|category|industry|vertical|kind|orgtype|companytype)$/) ??
     find(cols, /^(focus|focuscerts|specialty|specialties|whattheydo|offering|sector)$/);
-  // Role, Title and Honorific go in the contact box, with the name (see contactOf).
-  const contact = contactColumns(schema);
-  const otherContactsKey = find(cols, /^othercontacts?$|^additionalcontacts?$/);
-
   const used = new Set(
-    [titleKey, schema.nameKey, rankKey, tierKey, subtitleKey, contact.roleKey, contact.honorificKey, contact.titleKey, otherContactsKey,
+    [titleKey, rankKey, tierKey, subtitleKey, schema.idKey,
       schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean) as string[],
   );
   const emailKeys: string[] = [];
@@ -65,7 +59,7 @@ export function cardLayout(schema: CampaignSchema): CardLayout {
   }
   // The hook (why this prospect, why now) reads first: the columns intros build on, in their order.
   paragraphs.sort((a, b) => hookRank(a) - hookRank(b));
-  return { titleKey, rankKey, tierKey, subtitleKey, otherContactsKey, emailKeys, phoneKeys, links, paragraphs, facts };
+  return { titleKey, rankKey, tierKey, subtitleKey, emailKeys, phoneKeys, links, paragraphs, facts };
 }
 
 /** Columns worth grouping the reading view by: the tier, the status, and any dropdown. */
