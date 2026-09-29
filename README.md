@@ -2,12 +2,14 @@
 
 A local-first prospect CRM. Import a tracker spreadsheet, work it in the app, export it back with its formatting intact. Nothing leaves your computer.
 
-## Run it
+## Setup
 
 ```powershell
 bun install          # first time only
 bun run start        # opens the Mudd.io window
 ```
+
+## Quickstart
 
 | Command | What it does |
 | --- | --- |

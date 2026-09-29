@@ -67,6 +67,16 @@
     @apply w-full rounded-lg border border-line-strong bg-white px-3 py-2 text-sm text-ink outline-none transition
       placeholder:text-ink-faint focus:border-brand-400 focus:ring-3 focus:ring-brand-100;
   }
+  /* A dropdown in the app's own look, not WebKit's glossy macOS control: flat, with a chevron. */
+  select.field {
+    -webkit-appearance: none;
+    appearance: none;
+    padding-right: 2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8ca3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 14px 14px;
+  }
   .label {
     @apply mb-1 block text-xs font-medium text-ink-soft;
   }
