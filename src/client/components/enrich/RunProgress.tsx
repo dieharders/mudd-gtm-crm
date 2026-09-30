@@ -2,9 +2,9 @@
 import { AlertCircle, Check, CircleDashed, Loader2, Pause, Play, Search, Square } from "lucide-react";
 import { PROVIDERS, type EnrichRun } from "../../../shared/ai";
 import type { CampaignSchema, Row } from "../../../shared/types";
+import { primaryOf, prospectTitle } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
-import { rowTitle } from "../../lib/pipeline";
 import { Button } from "../ui/Button";
 
 const STATUS: Record<EnrichRun["status"], [string, string]> = {
@@ -16,10 +16,11 @@ const STATUS: Record<EnrichRun["status"], [string, string]> = {
   failed: ["Failed", "bg-rose-100 text-rose-700"],
 };
 
-export function RunProgress({ run, rows, schema, onAction, onReview, pending, onOpenRow }: {
+export function RunProgress({ run, rows, schema, contactsOf, onAction, onReview, pending, onOpenRow }: {
   run: EnrichRun;
   rows: Row[];
   schema: CampaignSchema;
+  contactsOf: (orgId: string) => Row[];
   onAction: (a: "pause" | "resume" | "stop") => void;
   onReview: () => void;
   pending: number;
@@ -62,7 +63,7 @@ export function RunProgress({ run, rows, schema, onAction, onReview, pending, on
         {run.rowIds.map((id) => {
           const rs = run.rows[id]!;
           const row = byId.get(id);
-          const t = row ? rowTitle(row, schema).title : "Deleted row";
+          const t = row ? prospectTitle(row, primaryOf(contactsOf(id), schema), schema).title : "Deleted row";
           return (
             <li key={id}>
               <button onClick={() => row && onOpenRow(id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-zinc-50">

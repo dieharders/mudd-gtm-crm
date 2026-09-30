@@ -8,9 +8,10 @@ import { Anchor, Building2, FlaskConical, Globe, Mail, Newspaper, Plus, Rocket, 
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { presetTargets, PRESETS, type Preset } from "../../../shared/presets";
-import { isSourcesColumn, PROVIDERS, type EnrichRun, type Recipe } from "../../../shared/ai";
-import { typeFromHeader } from "../../../shared/schema";
-import { COLUMN_TYPES, isScreened, type CampaignSchema, type ColumnType, type Row } from "../../../shared/types";
+import { isSourcesColumn, PROVIDERS, recipeMode, type EnrichRun, type Recipe } from "../../../shared/ai";
+import { allColumns, columnOf, contactSchema, typeFromHeader } from "../../../shared/schema";
+import { COLUMN_TYPES, isScreened, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../../shared/types";
+import { primaryOf, researchedContacts } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
@@ -23,6 +24,9 @@ import { RunProgress } from "./RunProgress";
 import { fire } from "../../lib/fire";
 
 const NEW = "__new";
+/** A new column among the contact columns: for a person's detail, filled on the primary contact. */
+const NEW_CONTACT = "__newcontact";
+const isNew = (target: string) => target === NEW || target === NEW_CONTACT;
 const PRESET_ICONS = { building: Building2, news: Newspaper, person: UserRound, mail: Mail, hook: Anchor };
 
 interface OutputDraft {
@@ -52,7 +56,7 @@ function draftFromPreset(p: Preset, schema: CampaignSchema, rows: Row[]): Draft 
   const outputs = p.outputs.map((o, i) => {
     const match = targets[i];
     return {
-      target: match?.key ?? NEW,
+      target: match?.key ?? (o.person ? NEW_CONTACT : NEW),
       header: match?.header ?? o.header,
       hint: o.hint,
       type: o.type,
@@ -69,7 +73,7 @@ function draftFromRecipe(r: Recipe, schema: CampaignSchema): Draft {
     inputKeys: r.inputKeys,
     webSearch: r.webSearch,
     outputs: r.outputs.map((o) => {
-      const col = schema.columns.find((c) => c.key === o.key);
+      const col = columnOf(schema, o.key);
       return { target: col ? o.key : NEW, header: col?.header ?? o.header, hint: o.hint ?? "", type: col?.type ?? headerType(o.header) };
     }),
   };
@@ -85,7 +89,10 @@ function toApi(d: Draft): RecipeDraft {
     webSearch: d.webSearch,
     outputs: d.outputs
       .filter((o) => o.header.trim())
-      .map((o) => ({ key: o.target === NEW ? undefined : o.target, header: o.header.trim(), hint: o.hint, type: o.type, options: o.options })),
+      .map((o) => ({
+        key: isNew(o.target) ? undefined : o.target, header: o.header.trim(), hint: o.hint, type: o.type, options: o.options,
+        ...(o.target === NEW_CONTACT ? { contact: true } : {}),
+      })),
   };
 }
 
@@ -218,7 +225,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
               <p className="eyebrow mb-1.5 px-1">Start from a preset</p>
               <div className="space-y-1.5">
                 {PRESETS.map((p) => (
-                  <button key={p.id} onClick={() => pick({ kind: "draft", from: p.id }, draftFromPreset(p, schema, state.rows))}
+                  <button key={p.id} onClick={() => pick({ kind: "draft", from: p.id }, draftFromPreset(p, schema, [...state.rows, ...state.contacts]))}
                     className={cn("flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left transition", sel?.kind === "draft" && sel.from === p.id ? "border-brand-300 bg-brand-50/60" : "border-line bg-white hover:border-brand-200")}>
                     <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", p.tone)}>{(() => { const I = PRESET_ICONS[p.icon]; return <I size={14} />; })()}</span>
                     <span className="min-w-0">
@@ -254,7 +261,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
           {/* main */}
           <div className="min-w-0 flex-1 overflow-y-auto p-5 scroll-thin">
             {sel?.kind === "run" && shownRun ? (
-              <RunProgress run={shownRun} rows={state.rows} schema={schema} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
+              <RunProgress run={shownRun} rows={state.rows} schema={schema} contactsOf={state.contactsOf} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
                 pending={enrich.suggestions.filter((s) => s.runId === shownRun.id).length} onOpenRow={onOpenRow} />
             ) : draft && (sel?.kind === "recipe" || sel?.kind === "draft") ? (
               <div className="space-y-5">
@@ -269,6 +276,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                   draft={draft}
                   schema={schema}
                   rows={state.rows}
+                  contactsOf={state.contactsOf}
                   selectedIds={selectedIds}
                   filteredIds={filteredIds}
                   ready={ready}
@@ -282,7 +290,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                   busy={!!recipe && enrich.activeRuns.some((x) => x.recipeId === recipe.id)}
                 />
                 {shownRun && (
-                  <RunProgress run={shownRun} rows={state.rows} schema={schema} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
+                  <RunProgress run={shownRun} rows={state.rows} schema={schema} contactsOf={state.contactsOf} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
                     pending={enrich.suggestions.filter((s) => s.runId === shownRun.id).length} onOpenRow={onOpenRow} />
                 )}
               </div>
@@ -301,8 +309,11 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
 }
 
 function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: CampaignSchema; onChange: (p: Partial<Draft>) => void }) {
-  const skipInputs = new Set([schema.introKey, schema.reasonKey, schema.screenedKey]);
-  const inputCols = schema.columns.filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
+  const skipInputs = new Set([schema.introKey, schema.reasonKey, schema.screenedKey, schema.idKey, schema.contacts?.primaryKey]);
+  // The primary contact's columns go along as context too.
+  const inputCols = allColumns(schema).filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
+  const orgTargets = schema.columns.filter((c) => !isSourcesColumn(c) && c.key !== schema.idKey);
+  const contactTargets = contactSchema(schema).columns.filter((c) => c.key !== schema.contacts?.primaryKey);
   const [showInputs, setShowInputs] = useState(draft.inputKeys.length > 0);
   const setOutput = (i: number, patch: Partial<OutputDraft>) => onChange({ outputs: draft.outputs.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
 
@@ -337,13 +348,21 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
               <div className="space-y-1.5">
                 <select className="field h-8 py-0 text-xs" value={o.target}
                   onChange={(e) => {
-                    const col = schema.columns.find((c) => c.key === e.target.value);
-                    setOutput(i, col ? { target: col.key, header: col.header, type: col.type } : { target: NEW, header: "", type: "text" });
+                    const col = columnOf(schema, e.target.value);
+                    setOutput(i, col ? { target: col.key, header: col.header, type: col.type } : { target: e.target.value === NEW_CONTACT ? NEW_CONTACT : NEW, header: "", type: "text" });
                   }}>
                   <option value={NEW}>+ New column</option>
-                  {schema.columns.filter((c) => !isSourcesColumn(c)).map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+                  <option value={NEW_CONTACT}>+ New contact column</option>
+                  <optgroup label="Prospect">
+                    {orgTargets.map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+                  </optgroup>
+                  {contactTargets.length > 0 && (
+                    <optgroup label="Primary contact">
+                      {contactTargets.map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+                    </optgroup>
+                  )}
                 </select>
-                {o.target === NEW && (
+                {isNew(o.target) && (
                   <div className="flex gap-1">
                     <input className="field h-8 py-0 text-xs" placeholder="Column name" value={o.header}
                       onChange={(e) => setOutput(i, { header: e.target.value, ...(o.type === headerType(o.header) ? { type: headerType(e.target.value) } : {}) })} />
@@ -390,10 +409,11 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
   );
 }
 
-function RunBox({ draft, schema, rows, selectedIds, filteredIds, ready, onSetup, onRun, busy }: {
+function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, ready, onSetup, onRun, busy }: {
   draft: Draft;
   schema: CampaignSchema;
   rows: Row[];
+  contactsOf: (orgId: string) => Row[];
   selectedIds: string[];
   filteredIds: string[];
   ready: boolean;
@@ -402,13 +422,39 @@ function RunBox({ draft, schema, rows, selectedIds, filteredIds, ready, onSetup,
   busy: boolean;
 }) {
   // Screened-out prospects are left out of every scope: the run would only skip them.
-  const prospects = rows.filter((r) => !isScreened(r, schema));
+  const prospects = useMemo(() => rows.filter((r) => !isScreened(r, schema)), [rows, schema]);
   const inPlay = new Set(prospects.map((r) => r.id));
   const selected = selectedIds.filter((id) => inPlay.has(id));
   const filtered = filteredIds.filter((id) => inPlay.has(id));
-  const targets = draft.outputs.filter((o) => o.target !== NEW).map((o) => o.target);
-  const hasNew = draft.outputs.some((o) => o.target === NEW && o.header.trim());
-  const missing = prospects.filter((r) => hasNew || targets.some((k) => r.cells[k] === undefined || r.cells[k] === null || r.cells[k] === ""));
+  // The outputs as Run saves them (an unnamed new column is dropped), so the mode is the run's.
+  const outputs = toApi(draft).outputs;
+  const targetList = outputs.flatMap((o) => (o.key ? [o.key] : [])).join("\u0000");
+  const hasNew = outputs.some((o) => !o.key);
+  // Filling in people's details: one turn per person the run researches (see researchedContacts).
+  const perContact = recipeMode(outputs, schema) === "contacts";
+  // Worked out once per change to the rows or the outputs, not on every keystroke in the recipe.
+  const people = useMemo(
+    () => (perContact ? new Map(prospects.map((r) => [r.id, researchedContacts(contactsOf(r.id), schema)])) : null),
+    [perContact, prospects, contactsOf, schema],
+  );
+  const missing = useMemo(() => {
+    const targets = targetList ? targetList.split("\u0000") : [];
+    const contactKeys = new Set(contactSchema(schema).columns.map((c) => c.key));
+    const blank = (v: CellValue | undefined) => v === undefined || v === null || v === "";
+    const ofContacts = targets.some((k) => contactKeys.has(k));
+    return prospects.filter((r) => {
+      if (people) {
+        const them = people.get(r.id) ?? [];
+        if (!them.length) return false;
+        if (hasNew) return true;
+        return targets.some((k) => (contactKeys.has(k) ? them.some((c) => blank(c.cells[k])) : blank(r.cells[k])));
+      }
+      if (hasNew) return true;
+      // A contact column is missing when the prospect's primary contact lacks it (or it has none).
+      const primary = ofContacts ? primaryOf(contactsOf(r.id), schema) : undefined;
+      return targets.some((k) => blank(contactKeys.has(k) ? primary?.cells[k] : r.cells[k]));
+    });
+  }, [people, prospects, hasNew, targetList, schema, contactsOf]);
   const scopes = [
     ...(selected.length ? [{ id: "selected", label: `Selected rows`, ids: selected }] : []),
     { id: "missing", label: "Prospects missing these fields", ids: missing.map((r) => r.id) },
@@ -421,10 +467,15 @@ function RunBox({ draft, schema, rows, selectedIds, filteredIds, ready, onSetup,
   const [starting, setStarting] = useState(false);
   const chosen = scopes.find((s) => s.id === scope) ?? scopes[0]!;
   const n = chosen.ids.length;
-  const minutes = Math.max(1, Math.round((n * 25) / 60 / concurrency));
+  const researched = people ? chosen.ids.filter((id) => people.get(id)?.length) : chosen.ids;
+  const withPeople = researched.length;
+  const turns = people ? chosen.ids.reduce((t, id) => t + (people.get(id)?.length ?? 0), 0) : n;
+  // A test is of prospects the run researches, not of ones it would skip for having no one.
+  const testIds = researched.slice(0, 3);
+  const minutes = Math.max(1, Math.round((turns * 25) / 60 / concurrency));
   const go = async (test: boolean) => {
     setStarting(true);
-    await onRun(test ? chosen.ids.slice(0, 3) : chosen.ids, { test, autoFill, concurrency });
+    await onRun(test ? testIds : chosen.ids, { test, autoFill, concurrency });
     setStarting(false);
   };
 
@@ -449,14 +500,16 @@ function RunBox({ draft, schema, rows, selectedIds, filteredIds, ready, onSetup,
         <span>Fill empty cells automatically <span className="block text-xs text-ink-faint">Findings for cells that already have a value always wait for your review.</span></span>
       </label>
       <p className="mt-3 text-xs text-ink-soft">
-        {n} research turn{n === 1 ? "" : "s"} · usually 10–40 seconds each · about {minutes} min for all at {concurrency} at a time. Counts toward your plan's usage.
+        {turns} research turn{turns === 1 ? "" : "s"}
+        {perContact && <> (one per contact{withPeople < n ? `; ${n - withPeople} prospect${n - withPeople === 1 ? " has" : "s have"} none, and ${n - withPeople === 1 ? "is" : "are"} skipped` : ""})</>}
+        {" "}· usually 10–40 seconds each · about {minutes} min for all at {concurrency} at a time. Counts toward your plan's usage.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {!ready ? (
           <Button variant="primary" onClick={onSetup}>Set up AI first</Button>
         ) : (
           <>
-            <Button onClick={() => fire(go(true))} disabled={!n || busy || starting}><FlaskConical size={14} /> Test on {Math.min(3, n)} row{Math.min(3, n) === 1 ? "" : "s"}</Button>
+            <Button onClick={() => fire(go(true))} disabled={!testIds.length || busy || starting}><FlaskConical size={14} /> Test on {testIds.length} row{testIds.length === 1 ? "" : "s"}</Button>
             <Button variant="primary" onClick={() => fire(go(false))} disabled={!n || busy || starting}><Rocket size={14} /> Run on {n} row{n === 1 ? "" : "s"}</Button>
           </>
         )}

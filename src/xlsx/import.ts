@@ -5,12 +5,18 @@
  * reads the chosen Prospects tab into one schema and one list of rows. Every other tab is left
  * alone (it reaches the saved file untouched); a Mudd "Intro templates" tab is read back as the
  * campaign's templates. A tab that looks like an old Screened-out list is never offered.
+ *
+ * A "Contacts" tab holds the prospects' people, one per row. Its Prospect ID column names each
+ * person's prospect by the ID in the Prospects tab (P-001), so a renamed company keeps its
+ * people; a row with no ID is matched by its Company instead. Rows that match no prospect in the
+ * chosen tab are skipped, and stay in the file as they are; their IDs are never given to a new
+ * prospect, which would take those people.
  */
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { norm } from "../shared/merge";
-import { ensureAppColumns, looksLikeScreenedTab, makeKey } from "../shared/schema";
-import type { CampaignSchema, CellValue, Column, InspectSheet, Row, SheetMeta, SheetRole } from "../shared/types";
+import { COMPANY_HEADERS, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds } from "../shared/schema";
+import { ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole } from "../shared/types";
 import { colLetter, readCellValue } from "./cells";
 import { charsToPx, detectType, parseListFormula, type ColumnSample } from "./layouts";
 import {
@@ -325,9 +331,26 @@ const templatesName = (name: string) => /^introtemplates\d*$/.test(norm(name));
 /** A Mudd "Intro templates" tab: that name and a Template column. */
 const isTemplatesTab = (name: string, t: SheetTable) => templatesName(name) && templateColumns(t) !== null;
 
-export function guessRoles(sheets: Omit<InspectSheet, "guess">[], templatesAt: number): SheetRole[] {
+/** "Contacts", in any case, or "Contacts 2". */
+const contactsName = (name: string) => /^contacts\d*$/.test(norm(name));
+
+/** The link columns of a Contacts tab: the prospect's ID, and its company. -1 when missing. */
+function linkColumns(t: SheetTable): { id: number; company: number } {
+  const find = (names: string[]) => names.map((n) => t.headers.findIndex((h) => norm(h) === n)).find((i) => i >= 0) ?? -1;
+  return { id: find([PROSPECT_ID_HEADER]), company: find(COMPANY_HEADERS) };
+}
+
+/** A Contacts tab: that name, a column linking each person to a prospect, and no formulas. */
+function isContactsTab(name: string, t: SheetTable): boolean {
+  const link = linkColumns(t);
+  return contactsName(name) && !t.hasFormulas && (link.id >= 0 || link.company >= 0);
+}
+
+export function guessRoles(sheets: Omit<InspectSheet, "guess">[], templatesAt: number, contactsAt = -1): SheetRole[] {
   const roles: SheetRole[] = sheets.map(() => "passthrough");
   if (templatesAt >= 0) roles[templatesAt] = "templates";
+  // Never the default Prospects tab, though it can still be picked as one.
+  if (contactsAt >= 0) roles[contactsAt] = "contacts";
   const open = (s: Omit<InspectSheet, "guess">, i: number) => roles[i] === "passthrough" && !s.hasFormulas && !looksLikeScreenedTab(s.name);
   let prospects = sheets.findIndex((s, i) => open(s, i) && s.hasStatus);
   if (prospects < 0) prospects = sheets.findIndex((s, i) => open(s, i) && s.cols > 1);
@@ -350,7 +373,7 @@ export function inspectWorkbook(book: LoadedBook): { sheets: InspectSheet[]; tem
     footnotes: t.footnotes,
   }));
   const tplAt = tables.findIndex(({ name, t }) => isTemplatesTab(name, t));
-  const roles = guessRoles(base, tplAt);
+  const roles = guessRoles(base, tplAt, tables.findIndex(({ name, t }) => isContactsTab(name, t)));
   const tpl = tables[tplAt];
   return {
     sheets: base.map((s, i) => ({ ...s, guess: roles[i]! })),
@@ -366,7 +389,32 @@ export interface ImportedCampaign {
   schema: CampaignSchema;
   sheets: SheetMeta[];
   rows: ImportedRow[];
+  /** Each with the index in `rows` of its prospect. */
+  contacts: (ImportedRow & { parent: number })[];
+  /** Contacts-tab rows that match no prospect in the chosen tab: left in the file, not imported. */
+  skippedContacts: number;
+  /**
+   * Contacts linked by Prospect ID whose Company names another company than that prospect's:
+   * the ID wins, but rows moved in the Prospects tab without their IDs would do this.
+   */
+  mismatchedContacts: number;
   templates: { name: string; body: string }[];
+}
+
+/** An ID or company as it is matched: case, spacing and punctuation ignored ("Acme, Inc." is Acme Inc). */
+const linkKey = (v: CellValue | undefined) => (v === null || v === undefined ? "" : norm(String(v)));
+
+/** A column read from a sheet: its type from its values, its width from the sheet's. */
+function sheetColumn(ws: ExcelJS.Worksheet, s: ColumnSample, index: number, taken: Set<string>): Column {
+  const d = detectType(s);
+  return {
+    key: makeKey(s.header, taken),
+    header: s.header,
+    ...d,
+    width: charsToPx(ws.getColumn(index + 1).width, d.type),
+    origin: "sheet",
+    importedHeader: s.header,
+  };
 }
 
 export function importWorkbook(book: LoadedBook, choice: { prospects: string }): ImportedCampaign {
@@ -381,30 +429,119 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
   const schema: CampaignSchema = { columns: [] };
   const colMap: Record<string, number> = {};
   t.samples.forEach((s, i) => {
-    const d = detectType(s);
-    const col: Column = {
-      key: makeKey(s.header, taken),
-      header: s.header,
-      ...d,
-      width: charsToPx(ws.getColumn(i + 1).width, d.type),
-      origin: "sheet",
-      importedHeader: s.header,
-    };
+    const col = sheetColumn(ws, s, i, taken);
+    // Staff, Headcount, Size…: the first is "# Employees" (and export writes that header back).
+    if (isEmployeesHeader(col.header) && !schema.columns.some((c) => c.header === EMPLOYEES_HEADER)) col.header = EMPLOYEES_HEADER;
     schema.columns.push(col);
     colMap[col.key] = i + 1;
   });
-  ensureAppColumns(schema);
 
-  const rows: ImportedRow[] = t.rows.map((r, i) => {
+  // The people: the first Contacts tab, other than the one chosen, that is one (inspectWorkbook's
+  // rule too, so the import dialog names the same tab), its columns keyed apart from the
+  // prospect's (one namespace). Its two link columns are not contact columns.
+  let contactsTab: { ws: ExcelJS.Worksheet; t: SheetTable; name: string; link: ReturnType<typeof linkColumns> } | null = null;
+  for (const w of book.wb.worksheets) {
+    const name = book.realName(w);
+    if (w === ws || !contactsName(name)) continue;
+    const ct = readSheet(w, book);
+    if (!isContactsTab(name, ct)) continue;
+    contactsTab = { ws: w, t: ct, name, link: linkColumns(ct) };
+    break;
+  }
+  const contactMap: Record<string, number> = {};
+  if (contactsTab) {
+    const { link } = contactsTab;
+    if (link.id >= 0) contactMap[ORG_ID_KEY] = link.id + 1;
+    if (link.company >= 0) contactMap[ORG_KEY] = link.company + 1;
+    const columns: Column[] = [];
+    contactsTab.t.samples.forEach((s, i) => {
+      if (i === link.id || i === link.company) return;
+      const col = sheetColumn(contactsTab.ws, s, i, taken);
+      columns.push(col);
+      contactMap[col.key] = i + 1;
+    });
+    schema.contacts = { columns };
+  }
+  ensureAppColumns(schema);
+  // The ID is for the sheet's links, not for reading: shown in the prospect panel, not the grid.
+  const idCol = schema.columns.find((c) => c.key === schema.idKey);
+  if (idCol) idCol.hidden = true;
+
+  const read = (values: ExcelJS.CellValue[], map: Record<string, number>, cols: Column[]) => {
     const cells: Record<string, CellValue> = {};
-    for (const col of schema.columns) {
-      const idx = colMap[col.key];
+    for (const col of cols) {
+      const idx = map[col.key];
       if (!idx) continue;
-      const v = readCellValue(r.values[idx - 1] ?? null, col.type, { preferLink: col.type === "url" || col.type === "email" });
+      const v = readCellValue(values[idx - 1] ?? null, col.type, { preferLink: col.type === "url" || col.type === "email" });
       if (v !== null) cells[col.key] = v;
     }
+    return cells;
+  };
+  const rows: ImportedRow[] = t.rows.map((r, i) => {
+    const cells = read(r.values, colMap, schema.columns);
     return { position: i, cells, orig: { ...cells }, sourceSheet: choice.prospects, sourceRow: r.r };
   });
+
+  // The Contacts tab's rows with their links, read before any ID is given out: an ID a person
+  // there points at is never given to another prospect, even when theirs is not in this tab.
+  const people = (contactsTab?.t.rows ?? []).map((r) => {
+    const { link } = contactsTab!;
+    return {
+      r,
+      id: link.id >= 0 ? readCellValue(r.values[link.id] ?? null) : null,
+      company: link.company >= 0 ? readCellValue(r.values[link.company] ?? null) : null,
+    };
+  });
+
+  // Every prospect has an ID, and no two the same: a missing or repeated one gets the next free
+  // P-###, which the next save writes into the sheet. The first of two equal IDs keeps it.
+  const idKey = schema.idKey!;
+  const byId = new Map<string, number>();
+  const nextId = prospectIds([
+    ...rows.map((r) => String(r.cells[idKey] ?? "")),
+    ...people.map((p) => String(p.id ?? "")),
+  ]);
+  rows.forEach((r, i) => {
+    const k = linkKey(r.cells[idKey]);
+    if (k && !byId.has(k)) {
+      byId.set(k, i);
+      return;
+    }
+    const id = nextId();
+    r.cells[idKey] = id;
+    byId.set(linkKey(id), i);
+  });
+  const companyOf = (i: number) => linkKey(rows[i]!.cells[schema.companyKey!]);
+  const byCompany = new Map<string, number>();
+  if (schema.companyKey) {
+    rows.forEach((_, i) => {
+      const k = companyOf(i);
+      if (k && !byCompany.has(k)) byCompany.set(k, i);
+    });
+  }
+
+  const contacts: ImportedCampaign["contacts"] = [];
+  let skippedContacts = 0;
+  let mismatchedContacts = 0;
+  const reserved = new Set<string>();
+  const linkedRows: number[] = [];
+  for (const { r, id, company } of people) {
+    const cells = read(r.values, contactMap, schema.contacts!.columns);
+    // The ID when there is one: a company name can be stale, or shared.
+    const parent = linkKey(id) ? byId.get(linkKey(id)) : byCompany.get(linkKey(company));
+    if (parent === undefined) {
+      skippedContacts++;
+      if (linkKey(id)) reserved.add(String(id).trim());
+      continue;
+    }
+    if (linkKey(id) && schema.companyKey && linkKey(company) && companyOf(parent) && linkKey(company) !== companyOf(parent)) mismatchedContacts++;
+    const orig: Record<string, CellValue> = { ...cells };
+    if (id !== null) orig[ORG_ID_KEY] = id;
+    if (company !== null) orig[ORG_KEY] = company;
+    contacts.push({ parent, position: contacts.length, cells, orig, sourceSheet: contactsTab!.name, sourceRow: r.r });
+    linkedRows.push(r.r);
+  }
+  if (reserved.size) schema.reservedIds = [...reserved];
 
   const sheets: SheetMeta[] = book.wb.worksheets.map((w) => {
     const name = book.realName(w);
@@ -414,13 +551,18 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
         dataRows: t.rows.map((r) => r.r),
       };
     }
+    if (contactsTab && w === contactsTab.ws) {
+      // Only the rows imported: a deleted contact's row is blanked, the skipped ones never touched.
+      const { lastDataRow, lastCol, trailer } = contactsTab.t;
+      return { name, role: "contacts", colMap: contactMap, lastDataRow, lastCol, trailer, dataRows: linkedRows };
+    }
     return { name, role: "passthrough", colMap: {}, lastDataRow: 0, lastCol: 0 };
   });
 
   let templates: ImportedCampaign["templates"] = [];
   for (const w of book.wb.worksheets) {
     const name = book.realName(w);
-    if (w === ws || !templatesName(name)) continue;
+    if (w === ws || w === contactsTab?.ws || !templatesName(name)) continue;
     const tt = readSheet(w, book, { footnotes: false });
     const cols = templateColumns(tt);
     if (!cols) continue;
@@ -432,5 +574,5 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
     meta.lastCol = tt.lastCol;
     break;
   }
-  return { schema, sheets, rows, templates };
+  return { schema, sheets, rows, contacts, skippedContacts, mismatchedContacts, templates };
 }

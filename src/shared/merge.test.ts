@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { firstNameOf, mergeTemplate } from "./merge";
+import { genericSchema, prospectSchema } from "./schema";
 import type { CampaignSchema } from "./types";
 
 const schema: CampaignSchema = {
@@ -27,6 +28,15 @@ describe("mergeTemplate", () => {
     const r = mergeTemplate("Hi {{Frist name}}", schema, { contact: "Ann" });
     expect(r.text).toBe("Hi {{Frist name}}");
     expect(r.unknown).toEqual(["Frist name"]);
+  });
+  test("a channel (a main line, an inbox) is greeted by the fallback, not by name", () => {
+    const view = prospectSchema(genericSchema());
+    const main = { company: "Zeus", name: "Main line", contact_type: "Channel" };
+    expect(mergeTemplate("Hi {{First name|there}}, {{Company}} team", view, main).text).toBe("Hi there, Zeus team");
+    expect(mergeTemplate("Hi {{First name|there}}", view, { ...main, name: "Ann Lee", contact_type: "Economic Buyer" }).text).toBe("Hi Ann");
+    // Nor by its full name, under whatever the name column is called.
+    expect(mergeTemplate("Dear {{Name|team}},", view, main).text).toBe("Dear team,");
+    expect(mergeTemplate("Dear {{Name|team}},", view, { ...main, name: "Ann Lee", contact_type: "Economic Buyer" }).text).toBe("Dear Ann Lee,");
   });
   test("first name from multi-person cells", () => {
     expect(firstNameOf("Blair Tighe; Bob Nunnally; Jan Norris")).toBe("Blair");

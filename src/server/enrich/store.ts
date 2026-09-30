@@ -29,8 +29,11 @@ export function deleteRecipe(id: string): void {
 
 // ---------- runs ----------
 
+/** Store a run; not once its campaign is removed (a run stopping just after has nowhere to go). */
 export function saveRun(run: EnrichRun): void {
-  getDb().query("INSERT OR REPLACE INTO runs (id, campaign_id, json, started_at) VALUES (?, ?, ?, ?)").run(run.id, run.campaignId, JSON.stringify(run), run.startedAt);
+  getDb()
+    .query("INSERT OR REPLACE INTO runs (id, campaign_id, json, started_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM campaigns WHERE id = ?)")
+    .run(run.id, run.campaignId, JSON.stringify(run), run.startedAt, run.campaignId);
 }
 
 export function getRun(id: string): EnrichRun | null {
@@ -88,6 +91,17 @@ export function sourceOfValue(campaignId: string, rowId: string, key: string, va
     if (sameValue(s.value, value) && s.sources[0]) return s.sources[0].url;
   }
   return null;
+}
+
+/** The values waiting for review in one column of these rows: row id → the newest one. */
+export function pendingValues(campaignId: string, rowIds: string[], key: string): Map<string, CellValue> {
+  const out = new Map<string, CellValue>();
+  if (!rowIds.length) return out;
+  const rows = getDb()
+    .query("SELECT row_id, json FROM suggestions WHERE campaign_id = ? AND status = 'pending' AND row_id IN (SELECT value FROM json_each(?)) AND json_extract(json, '$.key') = ? ORDER BY created_at")
+    .all(campaignId, JSON.stringify(rowIds), key) as { row_id: string; json: string }[];
+  for (const r of rows) out.set(r.row_id, (JSON.parse(r.json) as Suggestion).value);
+  return out;
 }
 
 /** A newer suggestion for the same cell replaces an older one still waiting for review. */

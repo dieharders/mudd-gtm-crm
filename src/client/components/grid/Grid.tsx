@@ -1,5 +1,5 @@
 /**
- * The spreadsheet view: virtualized rows, the first columns pinned (the sheet freezes at C2),
+ * The spreadsheet view: virtualized rows, the first columns pinned (through the company's),
  * resizable columns, keyboard navigation and in-place editing.
  *
  * Keyboard, while the grid has focus:
@@ -44,6 +44,10 @@ interface Props {
   readOnly?: boolean;
   /** Rows shown greyed out and read-only (all but the schema's Screened out box). */
   isLocked?: (row: Row) => boolean;
+  /** Columns no row can change here: the prospect's ID, a contact's (derived) company. */
+  readOnlyKeys?: Set<string>;
+  /** What the row's open button says ("Open prospect"). */
+  openLabel?: string;
   /** Cells with an AI suggestion waiting: row id → column keys. */
   pending?: Map<string, Set<string>>;
 }
@@ -123,7 +127,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
 
   /** A cell that can't be changed: the grid is read-only, or its row is locked (bar the Screened out box). */
   const isFixed = (row: Row, col: Column) =>
-    !!p.readOnly || (!!p.isLocked?.(row) && col.key !== p.schema.screenedKey);
+    !!p.readOnly || !!p.readOnlyKeys?.has(col.key) || (!!p.isLocked?.(row) && col.key !== p.schema.screenedKey);
 
   const commit = (r: number, c: number, value: CellValue, dir?: Move) => {
     const row = p.rows[r];
@@ -143,7 +147,25 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
     else setEditing({ r, c, initial });
   };
 
+  /** Make a row the one the keys act on (Space opens it), from its checkbox or open button. */
+  const pickRow = (r: number) => setActive({ r, c: active?.c ?? 0 });
+
+  /**
+   * A click anywhere in the grid leaves the keys with the grid: no control in it (a sort header,
+   * select-all, a row's box or open button, a cell's link) keeps focus from a click, which in
+   * Chromium would take the arrows, Enter and Space for itself. The cell being edited keeps its
+   * clicks, and so does the scrollbar.
+   */
+  const onMouseDownCapture = (e: React.MouseEvent) => {
+    if (editing || e.target === e.currentTarget) return;
+    e.preventDefault();
+    scroller.current?.focus({ preventScroll: true });
+  };
+
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // A control reached with Tab keeps its own keys (Space ticks a box); a click never leaves
+    // one focused (onMouseDownCapture).
+    if (e.target !== e.currentTarget) return;
     if (editing || !active) return;
     const row = p.rows[active.r];
     const col = p.columns[active.c];
@@ -253,6 +275,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
     <div
       ref={scroller}
       tabIndex={0}
+      onMouseDownCapture={onMouseDownCapture}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
       className="relative h-full overflow-auto bg-white outline-none scroll-thin"
@@ -306,7 +329,9 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
             const isSel = p.selected.has(row.id);
             const isOpen = p.openRowId === row.id;
             const locked = !!p.isLocked?.(row);
-            const rowBg = isOpen ? "bg-brand-50" : isSel ? "bg-brand-50/60"
+            // Every one opaque: the pinned cells wear it too, and the cells scrolling under them
+            // would show through a see-through tint. A selected row's is brand-50 mixed into white.
+            const rowBg = isOpen ? "bg-brand-50" : isSel ? "bg-[color-mix(in_oklab,var(--color-brand-50)_60%,white)]"
               : locked ? "bg-zinc-50 group-hover/row:bg-zinc-100" : "bg-white group-hover/row:bg-zinc-50";
             return (
               <div
@@ -321,11 +346,16 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                     className="h-3.5 w-3.5 accent-brand-600"
                     checked={isSel}
                     onChange={() => toggleOne(row.id)}
+                    // A click (not Space on the box) also picks the row, so Space then opens it.
+                    onClick={(e) => e.detail > 0 && pickRow(vr.index)}
                   />
                   <button
                     className={cn("rounded-sm p-1 text-ink-faint hover:bg-brand-100 hover:text-brand-700", !isOpen && "opacity-0 group-hover/row:opacity-100")}
-                    onClick={() => p.onOpenRow(row.id)}
-                    title="Open prospect (Space)"
+                    onClick={() => {
+                      pickRow(vr.index);
+                      p.onOpenRow(row.id);
+                    }}
+                    title={`${p.openLabel ?? "Open prospect"} (Space)`}
                   >
                     <Maximize2 size={13} />
                   </button>
@@ -375,10 +405,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                               aria-checked={isChecked(row.cells[col.key])}
                               aria-label={col.header}
                               className="-ml-0.5 rounded-sm p-0.5 hover:bg-zinc-200/70"
-                              onClick={() => {
-                                startEdit(vr.index, ci);
-                                scroller.current?.focus({ preventScroll: true });
-                              }}
+                              onClick={() => startEdit(vr.index, ci)}
                               onDoubleClick={(e) => e.stopPropagation()}
                             >
                               {view}

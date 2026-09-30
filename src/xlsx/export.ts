@@ -15,13 +15,18 @@
  *   - columns the sheet lacks are appended after its last used column
  *   - dropdown lists follow the options set in the app
  *
+ * The Contacts tab is patched the same way, a contact to the row it came from; it gets each
+ * person's Prospect ID and Company from their prospect, so a renamed company is renamed there
+ * too. A workbook without one gets one added, once it has contacts.
+ *
  * A campaign with no workbook of its own (a CSV, or created in Mudd) gets a new one in the
  * base-tracker look instead, built with ExcelJS.
  */
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
-import type { Campaign, CampaignSchema, CellValue, Column, Row, SheetMeta, Template } from "../shared/types";
-import { parseFlag, sameValue } from "../shared/values";
+import { contactSchema, orgColumn } from "../shared/schema";
+import { ORG_ID_KEY, ORG_KEY, type Campaign, type CampaignSchema, type CellValue, type Column, type Row, type SheetMeta, type Template } from "../shared/types";
+import { orderedContacts, parseFlag, sameValue } from "../shared/values";
 import { colLetter, hrefFor, numFmtFor, parseAppDate, toExcelValue, toNumber } from "./cells";
 import { TEMPLATES_SHEET } from "./import";
 import {
@@ -38,16 +43,62 @@ import {
 /** A row to export, with its cells as imported (`orig`) when it came from the sheet. */
 export type ExportRow = Row & { orig?: Record<string, CellValue> | null };
 
+/** The Contacts tab's name, when Mudd adds it. */
+export const CONTACTS_SHEET = "Contacts";
+
+/**
+ * `rows` are the prospects, `contacts` their people. Contacts are required: a workbook's
+ * Contacts tab written without them would lose every person on it.
+ */
 export async function exportCampaign(
   campaign: Campaign,
   original: Uint8Array | null,
   rows: ExportRow[],
   templates: Template[],
+  contacts: ExportRow[],
 ): Promise<Uint8Array> {
   const ordered = [...rows].sort((a, b) => a.position - b.position);
   const tpls = [...templates].sort((a, b) => a.position - b.position);
-  if (!original) return generatedWorkbook(campaign.schema, ordered, tpls);
-  return patchWorkbook(campaign, original, ordered, tpls);
+  const people = contactExportRows(campaign.schema, ordered, contacts);
+  if (!original) return generatedWorkbook(campaign.schema, ordered, tpls, people);
+  return patchWorkbook(campaign, original, ordered, tpls, people);
+}
+
+/**
+ * The Contacts tab's columns: the prospect's ID (what the tab links by) and its company (to read
+ * by, when the prospects have a Company column), both from the prospect, then the contact's own.
+ * A Company column the tab has that isn't among these is left as it is.
+ */
+function contactsTabSchema(schema: CampaignSchema): CampaignSchema {
+  const id = schema.columns.find((c) => c.key === schema.idKey);
+  const org = orgColumn(schema);
+  return {
+    columns: [
+      { key: ORG_ID_KEY, header: "Prospect ID", type: "text", width: id?.width ?? 90 },
+      ...(org ? [org] : []),
+      ...contactSchema(schema).columns,
+    ],
+  };
+}
+
+/** Contacts as the tab lists them: by prospect, primary first, each with its prospect's ID and company. */
+function contactExportRows(schema: CampaignSchema, orgs: ExportRow[], contacts: ExportRow[]): ExportRow[] {
+  const byOrg = new Map<string, ExportRow[]>();
+  for (const c of [...contacts].sort((a, b) => a.position - b.position)) {
+    if (!c.parentId) continue;
+    const list = byOrg.get(c.parentId);
+    if (list) list.push(c);
+    else byOrg.set(c.parentId, [c]);
+  }
+  const out: ExportRow[] = [];
+  for (const org of orgs) {
+    const id = schema.idKey ? org.cells[schema.idKey] ?? null : null;
+    const company = schema.companyKey ? org.cells[schema.companyKey] ?? null : null;
+    for (const c of orderedContacts(byOrg.get(org.id) ?? [], schema)) {
+      out.push({ ...c, cells: { ...c.cells, [ORG_ID_KEY]: id, [ORG_KEY]: company } });
+    }
+  }
+  return out;
 }
 
 // ---------- patching the imported workbook ----------
@@ -62,7 +113,7 @@ function relsPrefix(xml: string, root: string): { xml: string; prefix: string } 
   return { xml: xml.replace(open[0], setAttr(open[0], "xmlns:r", RELS_NS)), prefix: "r" };
 }
 
-async function patchWorkbook(campaign: Campaign, original: Uint8Array, rows: ExportRow[], templates: Template[]): Promise<Uint8Array> {
+async function patchWorkbook(campaign: Campaign, original: Uint8Array, rows: ExportRow[], templates: Template[], contacts: ExportRow[]): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(original);
   const parts = await sheetParts(zip);
   const wbPath = await workbookPath(zip);
@@ -78,8 +129,9 @@ async function patchWorkbook(campaign: Campaign, original: Uint8Array, rows: Exp
   const part = parts.find((p) => p.name === meta.name);
   if (!part) throw new Error(`The tab "${meta.name}" is missing from the stored workbook.`);
 
-  const res = await patchProspects(zip, part, meta, campaign.schema, rows, book, date1904);
+  const res = await patchSheet(zip, part, meta, campaign.schema, rows, book, date1904);
   if (res.filter) wbXml = setFilterName(wbXml, part, res.filter);
+  wbXml = await writeContactsTab(zip, wbPath, wbXml, parts, campaign, contacts, book, date1904, res.headerStyle);
   wbXml = await writeTemplatesTab(zip, wbPath, wbXml, parts, campaign.sheets, templates, book, res.headerStyle);
   wbXml = forceRecalc(wbXml);
   zip.file(wbPath, wbXml);
@@ -126,14 +178,15 @@ function colDefaults(head: string, prefix: string, upTo: number): Map<number, st
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x.trim() === b[i]!.trim());
 
-interface ProspectsResult {
-  /** The prospects header style, for the Intro templates tab's header. */
+interface SheetResult {
+  /** The tab's header style, for the header of a tab Mudd adds. */
   headerStyle: string | null;
   /** The autofilter's new range, when it changed. */
   filter: Range | null;
 }
 
-async function patchProspects(
+/** Write rows into a tab read at import (Prospects, Contacts): see the top of this file. */
+async function patchSheet(
   zip: JSZip,
   part: SheetPart,
   meta: SheetMeta,
@@ -141,7 +194,7 @@ async function patchProspects(
   rows: ExportRow[],
   book: StyleBook,
   date1904: boolean,
-): Promise<ProspectsResult> {
+): Promise<SheetResult> {
   const doc = parseSheet((await readText(zip, part.path))!);
   const p = doc.prefix;
   const relsPath = relsPathOf(part.path);
@@ -588,25 +641,76 @@ async function writeTemplatesTab(
   }
   if (!templates.length) return wbXml;
 
-  // A new tab. Its name must not clash with any tab, whatever the case (Excel's rule).
-  const names = new Set(parts.map((x) => x.name.toLowerCase()));
-  let name = TEMPLATES_SHEET;
-  for (let i = 2; names.has(name.toLowerCase()); i++) name = `${TEMPLATES_SHEET} ${i}`;
-  let n = parts.length + 1;
-  while (zip.file(`xl/worksheets/sheet${n}.xml`)) n++;
-  const path = `xl/worksheets/sheet${n}.xml`;
   const wrap = book.derive(null, { wrap: true });
   const cell = (col: number, row: number, style: string | null, text: string) => makeCell("", col, row, style, { s: text });
   const rows = [
     `<row r="1" ht="21.75" customHeight="1">${cell(1, 1, headerStyle, "Name")}${cell(2, 1, headerStyle, "Template")}</row>`,
     ...templates.map((t, i) => `<row r="${i + 2}">${cell(1, i + 2, wrap, t.name)}${cell(2, i + 2, wrap, t.body)}</row>`),
   ];
+  const cols = '<cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="100" customWidth="1"/></cols>';
+  return (await appendSheet(zip, wbPath, wbXml, parts, TEMPLATES_SHEET, `A1:B${templates.length + 1}`, cols, rows.join(""))).wbXml;
+}
+
+// ---------- the Contacts tab ----------
+
+/**
+ * The Contacts tab: the one import read the people from, patched in place like the Prospects
+ * tab, or, when the workbook has none yet and there are people, a new one.
+ */
+async function writeContactsTab(
+  zip: JSZip,
+  wbPath: string,
+  wbXml: string,
+  parts: SheetPart[],
+  campaign: Campaign,
+  contacts: ExportRow[],
+  book: StyleBook,
+  date1904: boolean,
+  headerStyle: string | null,
+): Promise<string> {
+  const schema = contactsTabSchema(campaign.schema);
+  const meta = campaign.sheets.find((s) => s.role === "contacts");
+  const part = meta ? parts.find((x) => x.name === meta.name) : undefined;
+  if (meta && part) {
+    const res = await patchSheet(zip, part, meta, schema, contacts, book, date1904);
+    return res.filter ? setFilterName(wbXml, part, res.filter) : wbXml;
+  }
+  if (!contacts.length) return wbXml;
+  // An empty tab with the header cells styled; patchSheet then writes every column as one the
+  // sheet lacks, which also gives each its width, number format and dropdown.
+  const header = `<row r="1" ht="21.75" customHeight="1">${schema.columns.map((c, i) => makeCell("", i + 1, 1, headerStyle, { s: c.header })).join("")}</row>`;
+  const added = await appendSheet(zip, wbPath, wbXml, parts, CONTACTS_SHEET, `A1:${colLetter(schema.columns.length)}1`, "", header);
+  await patchSheet(zip, added.part, { name: added.part.name, role: "contacts", colMap: {}, lastDataRow: 1, lastCol: 0, dataRows: [] }, schema, contacts, book, date1904);
+  return added.wbXml;
+}
+
+/**
+ * Add a tab after the others. Its name must not clash with any tab, whatever the case (Excel's
+ * rule), so "Contacts" may become "Contacts 2".
+ */
+async function appendSheet(
+  zip: JSZip,
+  wbPath: string,
+  wbXml: string,
+  parts: SheetPart[],
+  base: string,
+  dimension: string,
+  cols: string,
+  rowsXml: string,
+): Promise<{ wbXml: string; part: SheetPart }> {
+  const names = new Set(parts.map((x) => x.name.toLowerCase()));
+  for (const m of wbXml.matchAll(/<(?:[\w.-]+:)?sheet\b[^>]*>/g)) names.add((getAttr(m[0], "name") ?? "").toLowerCase());
+  let name = base;
+  for (let i = 2; names.has(name.toLowerCase()); i++) name = `${base} ${i}`;
+  let n = parts.length + 1;
+  while (zip.file(`xl/worksheets/sheet${n}.xml`)) n++;
+  const path = `xl/worksheets/sheet${n}.xml`;
   const sheet =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${RELS_NS}">` +
-    `<dimension ref="A1:B${templates.length + 1}"/><sheetViews><sheetView workbookViewId="0"/></sheetViews>` +
-    '<sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="100" customWidth="1"/></cols>' +
-    `<sheetData>${rows.join("")}</sheetData>` +
+    `<dimension ref="${dimension}"/><sheetViews><sheetView workbookViewId="0"/></sheetViews>` +
+    `<sheetFormatPr defaultRowHeight="15"/>${cols}` +
+    `<sheetData>${rowsXml}</sheetData>` +
     '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>';
   zip.file(path, sheet);
 
@@ -624,32 +728,40 @@ async function writeTemplatesTab(
   );
 
   const ns = relsPrefix(wbXml, "workbook");
-  const ids = [...ns.xml.matchAll(/<(?:[\w.-]+:)?sheet\b[^>]*>/g)].map((m) => Number(getAttr(m[0], "sheetId")) || 0);
-  return ns.xml.replace(
-    /<\/((?:[\w.-]+:)?)sheets>/,
-    `<$1sheet name="${escapeXml(name)}" sheetId="${Math.max(0, ...ids) + 1}" ${ns.prefix}:id="${rid}"/></$1sheets>`,
-  );
+  const tags = [...ns.xml.matchAll(/<(?:[\w.-]+:)?sheet\b[^>]*>/g)];
+  const ids = tags.map((m) => Number(getAttr(m[0], "sheetId")) || 0);
+  return {
+    wbXml: ns.xml.replace(
+      /<\/((?:[\w.-]+:)?)sheets>/,
+      `<$1sheet name="${escapeXml(name)}" sheetId="${Math.max(0, ...ids) + 1}" ${ns.prefix}:id="${rid}"/></$1sheets>`,
+    ),
+    part: { name, path, index: tags.length },
+  };
 }
 
 // ---------- a new workbook ----------
 
 /** A workbook in the base-tracker look, for a campaign that has none of its own. */
-async function generatedWorkbook(schema: CampaignSchema, rows: ExportRow[], templates: Template[]): Promise<Uint8Array> {
+async function generatedWorkbook(schema: CampaignSchema, rows: ExportRow[], templates: Template[], contacts: ExportRow[]): Promise<Uint8Array> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Mudd.io";
-  const ws = wb.addWorksheet("Prospects");
-  const cols = schema.columns;
-  styleGeneratedSheet(ws, cols, schema);
-  const styles = cols.map((c) => dataStyle(c, schema));
-  rows.forEach((r, i) => {
-    const xrow = ws.getRow(i + 2);
-    cols.forEach((col, j) => {
-      const cell = xrow.getCell(j + 1);
-      cell.style = JSON.parse(JSON.stringify(styles[j]));
-      cell.value = toExcelValue(r.cells[col.key] ?? null, col);
+  const sheet = (name: string, tabSchema: CampaignSchema, list: ExportRow[]) => {
+    const ws = wb.addWorksheet(name);
+    const cols = tabSchema.columns;
+    styleGeneratedSheet(ws, cols, tabSchema);
+    const styles = cols.map((c) => dataStyle(c, tabSchema));
+    list.forEach((r, i) => {
+      const xrow = ws.getRow(i + 2);
+      cols.forEach((col, j) => {
+        const cell = xrow.getCell(j + 1);
+        cell.style = JSON.parse(JSON.stringify(styles[j]));
+        cell.value = toExcelValue(r.cells[col.key] ?? null, col);
+      });
     });
-  });
-  ws.autoFilter = `A1:${colLetter(Math.max(1, cols.length))}${Math.max(1, rows.length + 1)}`;
+    ws.autoFilter = `A1:${colLetter(Math.max(1, cols.length))}${Math.max(1, list.length + 1)}`;
+  };
+  sheet("Prospects", schema, rows);
+  sheet(CONTACTS_SHEET, contactsTabSchema(schema), contacts);
   if (templates.length) {
     const t = wb.addWorksheet(TEMPLATES_SHEET);
     t.getColumn(1).width = 28;

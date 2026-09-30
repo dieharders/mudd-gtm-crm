@@ -2,9 +2,9 @@
  * Reading and comparing cell values, shared by the server (import, export, enrichment) and the
  * page (grid, prospect panel), so the two never disagree about what a number or a link is.
  */
-import { norm } from "./merge";
-import { HONORIFIC_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
-import { CHECKED, type CampaignSchema, type CellValue, type Column, type Row } from "./types";
+import { isChannelCells, norm } from "./merge";
+import { contactSchema, HONORIFIC_HEADERS, isHonorific, prospectSchema, ROLE_HEADERS, TITLE_HEADER } from "./schema";
+import { CHECKED, isChecked, type CampaignSchema, type CellValue, type Column, type Row } from "./types";
 
 const NUMERIC_RE = /^-?\d+(?:\.\d+)?$/;
 
@@ -125,7 +125,76 @@ export function contactOf(cells: Record<string, CellValue>, schema: CampaignSche
 export function rowTitle(row: Pick<Row, "cells">, schema: CampaignSchema): { title: string; subtitle: string } {
   const name = contactOf(row.cells, schema).name;
   const company = schema.companyKey ? String(row.cells[schema.companyKey] ?? "").trim() : "";
-  const first = schema.columns[0] ? String(row.cells[schema.columns[0].key] ?? "").trim() : "";
+  // Not the ID: "P-004" is no name for a prospect.
+  const firstCol = schema.columns.find((c) => c.key !== schema.idKey && !c.hidden);
+  const first = firstCol ? String(row.cells[firstCol.key] ?? "").trim() : "";
   if (company && name) return { title: company, subtitle: name };
   return { title: company || name || first || "Untitled prospect", subtitle: "" };
+}
+
+// ---------- a prospect's contacts ----------
+
+/** A contact of type Channel: a way in (a main line, an inbox) rather than a person. */
+export const isChannel = (contact: Pick<Row, "cells">, schema: CampaignSchema): boolean => isChannelCells(contact.cells, schema);
+
+/**
+ * The contact intros and templates address: the first one ticked Primary, else the first person,
+ * else the first contact (a channel).
+ */
+export function primaryOf<T extends Pick<Row, "cells">>(contacts: readonly T[], schema: CampaignSchema): T | undefined {
+  const key = schema.contacts?.primaryKey;
+  return (key ? contacts.find((c) => isChecked(c.cells[key])) : undefined) ?? contacts.find((c) => !isChannel(c, schema)) ?? contacts[0];
+}
+
+/** A contact that holds nothing yet (a Primary tick aside): one a run made for someone it found. */
+export function isEmptyContact(contact: Pick<Row, "cells">, schema: CampaignSchema): boolean {
+  const primaryKey = schema.contacts?.primaryKey;
+  return Object.entries(contact.cells).every(([k, v]) => k === primaryKey || v === null || v === "");
+}
+
+/** Contacts as the panel lists them: the primary first, the others in their own order. */
+export function orderedContacts<T extends Pick<Row, "cells">>(contacts: readonly T[], schema: CampaignSchema): T[] {
+  const primary = primaryOf(contacts, schema);
+  return primary ? [primary, ...contacts.filter((c) => c !== primary)] : [...contacts];
+}
+
+/**
+ * The contacts a recipe that fills in people's details researches, primary first: the people,
+ * not a channel, and not a contact holding nothing to research them by (one a run made, whose
+ * name still waits for review).
+ */
+export function researchedContacts<T extends Pick<Row, "cells">>(contacts: readonly T[], schema: CampaignSchema): T[] {
+  return orderedContacts(contacts.filter((c) => !isChannel(c, schema) && !isEmptyContact(c, schema)), schema);
+}
+
+/** A name as a set of words: honorifics and initials dropped, order ignored ("Lee, Jane M." is Jane Lee). */
+function personWords(name: string): string {
+  const words = name.normalize("NFKC").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const kept = words.filter((w) => w.length > 1 && !isHonorific(w));
+  return (kept.length ? kept : words).sort().join(" ");
+}
+
+/** Two names for the same person: "Col. Jane Lee", "Jane M. Lee" and "Lee, Jane" are one. */
+export function samePerson(a: CellValue | undefined, b: CellValue | undefined): boolean {
+  const wa = personWords(String(a ?? ""));
+  return !!wa && wa === personWords(String(b ?? ""));
+}
+
+/** A prospect's cells with its primary contact's, for `prospectSchema`. Their keys never overlap. */
+export function prospectCells(org: Pick<Row, "cells">, primary?: Pick<Row, "cells"> | null): Record<string, CellValue> {
+  return primary ? { ...org.cells, ...primary.cells } : org.cells;
+}
+
+/** What to call a prospect: its company, with its primary contact's name under it. */
+export function prospectTitle(org: Pick<Row, "cells">, primary: Pick<Row, "cells"> | null | undefined, schema: CampaignSchema) {
+  return rowTitle({ cells: prospectCells(org, primary) }, prospectSchema(schema));
+}
+
+/** What to call a contact: their name, else their email, else "Unnamed contact". */
+export function contactLabel(contact: Pick<Row, "cells">, schema: CampaignSchema): string {
+  const cs = contactSchema(schema);
+  const name = contactOf(contact.cells, cs).name;
+  if (name) return name;
+  const email = cs.columns.filter((c) => c.type === "email").map((c) => String(contact.cells[c.key] ?? "").trim()).find(Boolean);
+  return email || "Unnamed contact";
 }

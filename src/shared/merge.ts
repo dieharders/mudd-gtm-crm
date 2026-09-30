@@ -9,12 +9,20 @@
  * "Primary contact". Anything that matches no column is left in place and reported, so the
  * editor can highlight it rather than silently send "Hi {{Frist name}}".
  */
-import type { CampaignSchema, CellValue } from "./types";
+import { CHANNEL, type CampaignSchema, type CellValue } from "./types";
 
 const PLACEHOLDER = /\{\{\s*([^{}|]+?)\s*(?:\|\s*([^{}]*?)\s*)?\}\}/g;
 
 /** A header for matching: case, spacing and punctuation ignored, letters of any script kept. */
 export const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+const CHANNEL_NORM = norm(CHANNEL);
+
+/** A contact's cells whose Contact type is Channel: a way in (a main line, an inbox), no person. */
+export function isChannelCells(cells: Record<string, CellValue>, schema: CampaignSchema): boolean {
+  const key = schema.contacts?.typeKey;
+  return !!key && norm(display(cells[key])) === CHANNEL_NORM;
+}
 
 /** The placeholder names left in a text, e.g. an intro still holding "{{First name}}". */
 export function placeholderNames(text: string): string[] {
@@ -51,13 +59,15 @@ export function resolvePlaceholder(
 ): { known: boolean; value: string } {
   const n = norm(name);
   if (!n) return { known: false, value: "" };
+  // A channel (a main line, an inbox) is no one to greet by name, first or full: the fallback is used.
+  const unnamed = isChannelCells(cells, schema);
   if (n === "firstname") {
     if (!schema.nameKey) return { known: false, value: "" };
-    return { known: true, value: firstNameOf(display(cells[schema.nameKey])) };
+    return { known: true, value: unnamed ? "" : firstNameOf(display(cells[schema.nameKey])) };
   }
   const col = schema.columns.find((c) => norm(c.header) === n);
   if (!col) return { known: false, value: "" };
-  return { known: true, value: display(cells[col.key]) };
+  return { known: true, value: unnamed && col.key === schema.nameKey ? "" : display(cells[col.key]) };
 }
 
 export function mergeTemplate(

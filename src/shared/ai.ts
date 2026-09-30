@@ -4,7 +4,8 @@
  * Mudd never holds an API key. It drives the user's own signed-in agent CLI — Claude Code or
  * Codex — the way motionbuff-native-app does, so enrichment bills the user's plan.
  */
-import type { CampaignSchema, CellValue, Column } from "./types";
+import { isContactKey } from "./schema";
+import type { CampaignSchema, CellValue, Column, Row } from "./types";
 
 export type ProviderId = "claude" | "codex";
 export const PROVIDER_IDS: ProviderId[] = ["claude", "codex"];
@@ -92,6 +93,18 @@ export interface RecipeOutput {
   header: string;
   /** Extra guidance for this one field ("only a published email, never a guess"). */
   hint?: string;
+}
+
+/**
+ * Who a recipe researches. A recipe that fills in people's details (an email, a LinkedIn) runs
+ * once per contact, each finding going on that contact. One that finds a person (it fills the
+ * contact name) runs once per prospect: several turns would each find the same person. So does
+ * one that fills only the prospect's columns. `contact` marks a new column among the contacts'.
+ */
+export function recipeMode(outputs: { key?: string; contact?: boolean }[], schema: CampaignSchema): "prospects" | "contacts" {
+  const people = outputs.filter((o) => o.contact || (o.key && isContactKey(schema, o.key)));
+  if (!people.length || people.some((o) => o.key && o.key === schema.contacts?.nameKey)) return "prospects";
+  return "contacts";
 }
 
 export interface Recipe {
@@ -195,6 +208,8 @@ export type CampaignEvent =
   | RunRowEvent
   | { type: "suggestions"; suggestions: Suggestion[] }
   | { type: "cells"; edits: { rowId: string; key: string; value: CellValue }[] }
+  /** Rows the server added (a run's first contact for a prospect that had none). */
+  | { type: "rows"; rows: Row[] }
   | { type: "ping" };
 
 /** The runs with one row update applied. The same array when the run isn't among them. */

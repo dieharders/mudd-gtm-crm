@@ -1,7 +1,12 @@
 /**
  * The data model shared by the server and the client.
  *
- * A campaign is ONE schema (column list) and one list of rows, read from one tab of a workbook.
+ * A campaign is a list of prospects (companies), each with its own people (contacts). Both are
+ * rows: a prospect row holds the company's columns, a contact row holds a person's and points
+ * at its prospect (`parentId`). They are read from two tabs of a workbook, Prospects and
+ * Contacts; the Contacts tab names each person's prospect by its ID (P-001), so renaming a
+ * company never loses its people.
+ *
  * Screening a prospect out only ticks its "Screened out" column, so a row never moves between
  * lists. The workbook is remembered separately, as `sheets`, so export can write each row back
  * to the sheet row it was read from without moving any existing column letter: formulas on
@@ -56,6 +61,17 @@ export interface Column {
   recipeId?: string;
 }
 
+/** A contact's columns. Keys are unique across these and the prospect's columns. */
+export interface ContactSchema {
+  columns: Column[];
+  /** The person's name. */
+  nameKey?: string;
+  /** What kind of stakeholder they are: Economic Buyer, Gatekeeper… */
+  typeKey?: string;
+  /** Checkbox: the contact intros and templates address. At most one per prospect. */
+  primaryKey?: string;
+}
+
 export interface CampaignSchema {
   columns: Column[];
   statusKey?: string;
@@ -66,8 +82,17 @@ export interface CampaignSchema {
   introKey?: string;
   meetingUrlKey?: string;
   meetingAtKey?: string;
+  /** A person's name. On a prospect schema only in `prospectSchema`'s merged view, from `contacts`. */
   nameKey?: string;
   companyKey?: string;
+  /** The prospect's ID (P-001): what the Contacts tab points at. Read-only in the app. */
+  idKey?: string;
+  /**
+   * Prospect IDs the workbook's Contacts tab gives people whose prospect isn't in the campaign:
+   * never handed to a new prospect, which would take those people on the next import.
+   */
+  reservedIds?: string[];
+  contacts?: ContactSchema;
 }
 
 /**
@@ -82,16 +107,29 @@ export type CellValue = string | number | null;
 /** A ticked checkbox cell. */
 export const CHECKED = "TRUE";
 
+/** The contact type of a way in that is no one person: a main line, a general inbox, a program desk. */
+export const CHANNEL = "Channel";
+
 export interface Row {
   id: string;
   position: number;
   cells: Record<string, CellValue>;
+  /** A contact's prospect (that row's id). Absent on prospects. */
+  parentId?: string | null;
   /** The sheet and row this was read from: export writes the row back to that same row. */
   sourceSheet?: string | null;
   sourceRow?: number | null;
 }
 
-export type SheetRole = "prospects" | "passthrough" | "templates";
+export type SheetRole = "prospects" | "contacts" | "passthrough" | "templates";
+
+/**
+ * The Contacts tab's link columns, as keys in its `colMap` and in a contact's export cells:
+ * the prospect's ID (the foreign key) and its company name (a readable copy). Never real column
+ * keys, which are only ever [a-z0-9_].
+ */
+export const ORG_ID_KEY = "@orgid";
+export const ORG_KEY = "@org";
 
 export interface SheetMeta {
   name: string;
@@ -135,6 +173,8 @@ export interface CampaignSummary {
   name: string;
   updatedAt: number;
   sourceName: string | null;
+  /** The file Save file writes to, when the campaign is linked to one. */
+  sourcePath: string | null;
   /** Prospects still in play (not screened out). */
   prospects: number;
   screened: number;
@@ -144,7 +184,9 @@ export interface CampaignSummary {
 
 export interface CampaignBundle {
   campaign: Campaign;
+  /** The prospects. */
   rows: Row[];
+  contacts: Row[];
   templates: Template[];
 }
 

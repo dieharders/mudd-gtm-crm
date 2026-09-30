@@ -1,16 +1,13 @@
 /**
  * Save file end to end through the REST API: in place with backups, the "changed outside Mudd"
- * check, copies, the Downloads fallback, refused macro workbooks, and the version-2 migration
- * that turned the old Screened-out list into a ticked column.
+ * check, copies, the Downloads fallback, refused macro workbooks, and prospects and their contacts.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
 import ExcelJS from "exceljs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Campaign, InspectResult, Row } from "../shared/types";
-import { isScreened } from "../shared/types";
+import type { Campaign, CampaignBundle, CampaignSummary, InspectResult, Row } from "../shared/types";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-save-"));
 const saved = { data: process.env.MUDD_DATA_DIR, home: process.env.HOME, profile: process.env.USERPROFILE };
@@ -114,6 +111,25 @@ describe("Save file", () => {
     expect(second.json.path).toBe(first.json.path);
   });
 
+  test("removing a campaign takes it out of Mudd and leaves its file and backups alone", async () => {
+    const file = path.join(tmp, "docs", "keep-me.xlsx");
+    await trackerFile(file);
+    const { campaign } = await importPath(file);
+    expect((await call("POST", `/api/campaigns/${campaign.id}/save`, {})).status).toBe(200);
+    const bytes = fs.readFileSync(file);
+    const backups = path.join(tmp, "data", "backups", campaign.id);
+    const kept = fs.readdirSync(backups);
+    expect((await call("DELETE", `/api/campaigns/${campaign.id}`)).status).toBe(200);
+    expect((await call("GET", `/api/campaigns/${campaign.id}`)).status).toBe(404);
+    expect((await call<CampaignSummary[]>("GET", "/api/campaigns")).json.some((c) => c.id === campaign.id)).toBe(false);
+    expect(fs.readFileSync(file).equals(bytes)).toBe(true);
+    expect(fs.existsSync(path.join(tmp, "docs", "keep-me.bak.xlsx"))).toBe(true);
+    expect(fs.readdirSync(backups)).toEqual(kept);
+    // Imported again, it's all there as it was saved.
+    const again = await importPath(file);
+    expect(again.rows).toHaveLength(2);
+  });
+
   test("a macro workbook is refused at import", async () => {
     const file = path.join(tmp, "docs", "macros.xlsm");
     await trackerFile(file);
@@ -123,54 +139,50 @@ describe("Save file", () => {
   });
 });
 
-describe("migration to version 2", () => {
-  test("the old Screened-out list becomes ticked rows", async () => {
-    const dir = path.join(tmp, "legacy");
-    fs.mkdirSync(dir, { recursive: true });
-    const legacy = new Database(path.join(dir, "mudd.sqlite"), { create: true });
-    legacy.exec(`
-      CREATE TABLE campaigns (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-        source_name TEXT, source_path TEXT, source_mtime INTEGER, original BLOB, schema_json TEXT NOT NULL, sheets_json TEXT NOT NULL);
-      CREATE TABLE rows (id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL, bucket TEXT NOT NULL, position REAL NOT NULL,
-        source_sheet TEXT, source_row INTEGER, cells_json TEXT NOT NULL);
-    `);
-    const schema = {
-      columns: [
-        { key: "company", header: "Company", type: "text" },
-        { key: "constructor", header: "Constructor", type: "text" },
-        { key: "why", header: "Why it fails the filter", type: "longtext" },
-      ],
-      companyKey: "company",
-      reasonKey: "why",
-    };
-    const sheets: { name: string; role: string; colMap: Record<string, number>; lastDataRow: number; lastCol: number }[] = [
-      { name: "Prospects", role: "prospects", colMap: { company: 1, constructor: 2 }, lastDataRow: 3, lastCol: 2 },
-      { name: "Screened out", role: "screened", colMap: { company: 1, why: 2 }, lastDataRow: 2, lastCol: 2 },
-    ];
-    legacy.query("INSERT INTO campaigns VALUES ('c1', 'Old', 0, 0, NULL, NULL, NULL, NULL, ?, ?)").run(JSON.stringify(schema), JSON.stringify(sheets));
-    legacy.query("INSERT INTO rows VALUES ('a', 'c1', 'prospects', 0, 'Prospects', 2, ?)").run(JSON.stringify({ company: "Acme", constructor: "x" }));
-    legacy.query("INSERT INTO rows VALUES ('b', 'c1', 'screened', 1, 'Screened out', 2, ?)").run(JSON.stringify({ company: "Palantir", why: "Too big" }));
-    legacy.close();
+describe("prospects and their contacts", () => {
+  test("import links them, the API keeps them apart, and deleting a prospect takes its contacts", async () => {
+    const file = path.join(tmp, "docs", "people.xlsx");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Prospects");
+    ws.addRow(["ID", "Company", "Status"]);
+    ws.addRow(["P-001", "Acme", "Contacted"]);
+    ws.addRow(["P-002", "Beta", "Replied"]);
+    const people = wb.addWorksheet("Contacts");
+    people.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary"]);
+    people.addRow(["P-001", "Acme", "Ann Lee", "Economic Buyer", true]);
+    people.addRow(["P-001", "Acme", "Al Ng", "End User", null]);
+    people.addRow(["P-002", "Beta", "Bo Chen", "Gatekeeper", true]);
+    fs.writeFileSync(file, new Uint8Array(await wb.xlsx.writeBuffer()));
 
-    db.closeDb();
-    process.env.MUDD_DATA_DIR = dir;
-    try {
-      const c = db.getCampaign("c1")!;
-      expect(c.sheets.map((s) => s.role)).toEqual(["prospects", "passthrough"]);
-      expect(c.schema.columns.some((col) => col.key === "constructor")).toBe(false);
-      const rows = db.listRows("c1");
-      const acme = rows.find((r) => r.id === "a")!;
-      const palantir = rows.find((r) => r.id === "b")!;
-      expect(acme.cells.constructor_col).toBe("x");
-      expect(isScreened(palantir, c.schema)).toBe(true);
-      expect(isScreened(acme, c.schema)).toBe(false);
-      expect(palantir.sourceRow).toBeNull();
-      expect(palantir.cells.why).toBe("Too big");
-      // New rows still go into a table created by version 1 (bucket NOT NULL there).
-      expect(db.insertRows("c1", [{ cells: { company: "New" } }])).toHaveLength(1);
-    } finally {
-      db.closeDb();
-      process.env.MUDD_DATA_DIR = path.join(tmp, "data");
-    }
+    const inspected = await call<InspectResult>("POST", "/api/import/inspect", { path: file });
+    expect(inspected.json.sheets.map((x) => x.guess)).toEqual(["prospects", "contacts"]);
+    const imp = await call<Campaign & { skippedContacts: number }>("POST", "/api/import", { token: inspected.json.token, prospects: "Prospects", name: "People" });
+    expect(imp.json.skippedContacts).toBe(0);
+    const id = imp.json.id;
+    const bundle = (await call<CampaignBundle>("GET", `/api/campaigns/${id}`)).json;
+    expect(bundle.rows).toHaveLength(2);
+    const acme = bundle.rows.find((r) => r.cells[bundle.campaign.schema.companyKey!] === "Acme")!;
+    const nameKey = bundle.campaign.schema.contacts!.nameKey!;
+    expect(bundle.contacts.filter((c) => c.parentId === acme.id).map((c) => c.cells[nameKey])).toEqual(["Ann Lee", "Al Ng"]);
+    // The home page counts prospects, not people.
+    const summary = (await call<CampaignSummary[]>("GET", "/api/campaigns")).json.find((c) => c.id === id)!;
+    expect(summary.prospects).toBe(2);
+
+    // A new contact, and an edit to one, saved into the Contacts tab in place.
+    await call("POST", `/api/campaigns/${id}/rows`, { rows: [{ id: "newperson", parentId: acme.id, cells: { [nameKey]: "Amy Poe" } }] });
+    const bo = bundle.contacts.find((c) => c.cells[nameKey] === "Bo Chen")!;
+    await call("PATCH", `/api/campaigns/${id}/rows`, { edits: [{ rowId: bo.id, key: nameKey, value: "Bo Chen-Li" }] });
+    expect((await call("POST", `/api/campaigns/${id}/save`, {})).status).toBe(200);
+    const saved = new ExcelJS.Workbook();
+    await saved.xlsx.load(new Uint8Array(fs.readFileSync(file)) as unknown as ArrayBuffer);
+    const tab = saved.getWorksheet("Contacts")!;
+    expect([2, 3, 4, 5].map((r) => tab.getCell(`C${r}`).value)).toEqual(["Ann Lee", "Al Ng", "Bo Chen-Li", "Amy Poe"]);
+    expect(tab.getCell("A5").value).toBe("P-001");
+
+    // Deleting Acme deletes its three people with it.
+    await call("DELETE", `/api/campaigns/${id}/rows`, { ids: [acme.id] });
+    const after = (await call<CampaignBundle>("GET", `/api/campaigns/${id}`)).json;
+    expect(after.rows).toHaveLength(1);
+    expect(after.contacts.map((c) => c.cells[nameKey])).toEqual(["Bo Chen-Li"]);
   });
 });

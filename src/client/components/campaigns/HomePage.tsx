@@ -2,7 +2,6 @@ import {
   ArrowRight, CalendarClock, Download, FileSpreadsheet, FolderOpen, MoreHorizontal, Plus, Sparkles, Trash2, Video, Workflow,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { DEAD, MEETING_STAGE, type CampaignSummary, type Meeting } from "../../../shared/types";
 import { api } from "../../lib/api";
@@ -13,8 +12,8 @@ import { tileFor, toneFor } from "../../lib/stages";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
-import { Modal } from "../ui/Modal";
 import { useImport } from "./ImportFlow";
+import { RemoveCampaignDialog } from "./RemoveCampaignDialog";
 import { fire } from "../../lib/fire";
 
 function greeting(): string {
@@ -23,16 +22,9 @@ function greeting(): string {
 }
 
 export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
-  const { campaigns, meetings, refresh } = useCampaignList();
-  const [deleting, setDeleting] = useState<CampaignSummary | null>(null);
+  const { campaigns, meetings } = useCampaignList();
+  const [removing, setRemoving] = useState<CampaignSummary | null>(null);
   const { startImport, busy } = useImport();
-
-  const remove = async (c: CampaignSummary) => {
-    await api.deleteCampaign(c.id);
-    setDeleting(null);
-    toast.success(`Deleted ${c.name}`);
-    refresh();
-  };
 
   const totals = (campaigns ?? []).reduce(
     (t, c) => ({ prospects: t.prospects + c.prospects, meetings: t.meetings + (c.byStatus[MEETING_STAGE] ?? 0), signed: t.signed + (c.byStatus.Signed ?? 0) }),
@@ -70,7 +62,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
                 <StatCard tile="bg-emerald-100 text-emerald-700" icon={<Workflow size={16} />} value={totals.signed} label="signed" />
               </div>
               <div className="grid gap-4 xl:grid-cols-2">
-                {campaigns.map((c) => <CampaignCard key={c.id} c={c} onDelete={() => setDeleting(c)} />)}
+                {campaigns.map((c) => <CampaignCard key={c.id} c={c} onRemove={() => setRemoving(c)} />)}
               </div>
             </div>
             <aside>
@@ -80,20 +72,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
         )}
       </div>
 
-      <Modal
-        open={!!deleting}
-        onClose={() => setDeleting(null)}
-        title={`Delete ${deleting?.name}?`}
-        subtitle="The campaign, its rows and its templates are removed from Mudd. Spreadsheets you exported are not touched."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setDeleting(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => { if (deleting) fire(remove(deleting)); }}><Trash2 size={15} /> Delete</Button>
-          </>
-        }
-      >
-        <p className="text-sm text-ink-soft">This can't be undone.</p>
-      </Modal>
+      <RemoveCampaignDialog campaign={removing} onClose={() => setRemoving(null)} />
     </div>
   );
 }
@@ -157,7 +136,7 @@ function Onboarding() {
   );
 }
 
-function CampaignCard({ c, onDelete }: { c: CampaignSummary; onDelete: () => void }) {
+function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => void }) {
   const navigate = useNavigate();
   const stages = [...c.stages, DEAD];
   const total = c.prospects || 1;
@@ -183,7 +162,7 @@ function CampaignCard({ c, onDelete }: { c: CampaignSummary; onDelete: () => voi
               <MoreHorizontal size={18} />
             </button>
           )}>
-            {(close) => <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); onDelete(); }}>Delete campaign</MenuItem>}
+            {(close) => <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); onRemove(); }} hint="The file stays">Remove from Mudd</MenuItem>}
           </Popover>
         </div>
       </div>

@@ -4,15 +4,11 @@
  * header alone says about a column's type.
  */
 import { norm } from "./merge";
-import { DEAD, DEFAULT_STAGES, type CampaignSchema, type Column, type ColumnType } from "./types";
+import { CHANNEL, DEAD, DEFAULT_STAGES, ORG_KEY, type CampaignSchema, type Column, type ColumnType, type ContactSchema } from "./types";
 
 // Keys are used as plain object keys on a row's cells, so none may shadow Object.prototype
 // ("constructor" would read back as a function on every row that lacks it).
 const RESERVED = new Set(Object.getOwnPropertyNames(Object.prototype));
-
-export function isReservedKey(key: string): boolean {
-  return RESERVED.has(key);
-}
 
 /** A column key from its header, unique among `taken` (which it joins). */
 export function makeKey(header: string, taken: Set<string>): string {
@@ -38,6 +34,14 @@ export const HOOK_HEADERS = ["hook", "personalization", "icebreaker", "angle"];
 export const hookColumns = (schema: CampaignSchema): Column[] =>
   HOOK_HEADERS.flatMap((n) => schema.columns.filter((c) => norm(c.header) === n));
 
+/**
+ * How many people a company employs, under any of its names (Staff, Headcount, Size…): always
+ * one Number column, called "# Employees".
+ */
+export const EMPLOYEES_HEADER = "# Employees";
+export const EMPLOYEES_HEADERS = ["employees", "staff", "headcount", "size", "companysize", "employeecount", "numemployees", "numberofemployees"];
+export const isEmployeesHeader = (header: string) => EMPLOYEES_HEADERS.includes(norm(header));
+
 /** A contact's job title. "Title" is not among them: see TITLE_HEADER. */
 export const ROLE_HEADERS = ["role", "jobtitle", "position", "contactrole", "decisionmakertitle"];
 /** How a contact is addressed: Mr., Dr., Col. */
@@ -57,12 +61,119 @@ const HONORIFICS = new Set([
 /** "Dr." or "Lt. Col.", as opposed to a job title such as "CEO". */
 export const isHonorific = (v: string) => HONORIFICS.has(v.toLowerCase().replace(/[^a-z]/g, ""));
 
+// ---------- prospect IDs ----------
+
+/** The Prospects tab's ID column, as Mudd writes it: "ID". */
+export const ID_HEADER = "id";
+/** The Contacts tab's column naming each person's prospect by that ID: "Prospect ID". */
+export const PROSPECT_ID_HEADER = "prospectid";
+
+/**
+ * Prospect IDs after the highest one taken: P-001, P-002… The P- keeps Excel from reading it as
+ * a number, and it is short enough to type into the Contacts tab by hand. Each call of the
+ * returned function gives the next one, so a whole sheet is numbered in one pass.
+ */
+export function prospectIds(taken: Iterable<string>): () => string {
+  let max = 0;
+  for (const t of taken) {
+    const m = /^P-(\d+)$/i.exec(t.trim());
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return () => `P-${String(++max).padStart(3, "0")}`;
+}
+
+/** The next prospect ID after the highest one taken. */
+export const newProspectId = (taken: Iterable<string>): string => prospectIds(taken)();
+
+// ---------- contacts ----------
+
+export { CHANNEL };
+
+/** The kinds of stakeholder a contact can be, and Channel for a way in that isn't a person. */
+export const CONTACT_TYPES = ["Economic Buyer", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", CHANNEL];
+
+/** What each contact type means: the type picker's hints. */
+export const CONTACT_TYPE_HINTS: Record<string, string> = {
+  "Economic Buyer": "Holds or controls the budget and gives final financial approval.",
+  "Technical Buyer": "The evaluator: checks the product meets technical, security and data standards.",
+  "End User": "The operator: uses the product every day.",
+  Influencer: "Shapes the group's opinion, without final sign-off.",
+  Blocker: "The ratifier: legal, compliance, procurement or IT security, who can stall or kill the deal.",
+  Gatekeeper: "Controls information and access to the senior decision-makers.",
+  [CHANNEL]: "Not a person: a main line, a general inbox or a program desk. Never greeted by name, and not researched as a person.",
+};
+
+/**
+ * Only "Contact type": a Contacts tab's own "Type" or "Persona" column means something else
+ * (Mobile/Work, the user's own personas), and turning it into this dropdown would make Excel
+ * reject its values.
+ */
+const CONTACT_TYPE_HEADER = "contacttype";
+/** "Primary contact" is a name, not this box. */
+const PRIMARY_HEADERS = ["primary", "isprimary"];
+
+/** A column made by Mudd: a key free among `taken` (which it joins), the type's width unless given. */
+function newColumn(taken: Set<string>, header: string, type: ColumnType, extra: Partial<Column> = {}): Column {
+  return { key: makeKey(header, taken), header, type, origin: "user", width: DEFAULT_WIDTH[type], ...extra };
+}
+
+/** The three contact columns Mudd relies on, as a new campaign has them and as import adds them. */
+const NAME_COLUMN = { header: "Name", type: "text", width: 180 } as const;
+const TYPE_COLUMN = { header: "Contact type", type: "select", width: 150 } as const;
+const PRIMARY_COLUMN = { header: "Primary", type: "checkbox", width: 90 } as const;
+const roleColumn = (taken: Set<string>, spec: { header: string; type: ColumnType; width: number }, extra: Partial<Column> = {}) =>
+  newColumn(taken, spec.header, spec.type, { width: spec.width, ...(spec.type === "select" ? { options: [...CONTACT_TYPES] } : {}), ...extra });
+
+const NO_CONTACTS: ContactSchema = { columns: [] };
+
+/** A campaign's contact columns: none for a schema that has no contacts. */
+export const contactSchema = (schema: CampaignSchema): ContactSchema => schema.contacts ?? NO_CONTACTS;
+
+/** Every column, the prospect's then its contacts'. */
+export const allColumns = (schema: CampaignSchema): Column[] => [...schema.columns, ...(schema.contacts?.columns ?? [])];
+
+/** A column of the prospect or of its contacts. */
+export const columnOf = (schema: CampaignSchema, key: string): Column | undefined =>
+  schema.columns.find((c) => c.key === key) ?? schema.contacts?.columns.find((c) => c.key === key);
+
+/** A key of one of the contact columns. */
+export const isContactKey = (schema: CampaignSchema, key: string) => !!schema.contacts?.columns.some((c) => c.key === key);
+
+/**
+ * The Company column the Contacts tab (in the workbook and in the app) shows beside each person,
+ * copied from their prospect. None when the prospects have no Company column: there is nothing
+ * to copy, and writing blanks would wipe the tab's own.
+ */
+export function orgColumn(schema: CampaignSchema): Column | null {
+  const company = schema.columns.find((c) => c.key === schema.companyKey);
+  return company ? { key: ORG_KEY, header: company.header, type: "text", width: company.width ?? 190 } : null;
+}
+
+const merged = new WeakMap<CampaignSchema, { cols: Column[]; contactCols: Column[] | undefined; n: number; view: CampaignSchema }>();
+
+/**
+ * A prospect and its primary contact read as one: the prospect's columns, then the contact's,
+ * with the contact's name as the name. Templates, titles and AI prompts read this over
+ * `prospectCells`. A header both have is the prospect's, being found first.
+ */
+export function prospectSchema(schema: CampaignSchema): CampaignSchema {
+  const contactCols = schema.contacts?.columns;
+  const n = schema.columns.length + (contactCols?.length ?? 0);
+  const hit = merged.get(schema);
+  // Same arrays and lengths: the view's own column array stays the same one, which keeps
+  // contactColumns() from working the columns out again on every card and title.
+  if (hit && hit.cols === schema.columns && hit.contactCols === contactCols && hit.n === n) return hit.view;
+  const view: CampaignSchema = { ...schema, columns: [...schema.columns, ...(contactCols ?? [])], nameKey: schema.contacts?.nameKey ?? schema.nameKey };
+  merged.set(schema, { cols: schema.columns, contactCols, n, view });
+  return view;
+}
+
 export function assignRoles(schema: CampaignSchema): void {
   const find = (pred: (h: string, c: Column) => boolean) =>
     schema.columns.find((c) => pred(norm(c.header), c))?.key;
   schema.statusKey ??= find((h) => h === "status" || h === "stage");
-  schema.nameKey ??= NAME_HEADERS.map((n) => find((h) => h === n)).find(Boolean);
   schema.companyKey ??= COMPANY_HEADERS.map((n) => find((h) => h === n)).find(Boolean);
+  schema.idKey ??= find((h) => h === ID_HEADER);
   schema.introKey ??= find((h) => h === "intromessage" || h === "intro" || h === "introductionmessage");
   schema.meetingUrlKey ??= find((h) => /^meeting(url|link)$/.test(h));
   schema.meetingAtKey ??= find((h) => /^meeting(at|date|time|datetime|when)$/.test(h));
@@ -72,11 +183,13 @@ export function assignRoles(schema: CampaignSchema): void {
 
 /**
  * Add the columns the app's features need when the sheet lacks them. Appended at the END of the
- * schema, and so at the end of the sheet on export — never between existing columns.
+ * schema, and so at the end of the sheet on export — never between existing columns. Contact
+ * columns share the prospect's keys' namespace; `extraTaken` adds keys a deleted column left
+ * values under, which a new column must not show.
  */
-export function ensureAppColumns(schema: CampaignSchema): void {
+export function ensureAppColumns(schema: CampaignSchema, extraTaken: Iterable<string> = []): void {
   assignRoles(schema);
-  const taken = new Set(schema.columns.map((c) => c.key));
+  const taken = new Set([...schema.columns.map((c) => c.key), ...(schema.contacts?.columns ?? []).map((c) => c.key), ...extraTaken]);
   const add = (header: string, type: ColumnType, extra: Partial<Column> = {}) => {
     const col: Column = { key: makeKey(header, taken), header, type, origin: "mudd", ...extra };
     schema.columns.push(col);
@@ -100,6 +213,49 @@ export function ensureAppColumns(schema: CampaignSchema): void {
   if (!schema.screenedKey) schema.screenedKey = add("Screened out", "checkbox", { width: 120 });
   else colOf(schema.screenedKey).type = "checkbox";
   if (!schema.reasonKey) schema.reasonKey = add("Screened reason", "longtext", { width: 280 });
+  if (!schema.idKey) schema.idKey = add("ID", "text", { width: 90, hidden: true });
+  ensureContactColumns(schema, taken);
+}
+
+/** Contact columns a new campaign starts with. */
+function defaultContactColumns(taken: Set<string>): Column[] {
+  return [
+    roleColumn(taken, NAME_COLUMN),
+    roleColumn(taken, TYPE_COLUMN),
+    roleColumn(taken, PRIMARY_COLUMN),
+    // Text, not a dropdown: honorifics are an open list (Prof., Rev., Col.).
+    newColumn(taken, "Title", "text", { width: 90 }),
+    newColumn(taken, "Role", "text", { width: 200 }),
+    newColumn(taken, "Email", "email"),
+    newColumn(taken, "Phone", "phone"),
+    newColumn(taken, "LinkedIn", "url"),
+    newColumn(taken, "Notes", "longtext"),
+  ];
+}
+
+/** The contact columns Mudd relies on: a name, a Contact type dropdown, the Primary box. */
+function ensureContactColumns(schema: CampaignSchema, taken: Set<string>): void {
+  const contacts = (schema.contacts ??= { columns: defaultContactColumns(taken) });
+  const find = (names: string[]) => names.map((n) => contacts.columns.find((c) => norm(c.header) === n)).find(Boolean)?.key;
+  const colOf = (key: string) => contacts.columns.find((c) => c.key === key)!;
+  const add = (spec: Parameters<typeof roleColumn>[1]) => {
+    const col = roleColumn(taken, spec, { origin: "mudd" });
+    contacts.columns.push(col);
+    return col.key;
+  };
+  contacts.nameKey ??= find(NAME_HEADERS) ?? add(NAME_COLUMN);
+  contacts.typeKey ??= find([CONTACT_TYPE_HEADER]);
+  if (!contacts.typeKey) contacts.typeKey = add(TYPE_COLUMN);
+  else {
+    const type = colOf(contacts.typeKey);
+    if (type.type !== "select" || !type.options?.length) {
+      type.type = "select";
+      type.options = [...CONTACT_TYPES];
+    }
+  }
+  contacts.primaryKey ??= find(PRIMARY_HEADERS);
+  if (!contacts.primaryKey) contacts.primaryKey = add(PRIMARY_COLUMN);
+  else colOf(contacts.primaryKey).type = "checkbox";
 }
 
 /**
@@ -115,6 +271,7 @@ export function typeFromHeader(header: string): { type: ColumnType; strong: bool
   if (h.includes("email") && !/source|status|verified|sent|opened|bounced|count/.test(h)) return { type: "email", strong: true };
   if (/phone|mobile|telephone|^tel$|^cell$/.test(h)) return { type: "phone", strong: true };
   if (/linkedin|website|url|link|domain/.test(h)) return { type: "url", strong: true };
+  if (isEmployeesHeader(header)) return { type: "number", strong: true };
   if (/notes?|hook|description|summary|why|reason|message|news|angle/.test(h)) return { type: "longtext", strong: false };
   return null;
 }
@@ -129,25 +286,19 @@ export const DEFAULT_WIDTH: Record<ColumnType, number> = {
 
 export function genericSchema(): CampaignSchema {
   const taken = new Set<string>();
-  const c = (header: string, type: ColumnType, extra: Partial<Column> = {}): Column => ({
-    key: makeKey(header, taken), header, type, origin: "user", width: DEFAULT_WIDTH[type], ...extra,
-  });
+  const c = (header: string, type: ColumnType, extra: Partial<Column> = {}) => newColumn(taken, header, type, extra);
+  // The company's columns. Its people's come from ensureAppColumns (defaultContactColumns).
   const columns: Column[] = [
-    c("Name", "text", { width: 180 }),
+    c("ID", "text", { width: 90, hidden: true, origin: "mudd" }),
     c("Company", "text", { width: 190 }),
-    // Text, not a dropdown: honorifics are an open list (Prof., Rev., Col.).
-    c("Title", "text", { width: 90 }),
-    c("Role", "text", { width: 200 }),
     c("Rank", "number"),
     c("Type", "text"),
-    c("Email", "email"),
-    c("LinkedIn", "url"),
-    c("Phone", "phone"),
     c("Location", "text"),
     c("Website", "url"),
+    c(EMPLOYEES_HEADER, "number"),
     c("Status", "select", { options: [...DEFAULT_STAGES, DEAD] }),
+    c("Last touch", "date"),
     c("Next step", "text", { width: 200 }),
-    c("Next date", "date"),
     c("Meeting URL", "url"),
     c("Meeting at", "datetime"),
     c("Hook", "longtext"),
@@ -164,7 +315,7 @@ export function genericSchema(): CampaignSchema {
 
 export function copySchema(from: CampaignSchema): CampaignSchema {
   const schema: CampaignSchema = JSON.parse(JSON.stringify(from));
-  for (const col of schema.columns) {
+  for (const col of [...schema.columns, ...(schema.contacts?.columns ?? [])]) {
     if (col.origin === "sheet") col.origin = "user";
     delete col.importedHeader;
   }
