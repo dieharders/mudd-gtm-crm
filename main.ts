@@ -5,24 +5,65 @@
  *   bun run main.ts              the app, in its own window
  *   bun run main.ts --headless   the server only; open the printed URL in a browser
  */
-import { dlopen, FFIType, ptr } from "bun:ffi";
+import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
+
+/** The Win32 calls below, opened on first use (these libraries don't exist on macOS or Linux). */
+let win32Libs: ReturnType<typeof openWin32> | null = null;
+function openWin32() {
+  return {
+    kernel32: dlopen("kernel32.dll", {
+      GetConsoleWindow: { args: [], returns: FFIType.ptr },
+      GetConsoleProcessList: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.u32 },
+      FreeConsole: { args: [], returns: FFIType.i32 },
+    }),
+    user32: dlopen("user32.dll", {
+      ShowWindow: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
+      SendMessageW: { args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.u64], returns: FFIType.u64 },
+    }),
+    shell32: dlopen("shell32.dll", {
+      ExtractIconExW: { args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.u32 },
+    }),
+  };
+}
+const win32 = () => (win32Libs ??= openWin32());
 
 /** Hide the console Windows gives a double-clicked exe (only when this process owns it alone). */
 function hideOwnConsoleWindow(): void {
   if (process.platform !== "win32") return;
   try {
-    const kernel32 = dlopen("kernel32.dll", {
-      GetConsoleWindow: { args: [], returns: FFIType.ptr },
-      GetConsoleProcessList: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.u32 },
-      FreeConsole: { args: [], returns: FFIType.i32 },
-    });
-    const user32 = dlopen("user32.dll", { ShowWindow: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i32 } });
+    const { kernel32, user32 } = win32();
     const hwnd = kernel32.symbols.GetConsoleWindow();
     if (!hwnd) return;
     const pids = new Uint32Array(2);
     if (kernel32.symbols.GetConsoleProcessList(ptr(pids), pids.length) !== 1) return;
     user32.symbols.ShowWindow(hwnd, 0);
     kernel32.symbols.FreeConsole();
+  } catch {
+    // Cosmetic only.
+  }
+}
+
+/**
+ * Give the window the exe's icon. Windows keeps the file icon (Explorer) and the window icon
+ * (title bar, taskbar) separately, so embedding one at build time does nothing for the other.
+ * Under `bun run` the exe is bun.exe, so this shows Bun's icon in development.
+ */
+function setWindowIcon(webview: { readonly unsafeWindowHandle: Pointer | null }): void {
+  if (process.platform !== "win32") return;
+  try {
+    // Read here, inside the try: the getter is itself an FFI call.
+    const hwnd = webview.unsafeWindowHandle;
+    if (!hwnd) return;
+    const { shell32, user32 } = win32();
+    const exePath = Buffer.from(`${process.execPath}\0`, "utf16le");
+    // ExtractIconExW returns the 16px entry as well, rather than a downscaled 32px one.
+    const large = new BigUint64Array(1);
+    const small = new BigUint64Array(1);
+    const extracted = shell32.symbols.ExtractIconExW(ptr(exePath), 0, ptr(large), ptr(small), 1);
+    if (extracted === 0 || extracted === 0xffff_ffff) return;
+    const WM_SETICON = 0x0080;
+    if (small[0]) user32.symbols.SendMessageW(hwnd, WM_SETICON, 0n, small[0]);
+    if (large[0]) user32.symbols.SendMessageW(hwnd, WM_SETICON, 1n, large[0]);
   } catch {
     // Cosmetic only.
   }
@@ -76,6 +117,7 @@ if (process.argv.includes("--headless")) {
     const webview = new Webview();
     webview.title = "Mudd.io";
     webview.size = { width: 1400, height: 900, hint: 0 };
+    setWindowIcon(webview);
     webview.init(`window.__MUDD_SHELL__ = ${JSON.stringify(process.platform)};`);
     webview.navigate(url);
     console.log(`\n  Mudd.io window opened.  (server: ${url})\n`);

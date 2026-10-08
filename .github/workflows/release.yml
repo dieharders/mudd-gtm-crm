@@ -1,0 +1,164 @@
+# Build Mudd.io for Windows, macOS and Linux, zip each one, and attach the zips to a DRAFT release.
+#
+# MANUALLY TRIGGERED. Nothing here runs on a push or a tag.
+#
+# HOW TO RUN IT: Actions -> Manual Release -> Run workflow. Pick the branch to build in the
+# "Use workflow from" dropdown and type the release tag, e.g. v0.1.4. The tag must be "v" plus
+# the version in package.json, so the version the app reports matches the release.
+#
+# The run drafts a release under that tag. Nobody sees it until you open it under Releases and
+# press Publish, and publishing is what creates the tag, at the commit that was built. The draft
+# is made only when all four builds succeed, so a failed run leaves nothing behind.
+#
+# Running again with the same tag replaces the zips on that draft. A tag whose release is already
+# published is refused: bump "version" in package.json and use the new tag.
+#
+# ONE RUNNER PER TARGET. Bun can cross-compile the executable, but webview-bun picks its native
+# library by the platform it runs on, and the macOS build has to be codesigned on a Mac.
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag: v + the version in package.json (e.g. v0.1.4)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Checked before any build starts, so a mistyped tag or a forgotten version bump fails in
+      # seconds rather than after four builds.
+      - name: Check the tag
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Through the environment, not interpolated into the script: an input is user text.
+          TAG: ${{ inputs.tag }}
+        run: |
+          version=$(jq -r .version package.json)
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag '$TAG' does not match package.json (version $version). Use v$version, or change the version in package.json first."
+            exit 1
+          fi
+          if is_draft=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null) && [ "$is_draft" = "false" ]; then
+            echo "::error::$TAG is already published. Bump the version in package.json and run again with the new tag."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.target }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            runner: windows-latest
+          - target: darwin-arm64
+            runner: macos-latest # Apple silicon
+          - target: darwin-x64
+            # The last Intel macOS image; GitHub drops x86_64 macOS when macOS 15 retires (2027).
+            runner: macos-15-intel
+          - target: linux-x64
+            runner: ubuntu-latest
+          # linux-arm64 is left out: arm64 Linux runners are free only for public repos.
+          # To add it: `- target: linux-arm64 / runner: ubuntu-24.04-arm`.
+    env:
+      ZIP: Mudd.io-${{ needs.version.outputs.version }}-${{ matrix.target }}.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the version from package.json's packageManager field.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+          no-cache: true
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run build:css
+
+      - run: bun run build.ts --target=${{ matrix.target }}
+
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "dist/${{ matrix.target }}/Mudd.io.exe" -DestinationPath "dist/$env:ZIP"
+
+      # ditto, not zip: it keeps the .app's signature and permissions intact.
+      - name: Zip (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent "dist/${{ matrix.target }}/Mudd.io.app" "dist/$ZIP"
+
+      # Info-ZIP keeps the executable bit, so the unzipped binary runs without a chmod.
+      - name: Zip (Linux)
+        if: runner.os == 'Linux'
+        run: zip -j "dist/$ZIP" "dist/${{ matrix.target }}/Mudd.io"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/${{ env.ZIP }}
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: draft release
+    # `needs` the builds: one failed platform skips this job, so no partial draft is ever made.
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: zips
+          merge-multiple: true
+
+      # gh rather than a release action: GitHub's get-release-by-tag API does not return drafts,
+      # so actions that rely on it create a second draft on every re-run instead of updating one.
+      - name: Create or update the draft
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" zips/* --clobber
+            exit 0
+          fi
+          cat > notes.md <<'EOF'
+          Download the zip for your platform, unzip it, and run Mudd.io. Your data is kept in
+          `%APPDATA%\Mudd.io` (Windows) or `~/.mudd` (macOS, Linux), not beside the app, so
+          replacing the app with a newer build keeps everything.
+
+          **These builds are unsigned**, so the first launch shows a warning:
+
+          - **Windows**: "Windows protected your PC" -> More info -> Run anyway.
+          - **macOS**: move Mudd.io.app to Applications and open it once, then
+            System Settings -> Privacy & Security -> Open Anyway.
+          - **Linux**: needs GTK 4 and WebKitGTK 6.0
+            (Debian/Ubuntu: `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`).
+            `zenity` or `kdialog` adds the native file picker.
+          EOF
+          gh release create "$TAG" zips/* \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "Mudd.io $TAG" \
+            --notes-file notes.md \
+            --generate-notes
