@@ -134,16 +134,11 @@ export async function applyUpdate(zip: Uint8Array, target: string, platform = pr
   let incoming: string;
   try {
     incoming = platform === "darwin" ? await unpackApp(zip, fresh) : await unpackExe(zip, fresh);
-  } catch (err) {
-    fs.rmSync(fresh, { recursive: true, force: true });
-    throw err;
-  }
-
-  try {
     fs.rmSync(old, { recursive: true, force: true });
     fs.renameSync(target, old);
   } catch (err) {
     fs.rmSync(fresh, { recursive: true, force: true });
+    // Say so, rather than "EPERM: operation not permitted, open '…\Mudd.exe.new'".
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "EPERM" || code === "EACCES" || code === "EBUSY") throw new Error("Mudd can't replace itself where it's installed. Download the update instead.");
     throw err;
