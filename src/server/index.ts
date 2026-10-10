@@ -1,6 +1,6 @@
 /**
  * The REST API the page talks to. Same-origin JSON over 127.0.0.1, refused to any other site
- * (see fromOwnPage); nothing here makes an outbound request.
+ * (see fromOwnPage). The one outbound request is the update check (update.ts).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -11,8 +11,10 @@ import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook, type LoadedBo
 import * as db from "./db";
 import { registerAiRoutes } from "./ai-routes";
 import { dialogsSupported, downloadsDir, openDialog, openExternal } from "./dialogs";
-import { stopCampaignRuns } from "./enrich/runner";
+import { abortAll } from "./ai/proc";
+import { stopAllRuns, stopCampaignRuns } from "./enrich/runner";
 import { markInterruptedRuns } from "./enrich/store";
+import { checkForUpdate, installUpdate } from "./update";
 
 const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
@@ -294,6 +296,15 @@ on("POST", "/api/open-url", async (req) => {
   return openExternal(b.url) ? json({ ok: true }) : fail(400, "Only web and mailto links can be opened.");
 });
 on("GET", "/api/meetings", () => json(db.listMeetings()));
+
+on("GET", "/api/update", async () => json(await checkForUpdate()));
+on("POST", "/api/update/install", async () => {
+  const installed = await installUpdate();
+  // The page restarts Mudd next, and that quits at once: no research turn may outlive it.
+  stopAllRuns();
+  abortAll();
+  return json(installed);
+});
 
 registerAiRoutes(on, {
   json,

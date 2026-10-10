@@ -7,5 +7,6 @@ export class Webview {
   readonly unsafeWindowHandle: import("bun:ffi").Pointer | null;
   init(js: string): void;
   navigate(url: string): void;
+  bind(name: string, callback: (...args: any[]) => unknown): void;
   run(): void;
 }

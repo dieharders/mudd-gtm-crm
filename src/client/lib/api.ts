@@ -1,4 +1,4 @@
-/** Typed calls to the local API. Every request is same-origin; nothing goes to the internet. */
+/** Typed calls to the local API. Every request is same-origin; the page itself never goes online. */
 import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeOutput, RunKind, Suggestion, SuggestionStatus } from "../../shared/ai";
 import type { ColumnType } from "../../shared/types";
 import type {
@@ -35,6 +35,14 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
 }
 
 export type DialogResult = { path: string } | { cancelled: true } | { unsupported: true };
+
+export interface UpdateInfo {
+  current: string;
+  /** A newer published release, or null. */
+  latest: { version: string; url: string } | null;
+  /** Why Mudd can't update itself (offer the download page instead), or null when it can. */
+  blocked: string | null;
+}
 
 export interface SaveResult {
   /** Where the file was written. */
@@ -88,6 +96,10 @@ export const api = {
   openDialog: () => call<DialogResult>("POST", "/api/dialog/open"),
   openUrl: (url: string) => call<{ ok: true }>("POST", "/api/open-url", { url }),
   meetings: () => call<Meeting[]>("GET", "/api/meetings"),
+
+  /** The server asks GitHub for the latest release. */
+  update: () => call<UpdateInfo>("GET", "/api/update"),
+  installUpdate: () => call<{ version: string }>("POST", "/api/update/install"),
 
   // ----- AI -----
   aiStatus: (fresh = false) => call<{ settings: AiSettings; providers: ProviderStatus[] }>("GET", `/api/ai/status${fresh ? "?fresh=1" : ""}`),
