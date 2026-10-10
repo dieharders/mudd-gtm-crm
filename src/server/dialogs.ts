@@ -57,7 +57,7 @@ $owner.Opacity = 0
 $owner.Show()
 $owner.Activate()
 $d = New-Object System.Windows.Forms.OpenFileDialog
-$d.Title = 'Import a spreadsheet into Mudd.io'
+$d.Title = 'Import a spreadsheet into Mudd'
 $d.Filter = 'Spreadsheets (*.xlsx;*.csv;*.tsv;*.txt)|*.xlsx;*.csv;*.tsv;*.txt|All files (*.*)|*.*'
 $d.Multiselect = $false
 if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }
@@ -70,11 +70,11 @@ set kinds to {"org.openxmlformats.spreadsheetml.sheet", "public.comma-separated-
 try
   tell application (path to frontmost application as text)
     activate
-    set f to choose file with prompt "Import a spreadsheet into Mudd.io" of type kinds
+    set f to choose file with prompt "Import a spreadsheet into Mudd" of type kinds
   end tell
 on error number errNum
   if errNum is -128 then error number -128
-  set f to choose file with prompt "Import a spreadsheet into Mudd.io" of type kinds
+  set f to choose file with prompt "Import a spreadsheet into Mudd" of type kinds
 end try
 return POSIX path of f
 `;
@@ -93,7 +93,7 @@ export async function openDialog(): Promise<DialogResult> {
   }
   const tool = process.platform === "linux" ? linuxDialog() : null;
   if (tool === "zenity") {
-    const r = await run(["zenity", "--file-selection", "--title=Import a spreadsheet into Mudd.io", "--file-filter=Spreadsheets | *.xlsx *.csv *.tsv *.txt"]);
+    const r = await run(["zenity", "--file-selection", "--title=Import a spreadsheet into Mudd", "--file-filter=Spreadsheets | *.xlsx *.csv *.tsv *.txt"]);
     return r.code === 0 && r.out ? { path: r.out } : { cancelled: true };
   }
   if (tool === "kdialog") {

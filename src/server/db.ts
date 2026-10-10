@@ -1,7 +1,7 @@
 /**
  * Local storage: one SQLite file, nothing leaves the machine.
  *
- * Lives in %APPDATA%\Mudd.io (or ~/.mudd on other systems) rather than beside the checkout, so
+ * Lives in %APPDATA%\Mudd (or ~/.mudd on other systems) rather than beside the checkout, so
  * a `git clean` or a fresh clone never takes a user's campaigns with it. `MUDD_DATA_DIR`
  * overrides it — the tests point it at a temp directory.
  *
@@ -28,7 +28,20 @@ import { applyCellEdits, primaryOf, prospectTitle } from "../shared/values";
 
 export function dataDir(): string {
   if (process.env.MUDD_DATA_DIR) return process.env.MUDD_DATA_DIR;
-  if (process.platform === "win32" && process.env.APPDATA) return path.join(process.env.APPDATA, "Mudd.io");
+  if (process.platform === "win32" && process.env.APPDATA) {
+    const dir = path.join(process.env.APPDATA, "Mudd");
+    // Earlier builds were named Mudd.io and kept their data there: move it over on first use.
+    // If it can't move (an old build still has it open), keep using it until it can.
+    const legacy = path.join(process.env.APPDATA, "Mudd.io");
+    if (!fs.existsSync(dir) && fs.existsSync(legacy)) {
+      try {
+        fs.renameSync(legacy, dir);
+      } catch {
+        return legacy;
+      }
+    }
+    return dir;
+  }
   return path.join(os.homedir(), ".mudd");
 }
 

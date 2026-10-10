@@ -1,10 +1,10 @@
 /**
- * Package the macOS build as a .dmg: Mudd.io.app beside an Applications shortcut, so installing is
+ * Package the macOS build as a .dmg: Mudd.app beside an Applications shortcut, so installing is
  * a drag. The release workflow ships this for macOS in place of a zip. Adapted from
  * motionbuff-native-app.
  *
- *   bun run installer                        dist/Mudd.io.app              -> dist/Mudd.io-<version>-darwin-<arch>.dmg
- *   bun run installer --target=darwin-arm64  dist/darwin-arm64/Mudd.io.app -> dist/Mudd.io-<version>-darwin-arm64.dmg
+ *   bun run installer                        dist/Mudd.app              -> dist/Mudd-<version>-darwin-<arch>.dmg
+ *   bun run installer --target=darwin-arm64  dist/darwin-arm64/Mudd.app -> dist/Mudd-<version>-darwin-arm64.dmg
  *
  * Run the matching `bun run build` first. macOS only: hdiutil and codesign exist nowhere else.
  */
@@ -13,7 +13,7 @@ import path from "node:path";
 
 const ROOT = path.join(import.meta.dir, "..");
 const DIST = path.join(ROOT, "dist");
-const APP_NAME = "Mudd.io";
+const APP_NAME = "Mudd";
 const VERSION = (JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")) as { version: string }).version;
 
 if (process.platform !== "darwin") {
@@ -46,7 +46,7 @@ const staged = path.join(staging, `${APP_NAME}.app`);
 await run(["ditto", app, staged]);
 fs.symlinkSync("/Applications", path.join(staging, "Applications"));
 // Checked on the copy that ships: past this point a broken seal shows up only as a user's
-// "Mudd.io is damaged" dialog.
+// "Mudd is damaged" dialog.
 await run(["codesign", "--verify", "--deep", "--strict", staged]);
 
 const out = path.join(DIST, `${APP_NAME}-${VERSION}-${target}.dmg`);

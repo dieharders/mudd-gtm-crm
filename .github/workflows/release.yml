@@ -1,4 +1,4 @@
-# Build Mudd.io for Windows, macOS and Linux and attach the downloads to a DRAFT release: a zip
+# Build Mudd for Windows, macOS and Linux and attach the downloads to a DRAFT release: a zip
 # for Windows and Linux, a .dmg installer for macOS.
 #
 # MANUALLY TRIGGERED. Nothing here runs on a push or a tag.
@@ -88,7 +88,7 @@ jobs:
           # To add it: `- target: linux-arm64 / runner: ubuntu-24.04-arm / ext: zip`.
     env:
       # scripts/make-installer.ts names the .dmg the same way.
-      ASSET: Mudd.io-${{ needs.version.outputs.version }}-${{ matrix.target }}.${{ matrix.ext }}
+      ASSET: Mudd-${{ needs.version.outputs.version }}-${{ matrix.target }}.${{ matrix.ext }}
 
     steps:
       - uses: actions/checkout@v4
@@ -108,9 +108,9 @@ jobs:
       - name: Zip (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path "dist/${{ matrix.target }}/Mudd.io.exe" -DestinationPath "dist/$env:ASSET"
+        run: Compress-Archive -Path "dist/${{ matrix.target }}/Mudd.exe" -DestinationPath "dist/$env:ASSET"
 
-      # The signed Mudd.io.app beside an Applications shortcut, to drag it onto.
+      # The signed Mudd.app beside an Applications shortcut, to drag it onto.
       - name: Installer (macOS)
         if: runner.os == 'macOS'
         run: bun run installer --target=${{ matrix.target }}
@@ -118,7 +118,7 @@ jobs:
       # Info-ZIP keeps the executable bit, so the unzipped binary runs without a chmod.
       - name: Zip (Linux)
         if: runner.os == 'Linux'
-        run: zip -j "dist/$ASSET" "dist/${{ matrix.target }}/Mudd.io"
+        run: zip -j "dist/$ASSET" "dist/${{ matrix.target }}/Mudd"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -168,26 +168,26 @@ jobs:
         if: steps.check.outputs.release == 'none'
         run: |
           cat > notes.md <<'EOF'
-          Download the file for your platform. Your data is kept in `%APPDATA%\Mudd.io` (Windows)
+          Download the file for your platform. Your data is kept in `%APPDATA%\Mudd` (Windows)
           or `~/.mudd` (macOS, Linux), not beside the app, so replacing the app with a newer build
           keeps everything.
 
-          - **Windows**: unzip and run `Mudd.io.exe`.
+          - **Windows**: unzip and run `Mudd.exe`.
           - **macOS**: open the `.dmg` (`arm64` for Apple silicon, `x64` for Intel) and drag
-            Mudd.io into Applications.
-          - **Linux**: unzip and run `Mudd.io`. Needs GTK 4 and WebKitGTK 6.0
+            Mudd into Applications.
+          - **Linux**: unzip and run `Mudd`. Needs GTK 4 and WebKitGTK 6.0
             (Debian/Ubuntu: `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`).
             `zenity` or `kdialog` adds the native file picker.
 
           **These builds are unsigned**, so the first launch shows a warning:
 
           - **Windows**: "Windows protected your PC" -> More info -> Run anyway.
-          - **macOS**: open Mudd.io once from Applications, then
+          - **macOS**: open Mudd once from Applications, then
             System Settings -> Privacy & Security -> Open Anyway.
           EOF
           gh release create "$TAG" downloads/* \
             --draft \
             --target "$GITHUB_SHA" \
-            --title "Mudd.io $TAG" \
+            --title "Mudd $TAG" \
             --notes-file notes.md \
             --generate-notes

@@ -1,4 +1,4 @@
-# Mudd.io
+# Mudd
 
 A local-first prospect CRM. Import a tracker spreadsheet, work it in the app, export it back with its formatting intact. Nothing leaves your computer.
 
@@ -6,7 +6,7 @@ A local-first prospect CRM. Import a tracker spreadsheet, work it in the app, ex
 
 ```powershell
 bun install          # first time only
-bun run start        # opens the Mudd.io window
+bun run start        # opens the Mudd window
 ```
 
 ## Quickstart
@@ -16,13 +16,13 @@ bun run start        # opens the Mudd.io window
 | `bun run start` | The app in its own window (webview-bun, same shell as motionbuff-native-app). |
 | `bun run headless` | Server only. Open the printed `http://127.0.0.1:24871` in a browser. |
 | `bun run dev` | Browser dev server with hot reload on `http://127.0.0.1:3000`. |
-| `bun run build` | Standalone `dist/Mudd.io.exe` (a `Mudd.io.app` on macOS). |
-| `bun run installer` | macOS only: package the built `Mudd.io.app` as a drag-to-Applications `.dmg`. |
+| `bun run build` | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS). |
+| `bun run installer` | macOS only: package the built `Mudd.app` as a drag-to-Applications `.dmg`. |
 | `bun run icon` | Rebuild `assets/icon.ico` from `assets/icon.svg` (needs Edge or Chrome). Commit the result. |
 | `bun run typecheck` | TypeScript check. |
 | `bun test` | Unit and round-trip tests (see below). |
 
-Your campaigns are stored in `%APPDATA%\Mudd.io\mudd.sqlite`. Set `MUDD_DATA_DIR` to use a different folder.
+Your campaigns are stored in `%APPDATA%\Mudd\mudd.sqlite`. Set `MUDD_DATA_DIR` to use a different folder.
 
 ## Releases
 

@@ -1,7 +1,7 @@
 /**
- * Compile Mudd.io to a standalone executable.
+ * Compile Mudd to a standalone executable.
  *
- *   bun run build                          dist/Mudd.io(.exe), for this machine
+ *   bun run build                          dist/Mudd(.exe), for this machine
  *   bun run build --target=darwin-arm64    dist/darwin-arm64/, what the release workflow zips
  *
  * A --target must match this machine: webview-bun picks its native library by the platform it
@@ -16,7 +16,7 @@ const ROOT = import.meta.dir;
 const DIST = path.join(ROOT, "dist");
 /** The one icon file: embedded in the Windows exe, converted to .icns for macOS. Made by `bun run icon`. */
 const ICON_PATH = path.join(ROOT, "assets", "icon.ico");
-const APP_NAME = "Mudd.io";
+const APP_NAME = "Mudd";
 const BUNDLE_ID = "io.mudd.desktop";
 const ext = process.platform === "win32" ? ".exe" : "";
 
@@ -59,9 +59,9 @@ const result = await Bun.build({
     ...(process.platform === "win32"
       ? {
           windows: {
-            title: "Mudd.io",
-            publisher: "Mudd.io",
-            description: "Mudd.io - local-first prospect CRM",
+            title: "Mudd",
+            publisher: "Mudd",
+            description: "Mudd - local-first prospect CRM",
             version: NUMERIC_VERSION,
             icon: ICON_PATH,
             hideConsole: false,
