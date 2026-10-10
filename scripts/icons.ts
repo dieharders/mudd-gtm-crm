@@ -1,7 +1,7 @@
 /**
  * Re-encode assets/icon.ico as the .icns a macOS .app needs, at build time, so the .ico stays the
  * one icon file in the repo. Written against the formats directly: `iconutil` exists only on macOS
- * and an image library would be a native dependency. Adapted from motionbuff-native-app.
+ * and an image library would be a native dependency.
  */
 import { deflateSync } from "node:zlib";
 

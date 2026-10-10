@@ -1,14 +1,12 @@
 /**
- * The Codex provider — ChatGPT Plus/Pro/Business through OpenAI's `codex` CLI. Adapted from
- * motionbuff-native-app's providers/codex.ts and jsonl-turn.ts.
+ * The Codex provider — ChatGPT Plus/Pro/Business through OpenAI's `codex` CLI.
  *
  * `codex exec --json` is one-way: prompt in, one JSON event per line out. The sandbox is
  * `read-only` (a research turn has no business writing files), every knob goes through `-c`,
  * and the system prompt is prepended to the prompt because `exec` has no per-call system slot.
  *
- * NOTE: Codex is not installed on the development machine, so — like motionbuff's copy — this
- * is written against OpenAI's CLI reference and the event mapping is deliberately tolerant.
- * Web search is enabled with `-c tools.web_search=true`.
+ * NOTE: Codex is not installed on the development machine, so this is written against OpenAI's
+ * CLI reference and the event mapping is deliberately tolerant. Web search is enabled with `-c tools.web_search=true`.
  */
 import type { ProviderAuth } from "../../shared/ai";
 import { CODEX_SPEC, discoverCli } from "./discovery";

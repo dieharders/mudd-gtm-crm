@@ -1,5 +1,6 @@
 # Build Mudd for Windows, macOS and Linux and attach the downloads to a DRAFT release: a zip
-# for Windows and Linux, a .dmg installer for macOS.
+# for Windows and Linux, a .dmg installer for macOS, and for macOS also the zip Mudd updates
+# itself from. Publishing the draft is what offers the update to everyone's Mudd.
 #
 # MANUALLY TRIGGERED. Nothing here runs on a push or a tag.
 #
@@ -115,6 +116,13 @@ jobs:
         if: runner.os == 'macOS'
         run: bun run installer --target=${{ matrix.target }}
 
+      # What Mudd downloads to update itself (src/server/update.ts): it can't swap in a .dmg.
+      # ditto keeps the signed bundle byte for byte, file modes included; no resource forks or
+      # extended attributes, which the zip would carry as "._" files.
+      - name: Update zip (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --norsrc --noextattr --keepParent "dist/${{ matrix.target }}/Mudd.app" "dist/Mudd-${{ needs.version.outputs.version }}-${{ matrix.target }}.zip"
+
       # Info-ZIP keeps the executable bit, so the unzipped binary runs without a chmod.
       - name: Zip (Linux)
         if: runner.os == 'Linux'
@@ -123,7 +131,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: dist/${{ env.ASSET }}
+          # The download (a .zip, or a .dmg on macOS) and macOS's update .zip.
+          path: dist/Mudd-${{ needs.version.outputs.version }}-${{ matrix.target }}.*
           compression-level: 0
           if-no-files-found: error
           # Only a hand-off to the release job, which copies the files into the release.
@@ -174,10 +183,13 @@ jobs:
 
           - **Windows**: unzip and run `Mudd.exe`.
           - **macOS**: open the `.dmg` (`arm64` for Apple silicon, `x64` for Intel) and drag
-            Mudd into Applications.
+            Mudd into Applications. (The macOS `.zip` files are what Mudd downloads to update
+            itself.)
           - **Linux**: unzip and run `Mudd`. Needs GTK 4 and WebKitGTK 6.0
             (Debian/Ubuntu: `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`).
             `zenity` or `kdialog` adds the native file picker.
+
+          Already have Mudd 0.1.7 or later? It offers this update itself, in the sidebar.
 
           **These builds are unsigned**, so the first launch shows a warning:
 

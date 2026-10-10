@@ -1,6 +1,5 @@
 /**
  * Main thread: start the server in a Worker, then open a native window pointed at it.
- * Adapted from motionbuff-native-app's main.ts.
  *
  *   bun run main.ts              the app, in its own window
  *   bun run main.ts --headless   the server only; open the printed URL in a browser
@@ -8,6 +7,7 @@
 import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
 import path from "node:path";
 import { dataDir } from "./src/server/db";
+import { cleanUpAfterUpdate, relaunch, waitForExit } from "./src/server/update";
 
 /** The Win32 calls below, opened on first use (these libraries don't exist on macOS or Linux). */
 let win32Libs: ReturnType<typeof openWin32> | null = null;
@@ -114,6 +114,11 @@ function keepWebviewProfileInDataDir(): void {
   process.env.WEBVIEW2_USER_DATA_FOLDER = path.join(dataDir(), "WebView");
 }
 
+// Started by the copy this one replaced (update.ts relaunch): let it quit and free the port first.
+const replacing = Number(process.argv.find((a) => a.startsWith("--wait-for="))?.split("=")[1]);
+if (replacing) await waitForExit(replacing);
+cleanUpAfterUpdate();
+
 // Before the worker starts: it takes a copy of this environment and is what spawns the AI CLIs.
 await adoptLoginShellPath();
 
@@ -168,6 +173,12 @@ if (process.argv.includes("--headless")) {
     webview.size = { width: 1400, height: 900, hint: 0 };
     setWindowIcon(webview);
     webview.init(`window.__MUDD_SHELL__ = ${JSON.stringify(process.platform)};`);
+    // After an update is installed. This thread is inside webview.run() until the window closes,
+    // so the worker can't be asked to stop (the install already stopped its AI work): just go.
+    webview.bind("__muddRestart", () => {
+      relaunch();
+      process.exit(0);
+    });
     webview.navigate(url);
     console.log(`\n  Mudd window opened.  (server: ${url})\n`);
     hideOwnConsoleWindow();

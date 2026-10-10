@@ -1,7 +1,7 @@
 /**
  * Package the macOS build as a .dmg: Mudd.app beside an Applications shortcut, so installing is
- * a drag. The release workflow ships this for macOS in place of a zip. Adapted from
- * motionbuff-native-app.
+ * a drag. The release workflow ships this as the macOS download, beside a zip of Mudd.app that
+ * only Mudd's updater uses (src/server/update.ts can't install from a .dmg).
  *
  *   bun run installer                        dist/Mudd.app              -> dist/Mudd-<version>-darwin-<arch>.dmg
  *   bun run installer --target=darwin-arm64  dist/darwin-arm64/Mudd.app -> dist/Mudd-<version>-darwin-arm64.dmg

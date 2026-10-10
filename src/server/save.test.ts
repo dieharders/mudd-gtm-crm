@@ -1,6 +1,7 @@
 /**
  * Save file end to end through the REST API: in place with backups, the "changed outside Mudd"
  * check, copies, the Downloads fallback, refused macro workbooks, and prospects and their contacts.
+ * Also that the API refuses requests from other sites.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import ExcelJS from "exceljs";
@@ -184,5 +185,37 @@ describe("prospects and their contacts", () => {
     const after = (await call<CampaignBundle>("GET", `/api/campaigns/${id}`)).json;
     expect(after.rows).toHaveLength(1);
     expect(after.contacts.map((c) => c.cells[nameKey])).toEqual(["Bo Chen-Li"]);
+  });
+});
+
+describe("requests from other sites", () => {
+  const send = (url: string, init: RequestInit = {}) => handler(new Request(url, init));
+
+  test("are refused, and change nothing", async () => {
+    const before = (await call<CampaignSummary[]>("GET", "/api/campaigns")).json.length;
+    // A page on another site posting to the API: text/plain, so the browser sends it without asking.
+    const forged = await send("http://127.0.0.1:24871/api/campaigns", { method: "POST", headers: { Origin: "https://evil.example", "Content-Type": "text/plain" }, body: JSON.stringify({ name: "Forged" }) });
+    expect(forged.status).toBe(403);
+    // A sandboxed frame or a file:// page sends Origin "null".
+    expect((await send("http://127.0.0.1:24871/api/campaigns", { method: "POST", headers: { Origin: "null" }, body: "{}" })).status).toBe(403);
+    // DNS rebinding: evil.example resolves to 127.0.0.1, so the page is "same-origin" with the API.
+    expect((await send("http://evil.example:24871/api/campaigns")).status).toBe(403);
+    expect((await send("http://evil.example:24871/api/campaigns", { method: "POST", headers: { Origin: "http://evil.example:24871" }, body: "{}" })).status).toBe(403);
+    // An <img> or <script> on another site: a GET without an Origin.
+    for (const site of ["cross-site", "same-site"]) {
+      expect((await send("http://127.0.0.1:24871/api/update", { headers: { "Sec-Fetch-Site": site } })).status).toBe(403);
+    }
+    expect((await call<CampaignSummary[]>("GET", "/api/campaigns")).json).toHaveLength(before);
+  });
+
+  test("Mudd's own page still gets through, on 127.0.0.1 or localhost", async () => {
+    for (const origin of ["http://127.0.0.1:24871", "http://localhost:24871"]) {
+      const res = await send(`${origin}/api/campaigns`, { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" }, body: JSON.stringify({ name: "Mine" }) });
+      expect(res.status).toBe(200);
+    }
+    // The URL typed into the address bar.
+    expect((await send("http://127.0.0.1:24871/api/campaigns", { headers: { "Sec-Fetch-Site": "none" } })).status).toBe(200);
+    // The same host on another port is another site.
+    expect((await send("http://127.0.0.1:24871/api/campaigns", { headers: { Origin: "http://127.0.0.1:3000" } })).status).toBe(403);
   });
 });

@@ -1,6 +1,5 @@
 /**
- * The Claude Code provider, through the Claude Agent SDK. Adapted from motionbuff-native-app's
- * providers/claude.ts and claude-options.ts.
+ * The Claude Code provider, through the Claude Agent SDK.
  *
  * THE FENCE. `tools` is an allowlist of the built-in tools that exist at all for the session:
  * WebSearch and WebFetch when the recipe wants the web, otherwise nothing. No Bash, no Read,

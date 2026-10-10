@@ -1,8 +1,8 @@
-/** Typed calls to the local API. Every request is same-origin; nothing goes to the internet. */
+/** Typed calls to the local API. Every request is same-origin; the page itself never goes online. */
 import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeOutput, RunKind, Suggestion, SuggestionStatus } from "../../shared/ai";
 import type { ColumnType } from "../../shared/types";
 import type {
-  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, Row, Template,
+  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, Row, Template, UpdateInfo,
 } from "../../shared/types";
 
 export class ApiError extends Error {
@@ -88,6 +88,10 @@ export const api = {
   openDialog: () => call<DialogResult>("POST", "/api/dialog/open"),
   openUrl: (url: string) => call<{ ok: true }>("POST", "/api/open-url", { url }),
   meetings: () => call<Meeting[]>("GET", "/api/meetings"),
+
+  /** The server asks GitHub for the latest release. */
+  update: () => call<UpdateInfo>("GET", "/api/update"),
+  installUpdate: () => call<{ version: string }>("POST", "/api/update/install"),
 
   // ----- AI -----
   aiStatus: (fresh = false) => call<{ settings: AiSettings; providers: ProviderStatus[] }>("GET", `/api/ai/status${fresh ? "?fresh=1" : ""}`),

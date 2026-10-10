@@ -4,7 +4,6 @@
  * On Windows npm installs a bin as shims (`x.cmd`, `x.ps1`) that are not executables, and
  * spawning a `.cmd` goes through cmd.exe, which re-parses arguments — so a shim is resolved to
  * what it actually launches (`claude.exe`, or `[node, codex.js]`) and that is spawned directly.
- * Simplified from motionbuff-native-app's discovery.ts.
  *
  * Search order: explicit env override → PATH (shims resolved) → the npm global prefix →
  * well-known directories → the copy bundled with the Claude Agent SDK. Each candidate is asked

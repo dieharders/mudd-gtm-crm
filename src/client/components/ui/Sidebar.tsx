@@ -9,6 +9,7 @@ import { todayString } from "../../lib/format";
 import { tileFor } from "../../lib/stages";
 import { useImport } from "../campaigns/ImportFlow";
 import { Logo, Tile } from "./Logo";
+import { UpdateNotice, useUpdateCheck } from "./UpdateNotice";
 
 export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
   const { campaigns, meetings } = useCampaignList();
@@ -16,6 +17,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
   const ai = useAi();
   const { status: aiStatus, ready: aiReady } = useActiveProvider();
   const upcoming = meetings.filter((m) => m.at.slice(0, 10) >= todayString()).length;
+  const update = useUpdateCheck();
 
   const item = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -71,6 +73,8 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
         {campaigns && campaigns.length === 0 && <p className="px-2 py-1 text-xs text-ink-faint">No campaigns yet</p>}
       </nav>
 
+      <UpdateNotice info={update} />
+
       <div className="px-3 pb-2">
         <button
           onClick={() => ai.setOpen(true)}
@@ -89,6 +93,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
 
       <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-[11px] text-ink-faint">
         <Lock size={12} /> Local only · private to this computer
+        {update && <span className="ml-auto tabular-nums">v{update.current}</span>}
       </div>
     </aside>
   );

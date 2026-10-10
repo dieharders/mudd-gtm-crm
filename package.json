@@ -1,8 +1,9 @@
 {
   "name": "mudd",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Mudd: Local-first prospect and enrichment CRM with spreadsheet import/export support.",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "bun@1.4.0",
   "scripts": {

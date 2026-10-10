@@ -2,7 +2,7 @@
  * AI provider and enrichment types shared by the server and the page.
  *
  * Mudd never holds an API key. It drives the user's own signed-in agent CLI — Claude Code or
- * Codex — the way motionbuff-native-app does, so enrichment bills the user's plan.
+ * Codex — so enrichment bills the user's plan.
  */
 import { isContactKey } from "./schema";
 import type { CampaignSchema, CellValue, Column, Row } from "./types";

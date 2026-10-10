@@ -5,7 +5,7 @@
  *   bun run icon
  *
  * The SVG is drawn onto a transparent canvas in headless Edge or Chrome, so the rounded corners stay
- * transparent (a converter that flattens onto white loses them). Adapted from motionbuff-native-app.
+ * transparent (a converter that flattens onto white loses them).
  */
 import fs from "node:fs";
 import os from "node:os";

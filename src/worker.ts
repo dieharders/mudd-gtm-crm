@@ -1,13 +1,12 @@
 /**
  * The HTTP server, in a Worker, because `webview.run()` blocks the main thread forever with the
- * window's native event loop (same split as motionbuff-native-app).
+ * window's native event loop.
  *
  * The `import index from "./client/index.html"` literal is how Bun's bundler finds the frontend,
  * and how `bun build --compile` embeds it. It must stay a literal in this file.
  */
 import index from "./client/index.html";
-import { abortAll } from "./server/ai/proc";
-import { stopAllRuns } from "./server/enrich/runner";
+import { stopAllAiWork } from "./server/enrich/runner";
 import { createFetchHandler } from "./server/index";
 
 const handler = createFetchHandler();
@@ -44,9 +43,7 @@ const server = (() => {
 declare let self: Worker;
 self.onmessage = (event: MessageEvent) => {
   if (event.data?.type !== "shutdown") return;
-  // Stop every research turn: a CLI left running would keep spending the user's plan.
-  stopAllRuns();
-  abortAll();
+  stopAllAiWork();
   // "closed" only once the server has stopped: the main thread quits on it.
   void server.stop(true).finally(() => postMessage({ type: "closed" }));
 };

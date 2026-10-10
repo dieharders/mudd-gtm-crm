@@ -1,6 +1,13 @@
 # Mudd
 
-A local-first prospect CRM. Import a tracker spreadsheet, work it in the app, export it back with its formatting intact. Nothing leaves your computer.
+**A free desktop CRM for sales prospecting that works on the spreadsheet you already have.**
+
+Open your Excel or CSV lead tracker in Mudd and work it like a CRM. Track each company and its contacts through your pipeline, let AI research the gaps and draft personal intros, then save straight back to the same file. Your formatting, formulas and other tabs are kept, so the spreadsheet stays the source of truth.
+
+- **AI enrichment with sources**: Mudd researches each prospect on the web and fills columns you choose, such as industry, headcount or a decision-maker's name. Every suggestion links to its source, and you accept or reject it.
+- **Intros that sound like you**: write templates with `{{First name}}`-style placeholders, and AI fills them in with one or two real, checkable hooks per prospect.
+- **Private by design**: your data stays on your computer. There's no account, no cloud service and no API key. The AI runs through your own Claude Code or Codex sign-in and bills the plan you already pay for.
+- **Free**: for Windows, macOS and Linux.
 
 ## Setup
 
@@ -11,22 +18,24 @@ bun run start        # opens the Mudd window
 
 ## Quickstart
 
-| Command | What it does |
-| --- | --- |
-| `bun run start` | The app in its own window (webview-bun, same shell as motionbuff-native-app). |
-| `bun run headless` | Server only. Open the printed `http://127.0.0.1:24871` in a browser. |
-| `bun run dev` | Browser dev server with hot reload on `http://127.0.0.1:3000`. |
-| `bun run build` | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS). |
-| `bun run installer` | macOS only: package the built `Mudd.app` as a drag-to-Applications `.dmg`. |
-| `bun run icon` | Rebuild `assets/icon.ico` from `assets/icon.svg` (needs Edge or Chrome). Commit the result. |
-| `bun run typecheck` | TypeScript check. |
-| `bun test` | Unit and round-trip tests (see below). |
+| Command             | What it does                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------- |
+| `bun run start`     | The app in its own window (webview-bun).                                                    |
+| `bun run headless`  | Server only. Open the printed `http://127.0.0.1:24871` in a browser.                        |
+| `bun run dev`       | Browser dev server with hot reload on `http://127.0.0.1:3000`.                              |
+| `bun run build`     | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS).                                         |
+| `bun run installer` | macOS only: package the built `Mudd.app` as a drag-to-Applications `.dmg`.                  |
+| `bun run icon`      | Rebuild `assets/icon.ico` from `assets/icon.svg` (needs Edge or Chrome). Commit the result. |
+| `bun run typecheck` | TypeScript check.                                                                           |
+| `bun test`          | Unit and round-trip tests (see below).                                                      |
 
 Your campaigns are stored in `%APPDATA%\Mudd\mudd.sqlite`. Set `MUDD_DATA_DIR` to use a different folder.
 
 ## Releases
 
-Bump `version` in package.json, then run **Actions → Manual Release → Run workflow**, picking the branch to build (no other input: the release is tagged `v<version>`, e.g. `v0.1.4`). It builds a zip for Windows x64 and Linux x64 and a `.dmg` installer for macOS (Apple silicon and Intel) and, only if all four succeed, attaches them to a **draft** release. Publish the draft from the Releases page when you're ready; that creates the tag if it doesn't exist yet. The builds are unsigned (macOS is ad-hoc signed), so Windows and macOS warn on first launch.
+Bump `version` in package.json, then run **Actions → Manual Release → Run workflow**, picking the branch to build (no other input: the release is tagged `v<version>`, e.g. `v0.1.4`). It builds a zip for Windows x64 and Linux x64 and a `.dmg` installer for macOS (Apple silicon and Intel), plus a zip of each Mac's `Mudd.app` for updates, and, only if all four succeed, attaches them to a **draft** release. Publish the draft from the Releases page when you're ready; that creates the tag if it doesn't exist yet. The builds are unsigned (macOS is ad-hoc signed), so Windows and macOS warn on first launch.
+
+**Updates.** Publishing a release is also what updates everyone. Mudd asks GitHub for the latest release of `dieharders/mudd-gtm-crm` when it opens and every 6 hours after, and when it's newer, offers it in the sidebar. **Update & restart** downloads this platform's zip, checks it against the SHA-256 GitHub lists for it, swaps it in for the running copy and restarts. That check is the only request Mudd makes on its own, and none of your data goes with it. Where Mudd can't replace itself (run from source, or from a folder it can't write to), the sidebar links to the download instead. Code: `src/server/update.ts`.
 
 ## How it works
 
@@ -61,12 +70,12 @@ src/client/             React UI (Tailwind v4, lucide-react, react-hot-toast)
 
 ## AI: enrichment and intro messages
 
-Mudd drives **your own signed-in agent CLI**, the same way motionbuff-native-app does. It never stores an API key, and research bills your plan.
+Mudd drives **your own signed-in agent CLI**. It never stores an API key, and research bills your plan.
 
-| Provider | Needs | Sign in |
-| --- | --- | --- |
+| Provider              | Needs                                      | Sign in                                             |
+| --------------------- | ------------------------------------------ | --------------------------------------------------- |
 | Claude Code (default) | `npm install -g @anthropic-ai/claude-code` | `claude auth login` (or **Sign in** in AI settings) |
-| Codex | `npm install -g @openai/codex` | `codex login` |
+| Codex                 | `npm install -g @openai/codex`             | `codex login`                                       |
 
 Open **AI settings** from the bottom of the sidebar to pick the provider, model and effort. It shows the signed-in account and whether usage bills your subscription or an API key. "Bill my Claude subscription only" removes `ANTHROPIC_API_KEY` from the CLI's environment. It is switched off automatically if that key is your only credential.
 
@@ -86,3 +95,11 @@ Open **AI settings** from the bottom of the sidebar to pick the provider, model 
   - **Draft intros** in the bulk bar does the same for every selected row.
 
 Code: `src/server/ai/` (providers, discovery, environment, structured turns), `src/server/enrich/` (runner, prompts, storage, event stream), and `src/client/components/{ai,enrich}/`.
+
+## License
+
+Copyright (C) 2026 dieharders
+
+Mudd is licensed under the [GNU Affero General Public License v3.0](LICENSE) only (`AGPL-3.0-only`). Use it for anything, including at work, and change and share it. Anything you share that's built from Mudd, in whole or in part, must be under the same license with its complete source, and so must a changed Mudd that you run as a service for others. Provided as is, without warranty.
+
+**Additional permission under GNU AGPL version 3 section 7:** if you modify this program, or any covered work, by linking or combining it with Anthropic's Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`), containing parts covered by the terms of Anthropic's own license, the licensors of this program grant you additional permission to convey the resulting work. Mudd's builds include that SDK, which is not free software; its source is not part of Mudd's Corresponding Source.
