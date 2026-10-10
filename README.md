@@ -16,11 +16,17 @@ bun run start        # opens the Mudd.io window
 | `bun run start` | The app in its own window (webview-bun, same shell as motionbuff-native-app). |
 | `bun run headless` | Server only. Open the printed `http://127.0.0.1:24871` in a browser. |
 | `bun run dev` | Browser dev server with hot reload on `http://127.0.0.1:3000`. |
-| `bun run build` | Standalone `dist/Mudd.io.exe`. |
+| `bun run build` | Standalone `dist/Mudd.io.exe` (a `Mudd.io.app` on macOS). |
+| `bun run installer` | macOS only: package the built `Mudd.io.app` as a drag-to-Applications `.dmg`. |
+| `bun run icon` | Rebuild `assets/icon.ico` from `assets/icon.svg` (needs Edge or Chrome). Commit the result. |
 | `bun run typecheck` | TypeScript check. |
 | `bun test` | Unit and round-trip tests (see below). |
 
 Your campaigns are stored in `%APPDATA%\Mudd.io\mudd.sqlite`. Set `MUDD_DATA_DIR` to use a different folder.
+
+## Releases
+
+Bump `version` in package.json, then run **Actions → Manual Release → Run workflow** with the tag `v<version>` (e.g. `v0.1.4`). It builds a zip for Windows x64 and Linux x64 and a `.dmg` installer for macOS (Apple silicon and Intel) and, only if all four succeed, attaches them to a **draft** release. Publish the draft from the Releases page when you're ready; that creates the tag. The builds are unsigned (macOS is ad-hoc signed), so Windows and macOS warn on first launch.
 
 ## How it works
 
