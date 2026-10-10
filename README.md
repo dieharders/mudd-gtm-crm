@@ -98,4 +98,8 @@ Code: `src/server/ai/` (providers, discovery, environment, structured turns), `s
 
 ## License
 
-Free to use but not sell: anything made from Mudd, in whole or in part, must also be free and come with its source. Provided as is. See [LICENSE](LICENSE).
+Copyright (C) 2026 dieharders
+
+Mudd is licensed under the [GNU Affero General Public License v3.0](LICENSE) only (`AGPL-3.0-only`). Use it for anything, including at work, and change and share it. Anything you share that's built from Mudd, in whole or in part, must be under the same license with its complete source, and so must a changed Mudd that you run as a service for others. Provided as is, without warranty.
+
+**Additional permission under GNU AGPL version 3 section 7:** if you modify this program, or any covered work, by linking or combining it with Anthropic's Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`), containing parts covered by the terms of Anthropic's own license, the licensors of this program grant you additional permission to convey the resulting work. Mudd's builds include that SDK, which is not free software; its source is not part of Mudd's Corresponding Source.
