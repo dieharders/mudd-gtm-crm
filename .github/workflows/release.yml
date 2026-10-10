@@ -159,7 +159,7 @@ jobs:
           # Point the draft at this commit, or publishing would tag the commit of an earlier run.
           gh release edit "$TAG" --target "$GITHUB_SHA"
           gh release upload "$TAG" downloads/* --clobber
-          # Drop anything this run did not build (e.g. a zip from before macOS shipped as a .dmg).
+          # Drop anything this run did not build, so the draft holds exactly this run's downloads.
           gh release view "$TAG" --json assets -q '.assets[].name' | while read -r name; do
             [ -e "downloads/$name" ] || gh release delete-asset "$TAG" "$name" --yes
           done

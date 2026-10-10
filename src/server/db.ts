@@ -28,20 +28,7 @@ import { applyCellEdits, primaryOf, prospectTitle } from "../shared/values";
 
 export function dataDir(): string {
   if (process.env.MUDD_DATA_DIR) return process.env.MUDD_DATA_DIR;
-  if (process.platform === "win32" && process.env.APPDATA) {
-    const dir = path.join(process.env.APPDATA, "Mudd");
-    // Earlier builds were named Mudd.io and kept their data there: move it over on first use.
-    // If it can't move (an old build still has it open), keep using it until it can.
-    const legacy = path.join(process.env.APPDATA, "Mudd.io");
-    if (!fs.existsSync(dir) && fs.existsSync(legacy)) {
-      try {
-        fs.renameSync(legacy, dir);
-      } catch {
-        return legacy;
-      }
-    }
-    return dir;
-  }
+  if (process.platform === "win32" && process.env.APPDATA) return path.join(process.env.APPDATA, "Mudd");
   return path.join(os.homedir(), ".mudd");
 }
 
