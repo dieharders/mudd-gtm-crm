@@ -58,7 +58,7 @@ describe("which release is an update", () => {
   test("not this version, an older one, one without this platform, or a tag that isn't a version", () => {
     expect(check(release("v0.1.7", ["Mudd-0.1.7-windows-x64.zip"]))).toBeNull();
     expect(check(release("v0.1.6", ["Mudd-0.1.6-windows-x64.zip"]))).toBeNull();
-    expect(check(release("v0.1.8", ["Mudd-0.1.8-linux-x64.zip", "Mudd-0.1.8-darwin-arm64.dmg"]))).toBeNull();
+    expect(check(release("v0.1.8", ["Mudd-0.1.8-linux-x64.zip", "Mudd-0.1.8-darwin-arm64.zip"]))).toBeNull();
     expect(check(release("nightly", ["Mudd-nightly-windows-x64.zip"]))).toBeNull();
     expect(check(null)).toBeNull();
   });

@@ -1,6 +1,6 @@
 {
   "name": "mudd",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Mudd: Local-first prospect and enrichment CRM with spreadsheet import/export support.",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -12,7 +12,6 @@
     "headless": "bun run build:css && bun run main.ts --headless",
     "build:css": "bunx @tailwindcss/cli -i ./src/client/styles.css -o ./src/client/generated.css --minify",
     "build": "bun run build:css && bun run build.ts",
-    "installer": "bun run scripts/make-installer.ts",
     "icon": "bun run scripts/make-icon.ts",
     "test": "bun test ./src/",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",

@@ -129,24 +129,28 @@ const sidecar = (target: string, kind: "new" | "old") => `${target}.${kind}`;
 export async function applyUpdate(zip: Uint8Array, target: string, platform = process.platform): Promise<void> {
   const fresh = sidecar(target, "new");
   const old = sidecar(target, "old");
-  fs.rmSync(fresh, { recursive: true, force: true });
+  // Read the download before touching anything beside Mudd, so that only a failure there, where
+  // Mudd is installed, reads as "can't replace itself".
+  const staged = platform === "darwin" ? stageApp(zip) : await readExe(zip);
 
   let incoming: string;
   try {
-    incoming = platform === "darwin" ? await unpackApp(zip, fresh) : await unpackExe(zip, fresh);
-  } catch (err) {
     fs.rmSync(fresh, { recursive: true, force: true });
-    throw err;
-  }
-
-  try {
+    incoming = await staged.unpack(fresh);
     fs.rmSync(old, { recursive: true, force: true });
     fs.renameSync(target, old);
   } catch (err) {
-    fs.rmSync(fresh, { recursive: true, force: true });
+    try {
+      fs.rmSync(fresh, { recursive: true, force: true });
+    } catch {
+      // Still locked; cleanUpAfterUpdate tries again on the next launch.
+    }
+    // Say so, rather than "EPERM: operation not permitted, open '…\Mudd.exe.new'".
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "EPERM" || code === "EACCES" || code === "EBUSY") throw new Error("Mudd can't replace itself where it's installed. Download the update instead.");
     throw err;
+  } finally {
+    staged.discard();
   }
   try {
     fs.renameSync(incoming, target);
@@ -160,33 +164,56 @@ export async function applyUpdate(zip: Uint8Array, target: string, platform = pr
   if (platform !== "win32") fs.rmSync(old, { recursive: true, force: true });
 }
 
+/** A download made ready without touching Mudd's folder. `unpack` writes it to `out` there. */
+interface Staged {
+  unpack(out: string): Promise<string>;
+  discard(): void;
+}
+
 /** Windows and Linux: the zip holds the one executable, written to `out`. */
-async function unpackExe(zip: Uint8Array, out: string): Promise<string> {
+async function readExe(zip: Uint8Array): Promise<Staged> {
   const files = Object.values((await JSZip.loadAsync(zip)).files).filter((f) => !f.dir);
   if (files.length !== 1) throw new Error("The update's download isn't a Mudd build.");
-  fs.writeFileSync(out, await files[0]!.async("uint8array"), { mode: 0o755 });
-  return out;
+  const bytes = await files[0]!.async("uint8array");
+  return {
+    async unpack(out) {
+      fs.writeFileSync(out, bytes, { mode: 0o755 });
+      return out;
+    },
+    discard() {},
+  };
 }
 
 /**
- * macOS: ditto made the zip (release.yml), so ditto unpacks it, into the folder `dir`: symlinks,
- * modes and the code signature come out exactly as they went in. Returns the Mudd.app in `dir`.
+ * macOS: ditto made the zip (release.yml), so ditto unpacks it, into the folder `out`: symlinks,
+ * modes and the code signature come out exactly as they went in. `unpack` returns the Mudd.app in
+ * `out`. The zip waits in the temp folder until then.
  */
-async function unpackApp(zip: Uint8Array, dir: string): Promise<string> {
+function stageApp(zip: Uint8Array): Staged {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-update-"));
+  const discard = () => fs.rmSync(scratch, { recursive: true, force: true });
+  const file = path.join(scratch, "update.zip");
   try {
-    const file = path.join(scratch, "update.zip");
     fs.writeFileSync(file, zip);
-    await run(["ditto", "-x", "-k", file, dir], "The update's download couldn't be unpacked");
-  } finally {
-    fs.rmSync(scratch, { recursive: true, force: true });
+  } catch (err) {
+    discard();
+    throw err;
   }
-  const apps = fs.readdirSync(dir).filter((name) => name.endsWith(".app"));
-  const app = apps.length === 1 ? path.join(dir, apps[0]!) : null;
-  if (!app || !fs.existsSync(path.join(app, "Contents", "MacOS", "Mudd"))) throw new Error("The update's download has no Mudd.app in it.");
-  // A broken seal would only show up as macOS's "Mudd is damaged" on the next launch.
-  await run(["codesign", "--verify", "--deep", "--strict", app], "The update's signature doesn't check out");
-  return app;
+  return {
+    async unpack(out) {
+      // Made here rather than by ditto, so a folder Mudd can't write to fails with EACCES, not
+      // ditto's "Permission denied" text.
+      fs.mkdirSync(out);
+      await run(["ditto", "-x", "-k", file, out], "The update's download couldn't be unpacked");
+      const apps = fs.readdirSync(out).filter((name) => name.endsWith(".app"));
+      const app = apps.length === 1 ? path.join(out, apps[0]!) : null;
+      if (!app || !fs.existsSync(path.join(app, "Contents", "MacOS", "Mudd"))) throw new Error("The update's download has no Mudd.app in it.");
+      // A broken seal would only show up as macOS's "Mudd is damaged" on the next launch.
+      await run(["codesign", "--verify", "--deep", "--strict", app], "The update's signature doesn't check out");
+      return app;
+    },
+    discard,
+  };
 }
 
 /** Run a macOS tool. When it fails, throws `message` with what the tool said. */

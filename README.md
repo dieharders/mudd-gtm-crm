@@ -24,7 +24,6 @@ bun run start        # opens the Mudd window
 | `bun run headless`  | Server only. Open the printed `http://127.0.0.1:24871` in a browser.                        |
 | `bun run dev`       | Browser dev server with hot reload on `http://127.0.0.1:3000`.                              |
 | `bun run build`     | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS).                                         |
-| `bun run installer` | macOS only: package the built `Mudd.app` as a drag-to-Applications `.dmg`.                  |
 | `bun run icon`      | Rebuild `assets/icon.ico` from `assets/icon.svg` (needs Edge or Chrome). Commit the result. |
 | `bun run typecheck` | TypeScript check.                                                                           |
 | `bun test`          | Unit and round-trip tests (see below).                                                      |
@@ -33,7 +32,7 @@ Your campaigns are stored in `%APPDATA%\Mudd\mudd.sqlite`. Set `MUDD_DATA_DIR` t
 
 ## Releases
 
-Bump `version` in package.json, then run **Actions → Manual Release → Run workflow**, picking the branch to build (no other input: the release is tagged `v<version>`, e.g. `v0.1.4`). It builds a zip for Windows x64 and Linux x64 and a `.dmg` installer for macOS (Apple silicon and Intel), plus a zip of each Mac's `Mudd.app` for updates, and, only if all four succeed, attaches them to a **draft** release. Publish the draft from the Releases page when you're ready; that creates the tag if it doesn't exist yet. The builds are unsigned (macOS is ad-hoc signed), so Windows and macOS warn on first launch.
+Bump `version` in package.json, then run **Actions → Manual Release → Run workflow**, picking the branch to build (no other input: the release is tagged `v<version>`, e.g. `v0.1.4`). It builds a zip for Windows x64, Linux x64 and macOS (Apple silicon and Intel; the zip holds `Mudd.app`), the same file people download and Mudd updates itself from, and, only if all four succeed, attaches them to a **draft** release. Publish the draft from the Releases page when you're ready; that creates the tag if it doesn't exist yet. The builds are unsigned (macOS is ad-hoc signed), so Windows and macOS warn on first launch.
 
 **Updates.** Publishing a release is also what updates everyone. Mudd asks GitHub for the latest release of `dieharders/mudd-gtm-crm` when it opens and every 6 hours after, and when it's newer, offers it in the sidebar. **Update & restart** downloads this platform's zip, checks it against the SHA-256 GitHub lists for it, swaps it in for the running copy and restarts. That check is the only request Mudd makes on its own, and none of your data goes with it. Where Mudd can't replace itself (run from source, or from a folder it can't write to), the sidebar links to the download instead. Code: `src/server/update.ts`.
 
