@@ -1,6 +1,6 @@
-# Build Mudd for Windows, macOS and Linux and attach the downloads to a DRAFT release: a zip
-# for Windows and Linux, a .dmg installer for macOS, and for macOS also the zip Mudd updates
-# itself from. Publishing the draft is what offers the update to everyone's Mudd.
+# Build Mudd for Windows, macOS and Linux and attach a zip of each to a DRAFT release. The same
+# zip is what people download and what Mudd updates itself from. Publishing the draft is what
+# offers the update to everyone's Mudd.
 #
 # MANUALLY TRIGGERED. Nothing here runs on a push or a tag.
 #
@@ -74,22 +74,18 @@ jobs:
         include:
           - target: windows-x64
             runner: windows-latest
-            ext: zip
           - target: darwin-arm64
             runner: macos-latest # Apple silicon
-            ext: dmg
           - target: darwin-x64
             # The last Intel macOS image; GitHub drops x86_64 macOS when macOS 15 retires (2027).
             runner: macos-15-intel
-            ext: dmg
           - target: linux-x64
             runner: ubuntu-latest
-            ext: zip
           # linux-arm64 is left out: arm64 Linux runners are free only for public repos.
-          # To add it: `- target: linux-arm64 / runner: ubuntu-24.04-arm / ext: zip`.
+          # To add it: `- target: linux-arm64 / runner: ubuntu-24.04-arm`.
     env:
-      # scripts/make-installer.ts names the .dmg the same way.
-      ASSET: Mudd-${{ needs.version.outputs.version }}-${{ matrix.target }}.${{ matrix.ext }}
+      # The name src/server/update.ts looks for in a release.
+      ASSET: Mudd-${{ needs.version.outputs.version }}-${{ matrix.target }}.zip
 
     steps:
       - uses: actions/checkout@v4
@@ -111,17 +107,11 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "dist/${{ matrix.target }}/Mudd.exe" -DestinationPath "dist/$env:ASSET"
 
-      # The signed Mudd.app beside an Applications shortcut, to drag it onto.
-      - name: Installer (macOS)
+      # ditto keeps the signed bundle byte for byte, file modes included, and Finder unzips it to
+      # Mudd.app. No resource forks or extended attributes, which the zip would carry as "._" files.
+      - name: Zip (macOS)
         if: runner.os == 'macOS'
-        run: bun run installer --target=${{ matrix.target }}
-
-      # What Mudd downloads to update itself (src/server/update.ts): it can't swap in a .dmg.
-      # ditto keeps the signed bundle byte for byte, file modes included; no resource forks or
-      # extended attributes, which the zip would carry as "._" files.
-      - name: Update zip (macOS)
-        if: runner.os == 'macOS'
-        run: ditto -c -k --norsrc --noextattr --keepParent "dist/${{ matrix.target }}/Mudd.app" "dist/Mudd-${{ needs.version.outputs.version }}-${{ matrix.target }}.zip"
+        run: ditto -c -k --norsrc --noextattr --keepParent "dist/${{ matrix.target }}/Mudd.app" "dist/$ASSET"
 
       # Info-ZIP keeps the executable bit, so the unzipped binary runs without a chmod.
       - name: Zip (Linux)
@@ -131,8 +121,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          # The download (a .zip, or a .dmg on macOS) and macOS's update .zip.
-          path: dist/Mudd-${{ needs.version.outputs.version }}-${{ matrix.target }}.*
+          path: dist/${{ env.ASSET }}
           compression-level: 0
           if-no-files-found: error
           # Only a hand-off to the release job, which copies the files into the release.
@@ -182,9 +171,8 @@ jobs:
           keeps everything.
 
           - **Windows**: unzip and run `Mudd.exe`.
-          - **macOS**: open the `.dmg` (`arm64` for Apple silicon, `x64` for Intel) and drag
-            Mudd into Applications. (The macOS `.zip` files are what Mudd downloads to update
-            itself.)
+          - **macOS**: unzip (`arm64` for Apple silicon, `x64` for Intel) and drag `Mudd` into
+            Applications. (Left in Downloads, Mudd can't update itself.)
           - **Linux**: unzip and run `Mudd`. Needs GTK 4 and WebKitGTK 6.0
             (Debian/Ubuntu: `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`).
             `zenity` or `kdialog` adds the native file picker.
