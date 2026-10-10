@@ -134,30 +134,45 @@ async function withBrowser<T>(fn: (send: Send) => Promise<T>): Promise<T> {
     { stdout: "ignore", stderr: "ignore" },
   );
   try {
+    // Polled until the page target is listed: the endpoint can answer `[]` before about:blank
+    // has registered.
     type Target = { type: string; webSocketDebuggerUrl: string };
-    let list: Target[] | null = null;
-    for (let i = 0; i < 60 && !list; i++) {
+    let page: Target | undefined;
+    for (let i = 0; i < 60 && !page; i++) {
       try {
-        list = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as Target[];
+        const list = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as Target[];
+        page = list.find((t) => t.type === "page");
       } catch {
-        await Bun.sleep(250);
+        // Not listening yet.
       }
+      if (!page) await Bun.sleep(250);
     }
-    const page = list?.find((t) => t.type === "page") ?? list?.[0];
-    if (!page) throw new Error("the headless browser started but exposed no page");
+    if (!page) throw new Error(`the headless browser exposed no page on port ${port} within 15s`);
 
     const ws = new WebSocket(page.webSocketDebuggerUrl);
-    const pending = new Map<number, (v: unknown) => void>();
+    const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
     let id = 0;
     ws.onmessage = (e) => {
       const msg = JSON.parse(String(e.data)) as { id?: number; result?: unknown };
-      if (msg.id && pending.has(msg.id)) pending.get(msg.id)!(msg.result ?? {});
+      if (msg.id && pending.has(msg.id)) pending.get(msg.id)!.resolve(msg.result ?? {});
     };
-    await new Promise<void>((r) => (ws.onopen = () => r()));
+    // A socket that fails or drops fails the run, rather than leaving an await that never returns.
+    let closed: Error | null = null;
+    const opened = new Promise<void>((resolve, reject) => {
+      ws.onopen = () => resolve();
+      ws.onerror = () => reject(new Error(`could not connect to the browser's debugger at ${page.webSocketDebuggerUrl}`));
+    });
+    ws.onclose = () => {
+      closed = new Error("the browser's debugger connection closed");
+      for (const p of pending.values()) p.reject(closed);
+      pending.clear();
+    };
+    await opened;
     const send: Send = (method, params = {}) =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
+        if (closed) return reject(closed);
         const n = ++id;
-        pending.set(n, resolve);
+        pending.set(n, { resolve, reject });
         ws.send(JSON.stringify({ id: n, method, params }));
       });
     try {
@@ -168,7 +183,13 @@ async function withBrowser<T>(fn: (send: Send) => Promise<T>): Promise<T> {
   } finally {
     proc.kill();
     await proc.exited;
-    fs.rmSync(profile, { recursive: true, force: true });
+    // Edge's child processes can outlive the parent and hold the profile open for a moment on
+    // Windows. A leftover temp folder isn't worth failing a run that already has its icon.
+    try {
+      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (err) {
+      console.warn(`  (could not remove ${profile}: ${(err as Error).message})`);
+    }
   }
 }
 

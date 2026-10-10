@@ -69,6 +69,41 @@ function setWindowIcon(webview: { readonly unsafeWindowHandle: Pointer | null })
   }
 }
 
+/**
+ * A Mudd.io.app opened from Finder gets launchd's PATH (/usr/bin:/bin:/usr/sbin:/sbin), which has
+ * no Homebrew, npm globals or node, so every AI CLI looks uninstalled. Take PATH from the user's
+ * login shell instead, as Terminal would, plus the usual install locations in case the shell's
+ * profile doesn't add them. Skipped when PATH already looks like a terminal's.
+ */
+async function adoptLoginShellPath(): Promise<void> {
+  if (process.platform !== "darwin" || process.env.PATH?.split(":").includes("/usr/local/bin")) return;
+  const home = process.env.HOME ?? "";
+  const usual = ["/opt/homebrew/bin", "/usr/local/bin", `${home}/.local/bin`, `${home}/.bun/bin`, `${home}/.volta/bin`, `${home}/.npm-global/bin`];
+  const marker = "__MUDD_PATH__";
+  let shellPath = "";
+  try {
+    // -i as well as -l: zsh users commonly set PATH in .zshrc, which only interactive shells read.
+    const proc = Bun.spawn([process.env.SHELL || "/bin/zsh", "-ilc", `printf '\\n${marker}%s\\n' "$PATH"`], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const timeout = Bun.sleep(5_000).then(() => {
+      proc.kill();
+      return "";
+    });
+    const out = await Promise.race([new Response(proc.stdout).text(), timeout]);
+    shellPath = out.split("\n").find((line) => line.startsWith(marker))?.slice(marker.length) ?? "";
+  } catch {
+    // The usual install locations below still apply.
+  }
+  const dirs = [...(shellPath || process.env.PATH || "").split(":"), ...usual];
+  process.env.PATH = [...new Set(dirs)].filter(Boolean).join(":");
+}
+
+// Before the worker starts: it takes a copy of this environment and is what spawns the AI CLIs.
+await adoptLoginShellPath();
+
 // The specifier must stay a literal so the bundler includes the worker in the compiled exe.
 const worker = new Worker("./src/worker.ts");
 

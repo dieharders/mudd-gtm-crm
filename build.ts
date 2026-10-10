@@ -20,9 +20,14 @@ const APP_NAME = "Mudd.io";
 const BUNDLE_ID = "io.mudd.desktop";
 const ext = process.platform === "win32" ? ".exe" : "";
 
-/** package.json's SemVer as the four numeric parts Windows and macOS version fields accept. */
+/**
+ * package.json's SemVer as numbers only: four parts for Windows' version resource, three
+ * (major.minor.patch, what Finder shows) for macOS. Any prerelease suffix is dropped.
+ */
 const VERSION = (JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")) as { version: string }).version;
-const NUMERIC_VERSION = VERSION.split(/[-+]/)[0]!.split(".").concat("0", "0", "0").slice(0, 4).join(".");
+const VERSION_PARTS = VERSION.split(/[-+]/)[0]!.split(".").concat("0", "0", "0");
+const NUMERIC_VERSION = VERSION_PARTS.slice(0, 4).join(".");
+const MAC_VERSION = VERSION_PARTS.slice(0, 3).join(".");
 
 const targetArg = process.argv.find((a) => a.startsWith("--target="))?.split("=")[1];
 const HOST_TARGET = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
@@ -106,8 +111,8 @@ async function makeMacApp(): Promise<string> {
   <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
   <key>CFBundleExecutable</key><string>${APP_NAME}</string>
   <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
-  <key>CFBundleVersion</key><string>${NUMERIC_VERSION}</string>
-  <key>CFBundleShortVersionString</key><string>${NUMERIC_VERSION}</string>
+  <key>CFBundleVersion</key><string>${MAC_VERSION}</string>
+  <key>CFBundleShortVersionString</key><string>${MAC_VERSION}</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>

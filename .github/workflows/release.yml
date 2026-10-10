@@ -1,4 +1,5 @@
-# Build Mudd.io for Windows, macOS and Linux, zip each one, and attach the zips to a DRAFT release.
+# Build Mudd.io for Windows, macOS and Linux and attach the downloads to a DRAFT release: a zip
+# for Windows and Linux, a .dmg installer for macOS.
 #
 # MANUALLY TRIGGERED. Nothing here runs on a push or a tag.
 #
@@ -10,8 +11,9 @@
 # press Publish, and publishing is what creates the tag, at the commit that was built. The draft
 # is made only when all four builds succeed, so a failed run leaves nothing behind.
 #
-# Running again with the same tag replaces the zips on that draft. A tag whose release is already
-# published is refused: bump "version" in package.json and use the new tag.
+# Running again with the same tag replaces the downloads on that draft and moves it to the new
+# commit. A tag whose release is already published is refused, and so is a tag that already
+# exists at another commit: bump "version" in package.json and use the new tag.
 #
 # ONE RUNNER PER TARGET. Bun can cross-compile the executable, but webview-bun picks its native
 # library by the platform it runs on, and the macOS build has to be codesigned on a Mac.
@@ -24,6 +26,11 @@ on:
         description: "Release tag: v + the version in package.json (e.g. v0.1.4)"
         required: true
         type: string
+
+# One run per tag at a time: two at once would each find no draft and each create one.
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -53,10 +60,7 @@ jobs:
             echo "::error::Tag '$TAG' does not match package.json (version $version). Use v$version, or change the version in package.json first."
             exit 1
           fi
-          if is_draft=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null) && [ "$is_draft" = "false" ]; then
-            echo "::error::$TAG is already published. Bump the version in package.json and run again with the new tag."
-            exit 1
-          fi
+          bash .github/scripts/check-release.sh
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build:
@@ -70,17 +74,22 @@ jobs:
         include:
           - target: windows-x64
             runner: windows-latest
+            ext: zip
           - target: darwin-arm64
             runner: macos-latest # Apple silicon
+            ext: dmg
           - target: darwin-x64
             # The last Intel macOS image; GitHub drops x86_64 macOS when macOS 15 retires (2027).
             runner: macos-15-intel
+            ext: dmg
           - target: linux-x64
             runner: ubuntu-latest
+            ext: zip
           # linux-arm64 is left out: arm64 Linux runners are free only for public repos.
-          # To add it: `- target: linux-arm64 / runner: ubuntu-24.04-arm`.
+          # To add it: `- target: linux-arm64 / runner: ubuntu-24.04-arm / ext: zip`.
     env:
-      ZIP: Mudd.io-${{ needs.version.outputs.version }}-${{ matrix.target }}.zip
+      # scripts/make-installer.ts names the .dmg the same way.
+      ASSET: Mudd.io-${{ needs.version.outputs.version }}-${{ matrix.target }}.${{ matrix.ext }}
 
     steps:
       - uses: actions/checkout@v4
@@ -100,22 +109,22 @@ jobs:
       - name: Zip (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path "dist/${{ matrix.target }}/Mudd.io.exe" -DestinationPath "dist/$env:ZIP"
+        run: Compress-Archive -Path "dist/${{ matrix.target }}/Mudd.io.exe" -DestinationPath "dist/$env:ASSET"
 
-      # ditto, not zip: it keeps the .app's signature and permissions intact.
-      - name: Zip (macOS)
+      # The signed Mudd.io.app beside an Applications shortcut, to drag it onto.
+      - name: Installer (macOS)
         if: runner.os == 'macOS'
-        run: ditto -c -k --keepParent "dist/${{ matrix.target }}/Mudd.io.app" "dist/$ZIP"
+        run: bun run installer --target=${{ matrix.target }}
 
       # Info-ZIP keeps the executable bit, so the unzipped binary runs without a chmod.
       - name: Zip (Linux)
         if: runner.os == 'Linux'
-        run: zip -j "dist/$ZIP" "dist/${{ matrix.target }}/Mudd.io"
+        run: zip -j "dist/$ASSET" "dist/${{ matrix.target }}/Mudd.io"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: dist/${{ env.ZIP }}
+          path: dist/${{ env.ASSET }}
           compression-level: 0
           if-no-files-found: error
           retention-days: 7
@@ -129,34 +138,54 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ inputs.tag }}
     steps:
+      - uses: actions/checkout@v4
+
+      # Again, not just in the version job: "Re-run failed jobs" runs only this one, and the draft
+      # may have been published since. Uploading then would replace a public release's downloads.
+      - name: Check the tag
+        id: check
+        run: bash .github/scripts/check-release.sh
+
       - uses: actions/download-artifact@v4
         with:
-          path: zips
+          path: downloads
           merge-multiple: true
 
       # gh rather than a release action: GitHub's get-release-by-tag API does not return drafts,
       # so actions that rely on it create a second draft on every re-run instead of updating one.
-      - name: Create or update the draft
+      - name: Update the draft
+        if: steps.check.outputs.release == 'draft'
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" zips/* --clobber
-            exit 0
-          fi
+          # Point the draft at this commit, or publishing would tag the commit of an earlier run.
+          gh release edit "$TAG" --target "$GITHUB_SHA"
+          gh release upload "$TAG" downloads/* --clobber
+          # Drop anything this run did not build (e.g. a zip from before macOS shipped as a .dmg).
+          gh release view "$TAG" --json assets -q '.assets[].name' | while read -r name; do
+            [ -e "downloads/$name" ] || gh release delete-asset "$TAG" "$name" --yes
+          done
+
+      - name: Create the draft
+        if: steps.check.outputs.release == 'none'
+        run: |
           cat > notes.md <<'EOF'
-          Download the zip for your platform, unzip it, and run Mudd.io. Your data is kept in
-          `%APPDATA%\Mudd.io` (Windows) or `~/.mudd` (macOS, Linux), not beside the app, so
-          replacing the app with a newer build keeps everything.
+          Download the file for your platform. Your data is kept in `%APPDATA%\Mudd.io` (Windows)
+          or `~/.mudd` (macOS, Linux), not beside the app, so replacing the app with a newer build
+          keeps everything.
+
+          - **Windows**: unzip and run `Mudd.io.exe`.
+          - **macOS**: open the `.dmg` (`arm64` for Apple silicon, `x64` for Intel) and drag
+            Mudd.io into Applications.
+          - **Linux**: unzip and run `Mudd.io`. Needs GTK 4 and WebKitGTK 6.0
+            (Debian/Ubuntu: `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`).
+            `zenity` or `kdialog` adds the native file picker.
 
           **These builds are unsigned**, so the first launch shows a warning:
 
           - **Windows**: "Windows protected your PC" -> More info -> Run anyway.
-          - **macOS**: move Mudd.io.app to Applications and open it once, then
+          - **macOS**: open Mudd.io once from Applications, then
             System Settings -> Privacy & Security -> Open Anyway.
-          - **Linux**: needs GTK 4 and WebKitGTK 6.0
-            (Debian/Ubuntu: `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`).
-            `zenity` or `kdialog` adds the native file picker.
           EOF
-          gh release create "$TAG" zips/* \
+          gh release create "$TAG" downloads/* \
             --draft \
             --target "$GITHUB_SHA" \
             --title "Mudd.io $TAG" \
