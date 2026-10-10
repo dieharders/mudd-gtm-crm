@@ -127,7 +127,8 @@ jobs:
           path: dist/${{ env.ASSET }}
           compression-level: 0
           if-no-files-found: error
-          retention-days: 7
+          # Only a hand-off to the release job, which copies the files into the release.
+          retention-days: 1
 
   release:
     name: draft release
