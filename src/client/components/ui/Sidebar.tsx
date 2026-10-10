@@ -27,9 +27,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
     <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-sidebar">
       <div className="flex h-14 items-center gap-2 px-4">
         <Logo />
-        <span className="text-[16px] font-bold tracking-tight">
-          mudd<span className="text-brand-500">.io</span>
-        </span>
+        <span className="text-[16px] font-bold tracking-tight">mudd</span>
       </div>
 
       <div className="flex gap-1.5 px-3 pb-3">

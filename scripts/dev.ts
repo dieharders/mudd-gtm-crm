@@ -32,4 +32,4 @@ const server = Bun.serve({
     "/*": index as never,
   },
 });
-console.log(`\n  Mudd.io dev server -> http://127.0.0.1:${server.port}\n`);
+console.log(`\n  Mudd dev server -> http://127.0.0.1:${server.port}\n`);

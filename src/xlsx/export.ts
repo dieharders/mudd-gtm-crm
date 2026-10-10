@@ -744,7 +744,7 @@ async function appendSheet(
 /** A workbook in the base-tracker look, for a campaign that has none of its own. */
 async function generatedWorkbook(schema: CampaignSchema, rows: ExportRow[], templates: Template[], contacts: ExportRow[]): Promise<Uint8Array> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Mudd.io";
+  wb.creator = "Mudd";
   const sheet = (name: string, tabSchema: CampaignSchema, list: ExportRow[]) => {
     const ws = wb.addWorksheet(name);
     const cols = tabSchema.columns;

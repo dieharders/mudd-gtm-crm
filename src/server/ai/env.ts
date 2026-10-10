@@ -14,7 +14,7 @@ const OVERRIDES = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_
 export function childEnv(): Record<string, string | undefined> {
   // Spread: the Agent SDK's `env` REPLACES the child environment, so PATH, HOME and
   // USERPROFILE must be carried over or the CLI cannot find its own credentials.
-  const env: Record<string, string | undefined> = { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: "mudd.io/0.2" };
+  const env: Record<string, string | undefined> = { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: "mudd/0.2" };
   if (getAiSettings().credentialMode !== "subscription") return env;
   for (const k of OVERRIDES) delete env[k];
   return env;

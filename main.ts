@@ -72,7 +72,7 @@ function setWindowIcon(webview: { readonly unsafeWindowHandle: Pointer | null })
 }
 
 /**
- * A Mudd.io.app opened from Finder gets launchd's PATH (/usr/bin:/bin:/usr/sbin:/sbin), which has
+ * A Mudd.app opened from Finder gets launchd's PATH (/usr/bin:/bin:/usr/sbin:/sbin), which has
  * no Homebrew, npm globals or node, so every AI CLI looks uninstalled. Take PATH from the user's
  * login shell instead, as Terminal would, plus the usual install locations in case the shell's
  * profile doesn't add them. Skipped when PATH already looks like a terminal's.
@@ -105,8 +105,8 @@ async function adoptLoginShellPath(): Promise<void> {
 
 /**
  * Keep the window's WebView2 profile (cache, localStorage) in the app's data folder, so all of
- * Mudd.io's files are in one place. Left to itself, webview puts it in %APPDATA%\<exe name>:
- * Mudd.io.exe for a build, bun.exe when run from source. WebView2 reads this variable in place
+ * Mudd's files are in one place. Left to itself, webview puts it in %APPDATA%\<exe name>:
+ * Mudd.exe for a build, bun.exe when run from source. WebView2 reads this variable in place
  * of the folder webview asks for.
  */
 function keepWebviewProfileInDataDir(): void {
@@ -151,7 +151,7 @@ function shutdownWorker(timeoutMs = 3_000): Promise<void> {
 }
 
 const printHeadless = (reason?: string) => {
-  console.log(`\n  Mudd.io is running at:\n\n  -> ${url}\n`);
+  console.log(`\n  Mudd is running at:\n\n  -> ${url}\n`);
   if (reason) console.log(`  (${reason})\n`);
   console.log("  Press Ctrl+C to stop.\n");
 };
@@ -164,12 +164,12 @@ if (process.argv.includes("--headless")) {
     keepWebviewProfileInDataDir();
     const { Webview } = await import("webview-bun");
     const webview = new Webview();
-    webview.title = "Mudd.io";
+    webview.title = "Mudd";
     webview.size = { width: 1400, height: 900, hint: 0 };
     setWindowIcon(webview);
     webview.init(`window.__MUDD_SHELL__ = ${JSON.stringify(process.platform)};`);
     webview.navigate(url);
-    console.log(`\n  Mudd.io window opened.  (server: ${url})\n`);
+    console.log(`\n  Mudd window opened.  (server: ${url})\n`);
     hideOwnConsoleWindow();
     opened = true;
     webview.run(); // blocks until the window is closed
