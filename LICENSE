@@ -1,0 +1,80 @@
+Mudd License 1.0
+
+Copyright (c) 2026 dieharders
+
+Mudd is given away free of charge, and so must be everything made from it.
+
+
+Definitions
+
+"The Software" means Mudd: its source code, its builds, and its documentation.
+
+A "Derived Work" is anything that includes the Software or any part of it, changed or not,
+including a translation into another programming language or a port to another platform.
+
+
+1. What you may do
+
+Anyone who receives a copy of the Software may, free of charge:
+
+  - use it for any purpose, including at work and in a business;
+  - copy it;
+  - change it; and
+  - share it and Derived Works with others,
+
+as long as they follow the conditions below.
+
+Using the Software, for example to run your own company's sales prospecting, is not selling it
+and needs no further permission.
+
+
+2. No charge
+
+You may not sell the Software or any Derived Work, or ask for or accept payment in exchange for
+it. That includes:
+
+  - charging to download, install, unlock or keep using it;
+  - selling licenses or subscriptions to it;
+  - putting it, or any feature of it, behind a paywall; and
+  - offering it, or a service built on it, as a paid hosted service.
+
+Voluntary donations are allowed, provided that donating unlocks nothing.
+
+
+3. Share alike
+
+If you share a Derived Work with anyone, you must:
+
+  a. share it free of charge, under this license, with no added terms that take away any of the
+     permissions this license grants;
+  b. make its complete source code available, free of charge, to everyone you share it with; and
+  c. say that it was changed from Mudd, and mark what you changed.
+
+
+4. Notices
+
+Every copy of the Software or a Derived Work, in whole or in part, must keep the copyright notice
+above and a copy of this license.
+
+
+5. No warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE, INCLUDING
+ANY LOSS OF DATA.
+
+
+6. Breaking the terms
+
+If you break any of these terms, your permission under this license ends automatically. It is
+restored if you fix the problem within 30 days of first being told about it.
+
+
+7. Other terms
+
+Only the copyright holder can grant permission on terms other than these.
+
+Third-party code included in the Software or its builds stays under its own license.
