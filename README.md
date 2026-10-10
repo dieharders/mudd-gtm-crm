@@ -1,6 +1,13 @@
 # Mudd
 
-A local-first prospect CRM. Import a tracker spreadsheet, work it in the app, export it back with its formatting intact. Nothing leaves your computer.
+**A free desktop CRM for sales prospecting that works on the spreadsheet you already have.**
+
+Open your Excel or CSV lead tracker in Mudd and work it like a CRM. Track each company and its contacts through your pipeline, let AI research the gaps and draft personal intros, then save straight back to the same file. Your formatting, formulas and other tabs are kept, so the spreadsheet stays the source of truth.
+
+- **AI enrichment with sources**: Mudd researches each prospect on the web and fills columns you choose, such as industry, headcount or a decision-maker's name. Every suggestion links to its source, and you accept or reject it.
+- **Intros that sound like you**: write templates with `{{First name}}`-style placeholders, and AI fills them in with one or two real, checkable hooks per prospect.
+- **Private by design**: your data stays on your computer. There's no account, no cloud service and no API key. The AI runs through your own Claude Code or Codex sign-in and bills the plan you already pay for.
+- **Free**: for Windows, macOS and Linux.
 
 ## Setup
 
@@ -11,16 +18,16 @@ bun run start        # opens the Mudd window
 
 ## Quickstart
 
-| Command | What it does |
-| --- | --- |
-| `bun run start` | The app in its own window (webview-bun). |
-| `bun run headless` | Server only. Open the printed `http://127.0.0.1:24871` in a browser. |
-| `bun run dev` | Browser dev server with hot reload on `http://127.0.0.1:3000`. |
-| `bun run build` | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS). |
-| `bun run installer` | macOS only: package the built `Mudd.app` as a drag-to-Applications `.dmg`. |
-| `bun run icon` | Rebuild `assets/icon.ico` from `assets/icon.svg` (needs Edge or Chrome). Commit the result. |
-| `bun run typecheck` | TypeScript check. |
-| `bun test` | Unit and round-trip tests (see below). |
+| Command             | What it does                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------- |
+| `bun run start`     | The app in its own window (webview-bun).                                                    |
+| `bun run headless`  | Server only. Open the printed `http://127.0.0.1:24871` in a browser.                        |
+| `bun run dev`       | Browser dev server with hot reload on `http://127.0.0.1:3000`.                              |
+| `bun run build`     | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS).                                         |
+| `bun run installer` | macOS only: package the built `Mudd.app` as a drag-to-Applications `.dmg`.                  |
+| `bun run icon`      | Rebuild `assets/icon.ico` from `assets/icon.svg` (needs Edge or Chrome). Commit the result. |
+| `bun run typecheck` | TypeScript check.                                                                           |
+| `bun test`          | Unit and round-trip tests (see below).                                                      |
 
 Your campaigns are stored in `%APPDATA%\Mudd\mudd.sqlite`. Set `MUDD_DATA_DIR` to use a different folder.
 
@@ -63,10 +70,10 @@ src/client/             React UI (Tailwind v4, lucide-react, react-hot-toast)
 
 Mudd drives **your own signed-in agent CLI**. It never stores an API key, and research bills your plan.
 
-| Provider | Needs | Sign in |
-| --- | --- | --- |
+| Provider              | Needs                                      | Sign in                                             |
+| --------------------- | ------------------------------------------ | --------------------------------------------------- |
 | Claude Code (default) | `npm install -g @anthropic-ai/claude-code` | `claude auth login` (or **Sign in** in AI settings) |
-| Codex | `npm install -g @openai/codex` | `codex login` |
+| Codex                 | `npm install -g @openai/codex`             | `codex login`                                       |
 
 Open **AI settings** from the bottom of the sidebar to pick the provider, model and effort. It shows the signed-in account and whether usage bills your subscription or an API key. "Bill my Claude subscription only" removes `ANTHROPIC_API_KEY` from the CLI's environment. It is switched off automatically if that key is your only credential.
 
@@ -89,4 +96,4 @@ Code: `src/server/ai/` (providers, discovery, environment, structured turns), `s
 
 ## License
 
-Free to use, change and share, including at work, but not to sell: anything made from Mudd, in whole or in part, must also be free and come with its source. Provided as is. See [LICENSE](LICENSE).
+Free to use but not sell: anything made from Mudd, in whole or in part, must also be free and come with its source. Provided as is. See [LICENSE](LICENSE).
