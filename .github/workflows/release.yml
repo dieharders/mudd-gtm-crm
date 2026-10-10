@@ -3,17 +3,18 @@
 #
 # MANUALLY TRIGGERED. Nothing here runs on a push or a tag.
 #
-# HOW TO RUN IT: Actions -> Manual Release -> Run workflow. Pick the branch to build in the
-# "Use workflow from" dropdown and type the release tag, e.g. v0.1.4. The tag must be "v" plus
-# the version in package.json, so the version the app reports matches the release.
+# HOW TO RUN IT: Actions -> Manual Release -> Run workflow. Pick what to build in the
+# "Use workflow from" dropdown (a branch, or a tag) and press Run. The release tag is "v" plus
+# the version in that code's package.json (e.g. v0.1.4), so the version the app reports always
+# matches the release. Picking a tag that isn't that version's tag is refused.
 #
 # The run drafts a release under that tag. Nobody sees it until you open it under Releases and
-# press Publish, and publishing is what creates the tag, at the commit that was built. The draft
-# is made only when all four builds succeed, so a failed run leaves nothing behind.
+# press Publish, and publishing creates the tag at the commit that was built if it doesn't exist
+# yet. The draft is made only when all four builds succeed, so a failed run leaves nothing behind.
 #
-# Running again with the same tag replaces the downloads on that draft and moves it to the new
-# commit. A tag whose release is already published is refused, and so is a tag that already
-# exists at another commit: bump "version" in package.json and use the new tag.
+# Running again for the same version replaces the downloads on that draft and moves it to the
+# new commit. A version whose release is already published is refused, and so is one whose tag
+# already exists at another commit: bump "version" in package.json and run again.
 #
 # ONE RUNNER PER TARGET. Bun can cross-compile the executable, but webview-bun picks its native
 # library by the platform it runs on, and the macOS build has to be codesigned on a Mac.
@@ -21,15 +22,11 @@ name: Manual Release
 
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag: v + the version in package.json (e.g. v0.1.4)"
-        required: true
-        type: string
 
-# One run per tag at a time: two at once would each find no draft and each create one.
+# One release run at a time: two for the same version would each find no draft and each create
+# one. (The version isn't known until package.json is read, so it can't name the group.)
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release
   cancel-in-progress: false
 
 permissions:
@@ -43,25 +40,27 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
-      # Checked before any build starts, so a mistyped tag or a forgotten version bump fails in
-      # seconds rather than after four builds.
-      - name: Check the tag
+      # Checked before any build starts, so a forgotten version bump fails in seconds rather
+      # than after four builds.
+      - name: Work out and check the tag
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          # Through the environment, not interpolated into the script: an input is user text.
-          TAG: ${{ inputs.tag }}
         run: |
           version=$(jq -r .version package.json)
-          if [ "$TAG" != "v$version" ]; then
-            echo "::error::Tag '$TAG' does not match package.json (version $version). Use v$version, or change the version in package.json first."
+          export TAG="v$version"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$TAG" ]; then
+            echo "::error::Run from tag $GITHUB_REF_NAME, but package.json there says version $version. Run from $TAG or from a branch."
             exit 1
           fi
           bash .github/scripts/check-release.sh
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG from $GITHUB_REF_NAME ($GITHUB_SHA)"
 
   build:
     name: ${{ matrix.target }}
@@ -137,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      TAG: ${{ inputs.tag }}
+      TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 

@@ -26,7 +26,7 @@ Your campaigns are stored in `%APPDATA%\Mudd.io\mudd.sqlite`. Set `MUDD_DATA_DIR
 
 ## Releases
 
-Bump `version` in package.json, then run **Actions → Manual Release → Run workflow** with the tag `v<version>` (e.g. `v0.1.4`). It builds a zip for Windows x64 and Linux x64 and a `.dmg` installer for macOS (Apple silicon and Intel) and, only if all four succeed, attaches them to a **draft** release. Publish the draft from the Releases page when you're ready; that creates the tag. The builds are unsigned (macOS is ad-hoc signed), so Windows and macOS warn on first launch.
+Bump `version` in package.json, then run **Actions → Manual Release → Run workflow**, picking the branch to build (no other input: the release is tagged `v<version>`, e.g. `v0.1.4`). It builds a zip for Windows x64 and Linux x64 and a `.dmg` installer for macOS (Apple silicon and Intel) and, only if all four succeed, attaches them to a **draft** release. Publish the draft from the Releases page when you're ready; that creates the tag if it doesn't exist yet. The builds are unsigned (macOS is ad-hoc signed), so Windows and macOS warn on first launch.
 
 ## How it works
 
