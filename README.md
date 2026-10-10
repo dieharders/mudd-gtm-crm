@@ -86,3 +86,7 @@ Open **AI settings** from the bottom of the sidebar to pick the provider, model 
   - **Draft intros** in the bulk bar does the same for every selected row.
 
 Code: `src/server/ai/` (providers, discovery, environment, structured turns), `src/server/enrich/` (runner, prompts, storage, event stream), and `src/client/components/{ai,enrich}/`.
+
+## License
+
+Free to use, change and share, including at work, but not to sell: anything made from Mudd, in whole or in part, must also be free and come with its source. Provided as is. See [LICENSE](LICENSE).
