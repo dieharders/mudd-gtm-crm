@@ -5,8 +5,6 @@
  *   bun run main.ts --headless   the server only; open the printed URL in a browser
  */
 import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
-import path from "node:path";
-import { dataDir } from "./src/server/db";
 import { cleanUpAfterUpdate, relaunch, waitForExit } from "./src/server/update";
 
 /** The Win32 calls below, opened on first use (these libraries don't exist on macOS or Linux). */
@@ -103,17 +101,6 @@ async function adoptLoginShellPath(): Promise<void> {
   process.env.PATH = [...new Set(dirs)].filter(Boolean).join(":");
 }
 
-/**
- * Keep the window's WebView2 profile (cache, localStorage) in the app's data folder, so all of
- * Mudd's files are in one place. Left to itself, webview puts it in %APPDATA%\<exe name>:
- * Mudd.exe for a build, bun.exe when run from source. WebView2 reads this variable in place
- * of the folder webview asks for.
- */
-function keepWebviewProfileInDataDir(): void {
-  if (process.platform !== "win32" || process.env.WEBVIEW2_USER_DATA_FOLDER) return;
-  process.env.WEBVIEW2_USER_DATA_FOLDER = path.join(dataDir(), "WebView");
-}
-
 // Started by the copy this one replaced (update.ts relaunch): let it quit and free the port first.
 const replacing = Number(process.argv.find((a) => a.startsWith("--wait-for="))?.split("=")[1]);
 if (replacing) await waitForExit(replacing);
@@ -166,7 +153,6 @@ if (process.argv.includes("--headless")) {
 } else {
   let opened = false;
   try {
-    keepWebviewProfileInDataDir();
     const { Webview } = await import("webview-bun");
     const webview = new Webview();
     webview.title = "Mudd";
