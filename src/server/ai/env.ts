@@ -5,7 +5,7 @@
  * prefers an API key when one is exported, so a developer with ANTHROPIC_API_KEY set for other
  * work would be billed per token. In `subscription` mode those variables are removed from the
  * child's environment. The user can switch to `auto` in AI settings, and claude.ts never lets
- * the strip take someone's ONLY credential (see authStatus there). From motionbuff's env.ts.
+ * the strip take someone's ONLY credential (see authStatus there).
  */
 import { getAiSettings } from "./settings";
 

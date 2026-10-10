@@ -1,6 +1,6 @@
 /**
  * The HTTP server, in a Worker, because `webview.run()` blocks the main thread forever with the
- * window's native event loop (same split as motionbuff-native-app).
+ * window's native event loop.
  *
  * The `import index from "./client/index.html"` literal is how Bun's bundler finds the frontend,
  * and how `bun build --compile` embeds it. It must stay a literal in this file.

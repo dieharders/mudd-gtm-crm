@@ -13,7 +13,7 @@ bun run start        # opens the Mudd window
 
 | Command | What it does |
 | --- | --- |
-| `bun run start` | The app in its own window (webview-bun, same shell as motionbuff-native-app). |
+| `bun run start` | The app in its own window (webview-bun). |
 | `bun run headless` | Server only. Open the printed `http://127.0.0.1:24871` in a browser. |
 | `bun run dev` | Browser dev server with hot reload on `http://127.0.0.1:3000`. |
 | `bun run build` | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS). |
@@ -61,7 +61,7 @@ src/client/             React UI (Tailwind v4, lucide-react, react-hot-toast)
 
 ## AI: enrichment and intro messages
 
-Mudd drives **your own signed-in agent CLI**, the same way motionbuff-native-app does. It never stores an API key, and research bills your plan.
+Mudd drives **your own signed-in agent CLI**. It never stores an API key, and research bills your plan.
 
 | Provider | Needs | Sign in |
 | --- | --- | --- |

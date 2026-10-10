@@ -1,6 +1,5 @@
 /**
  * Main thread: start the server in a Worker, then open a native window pointed at it.
- * Adapted from motionbuff-native-app's main.ts.
  *
  *   bun run main.ts              the app, in its own window
  *   bun run main.ts --headless   the server only; open the printed URL in a browser

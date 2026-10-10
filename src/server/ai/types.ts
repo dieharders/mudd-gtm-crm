@@ -1,7 +1,7 @@
 /**
- * The provider seam, cut down from motionbuff-native-app's to what Mudd needs: one research
- * turn in, events out. Every turn is one-shot (no resumed sessions): each prospect is
- * researched from a clean context so one row can never leak into the next.
+ * The provider seam, kept to what Mudd needs: one research turn in, events out. Every turn is
+ * one-shot (no resumed sessions): each prospect is researched from a clean context so one row
+ * can never leak into the next.
  */
 import type { ProviderAuth, ProviderId } from "../../shared/ai";
 import type { Resolution } from "./discovery";

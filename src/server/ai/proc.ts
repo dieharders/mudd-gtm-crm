@@ -1,7 +1,6 @@
 /**
  * Child-process helpers for the agent CLIs: line splitting, killing a process TREE, and a
- * short capture with a hard timeout. Adapted from motionbuff-native-app
- * (app/src/agent/cli/server/providers/jsonl-turn.ts and @suite/shell).
+ * short capture with a hard timeout.
  */
 
 /** Every live controller, so shutting the app down stops every CLI it started. */
