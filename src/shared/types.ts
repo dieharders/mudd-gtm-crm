@@ -201,6 +201,17 @@ export interface Meeting {
   status: string | null;
 }
 
+/** GET /api/update: whether there's a newer Mudd, and whether this copy can install it itself. */
+export interface UpdateInfo {
+  current: string;
+  /** A newer published release, or null when this is the newest (or GitHub couldn't be reached). */
+  latest: { version: string; url: string } | null;
+  /** The version already swapped in, waiting for Mudd to restart; null when none is. */
+  installed: string | null;
+  /** Why Mudd can't update itself, so the UI offers the download page instead; null when it can. */
+  blocked: string | null;
+}
+
 export interface InspectSheet {
   name: string;
   rows: number;

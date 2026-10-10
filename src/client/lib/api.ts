@@ -2,7 +2,7 @@
 import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeOutput, RunKind, Suggestion, SuggestionStatus } from "../../shared/ai";
 import type { ColumnType } from "../../shared/types";
 import type {
-  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, Row, Template,
+  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, Row, Template, UpdateInfo,
 } from "../../shared/types";
 
 export class ApiError extends Error {
@@ -35,14 +35,6 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
 }
 
 export type DialogResult = { path: string } | { cancelled: true } | { unsupported: true };
-
-export interface UpdateInfo {
-  current: string;
-  /** A newer published release, or null. */
-  latest: { version: string; url: string } | null;
-  /** Why Mudd can't update itself (offer the download page instead), or null when it can. */
-  blocked: string | null;
-}
 
 export interface SaveResult {
   /** Where the file was written. */

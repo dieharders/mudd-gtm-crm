@@ -201,14 +201,20 @@ describe("requests from other sites", () => {
     // DNS rebinding: evil.example resolves to 127.0.0.1, so the page is "same-origin" with the API.
     expect((await send("http://evil.example:24871/api/campaigns")).status).toBe(403);
     expect((await send("http://evil.example:24871/api/campaigns", { method: "POST", headers: { Origin: "http://evil.example:24871" }, body: "{}" })).status).toBe(403);
+    // An <img> or <script> on another site: a GET without an Origin.
+    for (const site of ["cross-site", "same-site"]) {
+      expect((await send("http://127.0.0.1:24871/api/update", { headers: { "Sec-Fetch-Site": site } })).status).toBe(403);
+    }
     expect((await call<CampaignSummary[]>("GET", "/api/campaigns")).json).toHaveLength(before);
   });
 
   test("Mudd's own page still gets through, on 127.0.0.1 or localhost", async () => {
     for (const origin of ["http://127.0.0.1:24871", "http://localhost:24871"]) {
-      const res = await send(`${origin}/api/campaigns`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Mine" }) });
+      const res = await send(`${origin}/api/campaigns`, { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" }, body: JSON.stringify({ name: "Mine" }) });
       expect(res.status).toBe(200);
     }
+    // The URL typed into the address bar.
+    expect((await send("http://127.0.0.1:24871/api/campaigns", { headers: { "Sec-Fetch-Site": "none" } })).status).toBe(200);
     // The same host on another port is another site.
     expect((await send("http://127.0.0.1:24871/api/campaigns", { headers: { Origin: "http://127.0.0.1:3000" } })).status).toBe(403);
   });

@@ -11,8 +11,7 @@ import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook, type LoadedBo
 import * as db from "./db";
 import { registerAiRoutes } from "./ai-routes";
 import { dialogsSupported, downloadsDir, openDialog, openExternal } from "./dialogs";
-import { abortAll } from "./ai/proc";
-import { stopAllRuns, stopCampaignRuns } from "./enrich/runner";
+import { stopAllAiWork, stopCampaignRuns } from "./enrich/runner";
 import { markInterruptedRuns } from "./enrich/store";
 import { checkForUpdate, installUpdate } from "./update";
 
@@ -300,9 +299,8 @@ on("GET", "/api/meetings", () => json(db.listMeetings()));
 on("GET", "/api/update", async () => json(await checkForUpdate()));
 on("POST", "/api/update/install", async () => {
   const installed = await installUpdate();
-  // The page restarts Mudd next, and that quits at once: no research turn may outlive it.
-  stopAllRuns();
-  abortAll();
+  // The page restarts Mudd next, and that quits at once, without the worker's shutdown.
+  stopAllAiWork();
   return json(installed);
 });
 
@@ -320,11 +318,14 @@ const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
  * Only Mudd's own page may call the API. Any website open in the user's browser can send requests
  * to 127.0.0.1 too. A DNS-rebound name (evil.com resolving to 127.0.0.1) arrives with that name in
  * the Host header, which Bun puts in `req.url`, so the host must be loopback. Browsers attach an
- * Origin to every cross-site write, so when there is one it must be this server's own.
+ * Origin to every cross-site write, so when there is one it must be this server's own. A cross-site
+ * GET (an <img> pointed at the API) has no Origin, but says where it came from in Sec-Fetch-Site.
  */
 export function fromOwnPage(req: Request): boolean {
   const url = new URL(req.url);
   if (!LOOPBACK.has(url.hostname)) return false;
+  const site = req.headers.get("sec-fetch-site");
+  if (site !== null && site !== "same-origin" && site !== "none") return false;
   const origin = req.headers.get("origin");
   return origin === null || origin === url.origin;
 }

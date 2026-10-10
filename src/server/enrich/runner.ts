@@ -25,6 +25,7 @@ import { allColumns, columnOf, isContactKey, makeKey } from "../../shared/schema
 import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../shared/types";
 import { contactLabel, parseFlag, primaryOf, prospectCells, researchedContacts, sameValue, samePerson, toNumber } from "../../shared/values";
 import { AiError, generateStructured } from "../ai";
+import { abortAll } from "../ai/proc";
 import { getAiSettings } from "../ai/settings";
 import * as db from "../db";
 
@@ -181,8 +182,10 @@ export function stopRun(id: string): EnrichRun | null {
   return c.run;
 }
 
-export function stopAllRuns(): void {
+/** Before Mudd quits: stop every run and every CLI, since one left running keeps spending the user's plan. */
+export function stopAllAiWork(): void {
   for (const id of active.keys()) stopRun(id);
+  abortAll();
 }
 
 /** Stop a campaign's live runs: before it is removed, so no turn files findings into nothing. */

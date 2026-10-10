@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
-import { applyUpdate, cleanUpAfterUpdate, describe as describeUpdate, installTarget, verifyDownload, waitForExit, type Release } from "./update";
+import { applyUpdate, blockedReason, cleanUpAfterUpdate, describe as describeUpdate, installTarget, verifyDownload, waitForExit, type Release } from "./update";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-update-"));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -27,6 +27,20 @@ describe("installTarget", () => {
     expect(installTarget("/Users/me/Mudd", "darwin")).toBeNull();
     expect(installTarget("C:\\Users\\me\\.bun\\bin\\bun.exe", "win32")).toBeNull();
     expect(installTarget("/usr/local/bin/bun", "linux")).toBeNull();
+  });
+});
+
+describe("blockedReason", () => {
+  test("lets Mudd update in a folder it can write to, and leaves nothing behind there", () => {
+    const dir = fs.mkdtempSync(path.join(tmp, "writable-"));
+    expect(blockedReason(path.join(dir, "Mudd.exe"), "win32")).toBeNull();
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  test("refuses one it can't write to, from source, and a translocated macOS app", () => {
+    expect(blockedReason(path.join(tmp, "missing", "Mudd.exe"), "win32")).toMatch(/can't write/);
+    expect(blockedReason(null)).toMatch(/from source/);
+    expect(blockedReason("/private/var/folders/x/AppTranslocation/y/d/Mudd.app", "darwin")).toMatch(/Applications/);
   });
 });
 

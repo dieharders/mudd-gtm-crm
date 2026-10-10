@@ -2,7 +2,8 @@
 import { ArrowUpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { api, type UpdateInfo } from "../../lib/api";
+import type { UpdateInfo } from "../../../shared/types";
+import { api } from "../../lib/api";
 import { Button } from "./Button";
 
 const CHECK_EVERY = 6 * 60 * 60_000;
@@ -23,30 +24,33 @@ export function useUpdateCheck(): UpdateInfo | null {
 const nativeRestart = () => (window as { __muddRestart?: () => void }).__muddRestart;
 
 export function UpdateNotice({ info }: { info: UpdateInfo | null }) {
-  const [state, setState] = useState<"idle" | "installing" | "installed">("idle");
-  if (!info?.latest) return null;
-  const { version, url } = info.latest;
-  const openRelease = () => void api.openUrl(url);
+  const [installing, setInstalling] = useState(false);
+  // Installed here, or (after a reload) by the server before this page asked.
+  const [installed, setInstalled] = useState<string | null>(null);
+  const done = installed ?? info?.installed ?? null;
+  const version = done ?? info?.latest?.version;
+  if (!info || !version) return null;
+  const openRelease = () => info.latest && void api.openUrl(info.latest.url);
 
   const install = async () => {
-    setState("installing");
+    setInstalling(true);
     try {
-      await api.installUpdate();
-      setState("installed");
+      setInstalled((await api.installUpdate()).version);
       nativeRestart()?.();
     } catch (err) {
-      setState("idle");
       toast.error((err as Error).message);
+    } finally {
+      setInstalling(false);
     }
   };
 
   return (
     <div className="mx-3 mb-2 rounded-xl border border-brand-200 bg-brand-50 px-2.5 py-2">
       <p className="flex items-center gap-2 text-[12.5px] font-medium">
-        <ArrowUpCircle size={14} className="shrink-0 text-brand-600" /> Mudd {version} is available
+        <ArrowUpCircle size={14} className="shrink-0 text-brand-600" /> Mudd {version} is {done ? "installed" : "available"}
       </p>
-      {state === "installed" ? (
-        <p className="mt-1 text-[11px] text-ink-soft">{nativeRestart() ? "Restarting…" : "Installed. Restart Mudd to finish."}</p>
+      {done ? (
+        <p className="mt-1 text-[11px] text-ink-soft">{installed && nativeRestart() ? "Restarting…" : "Restart Mudd to finish."}</p>
       ) : info.blocked ? (
         <>
           <p className="mt-1 text-[11px] text-ink-soft">{info.blocked}</p>
@@ -56,8 +60,8 @@ export function UpdateNotice({ info }: { info: UpdateInfo | null }) {
         <>
           <p className="mt-1 text-[11px] text-ink-soft">Mudd restarts to finish, and stops any AI research in progress.</p>
           <div className="mt-2 flex gap-1.5">
-            <Button size="sm" variant="primary" disabled={state === "installing"} onClick={() => void install()}>
-              {state === "installing" ? "Updating…" : "Update & restart"}
+            <Button size="sm" variant="primary" disabled={installing} onClick={() => void install()}>
+              {installing ? "Updating…" : "Update & restart"}
             </Button>
             <Button size="sm" variant="ghost" onClick={openRelease}>What's new</Button>
           </div>
