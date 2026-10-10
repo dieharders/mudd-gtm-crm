@@ -31,7 +31,9 @@ export const dialogsSupported = () =>
   process.platform === "win32" || process.platform === "darwin" || (process.platform === "linux" && linuxDialog() !== null);
 
 async function run(argv: string[]): Promise<{ code: number; out: string; err: string }> {
-  const proc = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+  // windowsHide: a double-clicked Mudd.exe has let go of its console, so PowerShell (a console
+  // program) would otherwise open a console window of its own behind the dialog.
+  const proc = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe", stdin: "ignore", windowsHide: true });
   const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   return { code: await proc.exited, out: out.trim(), err: err.trim() };
 }
