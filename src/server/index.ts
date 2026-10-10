@@ -1,6 +1,6 @@
 /**
- * The REST API the page talks to. Same-origin JSON over 127.0.0.1; nothing here makes an
- * outbound request.
+ * The REST API the page talks to. Same-origin JSON over 127.0.0.1, refused to any other site
+ * (see fromOwnPage); nothing here makes an outbound request.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -303,6 +303,21 @@ registerAiRoutes(on, {
   },
 });
 
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * Only Mudd's own page may call the API. Any website open in the user's browser can send requests
+ * to 127.0.0.1 too. A DNS-rebound name (evil.com resolving to 127.0.0.1) arrives with that name in
+ * the Host header, which Bun puts in `req.url`, so the host must be loopback. Browsers attach an
+ * Origin to every cross-site write, so when there is one it must be this server's own.
+ */
+export function fromOwnPage(req: Request): boolean {
+  const url = new URL(req.url);
+  if (!LOOPBACK.has(url.hostname)) return false;
+  const origin = req.headers.get("origin");
+  return origin === null || origin === url.origin;
+}
+
 export function createFetchHandler() {
   try {
     markInterruptedRuns();
@@ -310,6 +325,7 @@ export function createFetchHandler() {
     console.error("could not tidy interrupted runs:", err);
   }
   return async (req: Request): Promise<Response> => {
+    if (!fromOwnPage(req)) return fail(403, "Requests from other sites are not allowed.");
     const url = new URL(req.url);
     for (const [method, re, h] of routes) {
       if (method !== req.method) continue;
