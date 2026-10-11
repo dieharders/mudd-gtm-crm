@@ -9,6 +9,19 @@ Open your Excel or CSV lead tracker in Mudd and work it like a CRM. Track each c
 - **Private by design**: your data stays on your computer. There's no account, no cloud service and no API key. The AI runs through your own Claude Code or Codex sign-in and bills the plan you already pay for.
 - **Free**: for Windows, macOS and Linux.
 
+![Mudd home: start from a spreadsheet you already have](docs/screenshots/home.webp)
+
+<table>
+  <tr>
+    <th width="50%">Edit like a spreadsheet</th>
+    <th width="50%">Or read it prospect by prospect</th>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/table.webp" alt="Table view of a campaign" width="100%"></td>
+    <td width="50%"><img src="docs/screenshots/reading.webp" alt="Reading view grouped by tier" width="100%"></td>
+  </tr>
+</table>
+
 ## Setup
 
 ```powershell
@@ -67,9 +80,13 @@ src/shared/             types and template merging (client + server)
 src/client/             React UI (Tailwind v4, lucide-react, react-hot-toast)
 ```
 
-## AI: enrichment and intro messages
+## AI: Enrichment and intro messages
 
 Mudd drives **your own signed-in agent CLI**. It never stores an API key, and research bills your plan.
+
+Already pay for Claude Pro or Max, or ChatGPT Plus, Pro or Business? Mudd uses that subscription. Sign in once in **AI settings** and it shows which account is in use and that research bills your subscription, not a pay-per-use API key.
+
+![AI settings: Claude Code signed in on a Max plan, billing the subscription](docs/screenshots/ai-settings.webp)
 
 | Provider              | Needs                                      | Sign in                                             |
 | --------------------- | ------------------------------------------ | --------------------------------------------------- |
