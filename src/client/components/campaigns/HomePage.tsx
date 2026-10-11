@@ -8,8 +8,8 @@ import { api } from "../../lib/api";
 import { useCampaignList } from "../../lib/campaignList";
 import { cn } from "../../lib/cn";
 import { formatDateTime, isSameDay, parseLocal, relative, timeAgo } from "../../lib/format";
-import { tileFor, toneFor } from "../../lib/stages";
-import { Button } from "../ui/Button";
+import { paperTileFor } from "../../lib/paper";
+import { toneFor } from "../../lib/stages";
 import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
 import { useImport } from "./ImportFlow";
@@ -21,6 +21,7 @@ function greeting(): string {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
+/** The home screen, in the paper look: a board with pinned cards. */
 export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
   const { campaigns, meetings } = useCampaignList();
   const [removing, setRemoving] = useState<CampaignSummary | null>(null);
@@ -32,41 +33,44 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
   );
 
   return (
-    <div className="h-full overflow-y-auto scroll-thin">
-      <div className="mx-auto max-w-6xl px-8 py-8">
-        <div className="mb-7 flex flex-wrap items-end gap-3">
+    <div className="paper h-full overflow-y-auto bg-board scroll-thin">
+      <div className="mx-auto max-w-6xl px-5 py-6 md:px-8 md:py-8">
+        <div className="mb-8 flex flex-wrap items-end gap-3">
           <div className="mr-auto">
-            <p className="eyebrow mb-1">{greeting()} 👋</p>
-            <h1 className="text-[26px] font-bold tracking-tight">Your campaigns</h1>
+            <span className="relative mb-4 inline-block -rotate-2 rounded-md border-2 border-mud bg-note px-3 py-1 font-label text-sm shadow-hard-sm">
+              <span className="pin scale-75" />
+              {greeting()} 👋
+            </span>
+            <h1 className="font-display text-[32px] leading-none font-bold tracking-tight">Your campaigns</h1>
           </div>
-          <Button onClick={startImport} disabled={busy}>
+          <button className="paper-btn" onClick={startImport} disabled={busy}>
             <FolderOpen size={16} /> {busy ? "Opening…" : "Import sheet"}
-          </Button>
-          <Button variant="primary" onClick={onNewCampaign}>
+          </button>
+          <button className="paper-btn paper-btn-primary" onClick={onNewCampaign}>
             <Plus size={16} /> New campaign
-          </Button>
+          </button>
         </div>
 
         {campaigns === null ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            {[0, 1].map((i) => <div key={i} className="h-44 animate-pulse rounded-2xl bg-zinc-200/60" />)}
+            {[0, 1].map((i) => <div key={i} className="h-44 animate-pulse rounded-2xl border-2 border-dashed border-mud/40 bg-paper-deep" />)}
           </div>
         ) : campaigns.length === 0 ? (
           <Onboarding />
         ) : (
           <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
             <div className="min-w-0 space-y-5">
-              <div className="grid grid-cols-3 gap-3">
-                <StatCard tile="bg-violet-100 text-violet-700" icon={<Sparkles size={16} />} value={totals.prospects} label="prospects" />
-                <StatCard tile="bg-yellow-100 text-yellow-700" icon={<CalendarClock size={16} />} value={totals.meetings} label="meetings booked" />
-                <StatCard tile="bg-emerald-100 text-emerald-700" icon={<Workflow size={16} />} value={totals.signed} label="signed" />
+              <div className="grid gap-4 sm:grid-cols-3">
+                <StatCard tile="bg-clay-soft" icon={<Sparkles size={16} />} value={totals.prospects} label="prospects" />
+                <StatCard tile="bg-note" icon={<CalendarClock size={16} />} value={totals.meetings} label="meetings booked" />
+                <StatCard tile="bg-note-mint" icon={<Workflow size={16} />} value={totals.signed} label="signed" />
               </div>
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-5 xl:grid-cols-2">
                 {campaigns.map((c) => <CampaignCard key={c.id} c={c} onRemove={() => setRemoving(c)} />)}
               </div>
             </div>
             <aside>
-              <MeetingsCard meetings={meetings} limit={6} />
+              <MeetingsCard meetings={meetings} limit={6} paper />
             </aside>
           </div>
         )}
@@ -92,43 +96,42 @@ export function MeetingsPage() {
 
 function StatCard({ tile, icon, value, label }: { tile: string; icon: ReactNode; value: number; label: string }) {
   return (
-    <div className="card flex items-center gap-3 px-4 py-3.5">
-      <Tile className={tile}>{icon}</Tile>
+    <div className="paper-card flex items-center gap-3 px-4 py-3.5">
+      <Tile className={cn("border-2 border-mud text-mud", tile)}>{icon}</Tile>
       <div>
-        <div className="text-xl leading-tight font-bold tabular-nums">{value}</div>
-        <div className="text-xs text-ink-faint">{label}</div>
+        <div className="font-display text-2xl leading-none font-bold tabular-nums">{value}</div>
+        <div className="mt-1 font-label text-xs text-mud-soft">{label}</div>
       </div>
     </div>
   );
 }
 
-/** First run: the three steps, drawn like Clay's flow diagram. The page header has the buttons. */
+/** First run: the three steps as sticky notes pinned to a card. The page header has the buttons. */
 function Onboarding() {
   const steps = [
-    { tile: "bg-violet-100 text-violet-700", icon: <FileSpreadsheet size={18} />, title: "Bring your sheet", tags: [["Excel", "bg-violet-100 text-violet-800"], ["CSV", "bg-violet-100 text-violet-800"]], body: "Import a tracker, or start from a blank layout." },
-    { tile: "bg-sky-100 text-sky-700", icon: <Workflow size={18} />, title: "Work the pipeline", tags: [["Status", "bg-sky-100 text-sky-800"], ["Meetings", "bg-sky-100 text-sky-800"], ["Intro msgs", "bg-sky-100 text-sky-800"]], body: "Edit like a spreadsheet, track every touch." },
-    { tile: "bg-yellow-100 text-yellow-700", icon: <Download size={18} />, title: "Export it back", tags: [["Same formatting", "bg-yellow-100 text-yellow-800"], ["Formulas intact", "bg-yellow-100 text-yellow-800"]], body: "Your sheet, with every edit, exactly as it looked." },
+    { note: "bg-note -rotate-1", icon: <FileSpreadsheet size={18} />, title: "Bring your sheet", tags: ["Excel", "CSV"], body: "Import a tracker, or start from a blank layout." },
+    { note: "bg-note-pink rotate-1", icon: <Workflow size={18} />, title: "Work the pipeline", tags: ["Status", "Meetings", "Intro msgs"], body: "Edit like a spreadsheet, track every touch." },
+    { note: "bg-note-mint -rotate-1", icon: <Download size={18} />, title: "Export it back", tags: ["Same formatting", "Formulas intact"], body: "Your sheet, with every edit, exactly as it looked." },
   ];
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-500 via-violet-500 to-fuchsia-400 p-8 text-white shadow-lg">
-      <div className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full bg-white/10 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-yellow-300/20 blur-3xl" />
-      <h2 className="relative text-2xl font-bold tracking-tight">Start with a spreadsheet you already have.</h2>
-      <p className="relative mt-1 max-w-xl text-sm text-white/80">Everything stays on this computer. Drop a file anywhere on this window, or use Import sheet above.</p>
-      <div className="relative mt-7 grid items-stretch gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
+    <div className="paper-card p-6 md:p-8">
+      <h2 className="font-display text-2xl font-bold tracking-tight">Start with a spreadsheet you already have.</h2>
+      <p className="mt-1 max-w-xl text-sm text-mud-soft">Everything stays on this computer. Drop a file anywhere on this window, or use Import sheet above.</p>
+      <div className="mt-9 grid items-stretch gap-7 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:gap-4">
         {steps.map((s, i) => (
           <div key={s.title} className="contents">
-            <div className="rounded-2xl bg-white p-4 text-ink shadow-md" style={{ animationDelay: `${i * 0.6}s` }}>
+            <div className={cn("note", s.note)}>
+              <span className="pin" />
               <div className="flex items-center gap-2.5">
-                <Tile className={s.tile}>{s.icon}</Tile>
-                <span className="font-semibold">{s.title}</span>
+                <Tile className="border-2 border-mud bg-paper text-mud">{s.icon}</Tile>
+                <span className="font-display text-base font-bold">{s.title}</span>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {s.tags.map(([t, c]) => <span key={t} className={cn("tag", c)}>{t}</span>)}
+                {s.tags.map((t) => <span key={t} className="paper-tag bg-paper/70">{t}</span>)}
               </div>
-              <p className="mt-2.5 text-xs text-ink-soft">{s.body}</p>
+              <p className="mt-2.5 font-label text-sm text-mud-soft">{s.body}</p>
             </div>
-            {i < steps.length - 1 && <ArrowRight className="hidden self-center text-white/80 md:block" size={20} />}
+            {i < steps.length - 1 && <ArrowRight className="hidden self-center text-mud md:block" size={22} />}
           </div>
         ))}
       </div>
@@ -146,19 +149,19 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
       tabIndex={0}
       onClick={() => void navigate(`/c/${c.id}`)}
       onKeyDown={(e) => { if (e.key === "Enter") void navigate(`/c/${c.id}`); }}
-      className="card group cursor-pointer p-5 transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-[0_8px_30px_-12px_rgba(103,68,245,0.35)]"
+      className="paper-card group cursor-pointer p-5 transition hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-hard-lg"
     >
       <div className="flex items-start gap-3">
-        <Tile size="lg" className={tileFor(c.id)}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
+        <Tile size="lg" className={paperTileFor(c.id)}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[15px] font-semibold group-hover:text-brand-700">{c.name}</h3>
-          <p className="truncate text-xs text-ink-faint">
+          <h3 className="truncate font-display text-[17px] font-bold group-hover:text-clay-deep">{c.name}</h3>
+          <p className="truncate text-xs text-mud-faint">
             {c.sourceName ? <>From {c.sourceName}</> : "Created in Mudd"} · {timeAgo(c.updatedAt)}
           </p>
         </div>
         <div onClick={(e) => e.stopPropagation()}>
           <Popover align="right" trigger={({ toggle }) => (
-            <button className="rounded-md p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink" onClick={toggle} aria-label="Campaign menu">
+            <button className="rounded-lg border-2 border-transparent p-1 text-mud-faint hover:border-mud hover:bg-paper-deep hover:text-mud" onClick={toggle} aria-label="Campaign menu">
               <MoreHorizontal size={18} />
             </button>
           )}>
@@ -168,11 +171,11 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
       </div>
 
       <div className="mt-4 flex items-baseline gap-5">
-        <div><span className="text-2xl font-bold tabular-nums">{c.prospects}</span> <span className="text-xs text-ink-faint">prospects</span></div>
-        <div className="text-xs text-ink-faint"><span className="font-semibold text-ink-soft tabular-nums">{c.screened}</span> screened out</div>
+        <div><span className="font-display text-2xl font-bold tabular-nums">{c.prospects}</span> <span className="font-label text-xs text-mud-faint">prospects</span></div>
+        <div className="font-label text-xs text-mud-faint"><span className="font-bold text-mud-soft tabular-nums">{c.screened}</span> screened out</div>
       </div>
 
-      <div className="mt-3 flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-zinc-100">
+      <div className="mt-3 flex h-3.5 gap-0.5 overflow-hidden rounded-full border-2 border-mud bg-paper-deep p-px">
         {stages.map((s) => {
           const n = c.byStatus[s] ?? 0;
           if (!n) return null;
@@ -181,7 +184,7 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
         {stages.filter((s) => c.byStatus[s]).map((s) => (
-          <span key={s} className={cn("tag", toneFor(s, c.stages).pill)}>
+          <span key={s} className={cn("paper-tag", toneFor(s, c.stages).pill)}>
             {s} <span className="opacity-60 tabular-nums">{c.byStatus[s]}</span>
           </span>
         ))}
@@ -190,7 +193,8 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
   );
 }
 
-function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number }) {
+/** Shared with the Meetings page, which keeps the old look: `paper` switches this one to the home screen's. */
+function MeetingsCard({ meetings, limit, paper }: { meetings: Meeting[]; limit?: number; paper?: boolean }) {
   const now = new Date();
   const soon = meetings.filter((m) => {
     const d = parseLocal(m.at);
@@ -201,24 +205,24 @@ function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number
     return d && d < now && !isSameDay(d, now) && m.status === MEETING_STAGE;
   });
   return (
-    <div className="card p-4">
-      <h2 className="flex items-center gap-2.5 text-sm font-semibold">
-        <Tile size="sm" className="bg-yellow-100 text-yellow-700"><CalendarClock size={13} /></Tile> Upcoming meetings
+    <div className={paper ? "paper-card p-4" : "card p-4"}>
+      <h2 className={cn("flex items-center gap-2.5 text-sm font-semibold", paper && "font-display text-base font-bold")}>
+        <Tile size="sm" className={paper ? "border-2 border-mud bg-note text-mud" : "bg-yellow-100 text-yellow-700"}><CalendarClock size={13} /></Tile> Upcoming meetings
       </h2>
       {soon.length === 0 ? (
-        <div className="mt-3 rounded-xl bg-zinc-50 px-3 py-4 text-center text-xs text-ink-faint">
-          Nothing booked yet. Set a prospect to <span className="tag bg-yellow-100 text-yellow-800">Meeting booked</span> and add the link and time.
+        <div className={paper ? "mt-3 rounded-xl border-2 border-dashed border-mud/40 px-3 py-4 text-center font-label text-xs text-mud-soft" : "mt-3 rounded-xl bg-zinc-50 px-3 py-4 text-center text-xs text-ink-faint"}>
+          Nothing booked yet. Set a prospect to <span className={paper ? "paper-tag bg-note" : "tag bg-yellow-100 text-yellow-800"}>Meeting booked</span> and add the link and time.
         </div>
       ) : (
         <ul className="mt-3 space-y-2">
-          {soon.slice(0, limit ?? 100).map((m) => <MeetingItem key={m.rowId} m={m} />)}
+          {soon.slice(0, limit ?? 100).map((m) => <MeetingItem key={m.rowId} m={m} paper={paper} />)}
         </ul>
       )}
       {stale.length > 0 && (
         <>
-          <h3 className="eyebrow mt-5">Past · still “Meeting booked”</h3>
+          <h3 className={paper ? "mt-5 font-label text-xs text-mud-faint" : "eyebrow mt-5"}>Past · still “Meeting booked”</h3>
           <ul className="mt-2 space-y-2">
-            {stale.slice(-(limit ?? 100)).reverse().map((m) => <MeetingItem key={m.rowId} m={m} past />)}
+            {stale.slice(-(limit ?? 100)).reverse().map((m) => <MeetingItem key={m.rowId} m={m} past paper={paper} />)}
           </ul>
         </>
       )}
@@ -226,22 +230,32 @@ function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number
   );
 }
 
-function MeetingItem({ m, past }: { m: Meeting; past?: boolean }) {
+function MeetingItem({ m, past, paper }: { m: Meeting; past?: boolean; paper?: boolean }) {
   const d = parseLocal(m.at);
   const today = d && isSameDay(d, new Date());
   return (
-    <li className={cn("rounded-xl border p-2.5 transition hover:border-brand-200", today ? "border-yellow-300 bg-yellow-50" : "border-line bg-white")}>
+    <li
+      className={
+        paper
+          ? cn("rounded-xl border-2 border-mud p-2.5 shadow-hard-sm transition", today ? "bg-lake-soft" : "bg-paper")
+          : cn("rounded-xl border p-2.5 transition hover:border-brand-200", today ? "border-yellow-300 bg-yellow-50" : "border-line bg-white")
+      }
+    >
       <Link to={`/c/${m.campaignId}?row=${m.rowId}`} className="block">
-        <div className="truncate text-sm font-medium">{m.title}</div>
-        <div className="truncate text-xs text-ink-faint">{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
+        <div className={cn("truncate text-sm font-medium", paper && "font-bold")}>{m.title}</div>
+        <div className={cn("truncate text-xs", paper ? "text-mud-faint" : "text-ink-faint")}>{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
       </Link>
       <div className="mt-1.5 flex items-center gap-2">
-        <span className={cn("text-xs", past ? "text-ink-faint" : "text-ink-soft")}>
-          {formatDateTime(m.at)} · <span className={today ? "font-semibold text-yellow-800" : ""}>{relative(m.at)}</span>
+        <span className={cn("text-xs", paper ? (past ? "text-mud-faint" : "text-mud-soft") : (past ? "text-ink-faint" : "text-ink-soft"))}>
+          {formatDateTime(m.at)} · <span className={today ? (paper ? "font-bold text-lake-deep" : "font-semibold text-yellow-800") : ""}>{relative(m.at)}</span>
         </span>
         {m.url && !past && (
           <button
-            className="ml-auto inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-0.5 text-xs font-medium text-white shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)] hover:bg-brand-600"
+            className={
+              paper
+                ? "paper-btn paper-btn-primary ml-auto h-7 gap-1 rounded-lg px-2 text-xs"
+                : "ml-auto inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-0.5 text-xs font-medium text-white shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)] hover:bg-brand-600"
+            }
             onClick={() => fire(api.openUrl(m.url!))}
           >
             <Video size={12} /> Join

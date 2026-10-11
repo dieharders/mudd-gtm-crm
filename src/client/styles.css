@@ -1,5 +1,50 @@
 @import 'tailwindcss';
 
+/* Bundled fonts (see fonts/README.md). Bun inlines them into the stylesheet as data: URLs, which the
+   CSP in index.html allows for fonts. */
+@font-face {
+  font-family: "Libron";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/Libron-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Libron";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/Libron-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("./fonts/Nunito-Latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Nunito";
+  font-style: italic;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("./fonts/Nunito-Italic-Latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Comic Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/ComicMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Comic Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/ComicMono-Bold.woff2") format("woff2");
+}
+
 @theme {
   --font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
@@ -25,6 +70,34 @@
   --color-brand-700: #5633d8;
   --color-brand-800: #4528ad;
   --color-brand-900: #36218a;
+
+  /* Paper look (home screen, pass 1): warm board, cream paper, mud ink, clay and lake accents. */
+  --font-display: "Libron", Georgia, "Times New Roman", serif;
+  --font-ui: "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-label: "Comic Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  --color-board: #efe3cf;
+  --color-paper: #fbf5e8;
+  --color-paper-deep: #e9dcc3;
+  --color-mud: #2b1e16;
+  --color-mud-soft: #6a594b;
+  --color-mud-faint: #9a8a79;
+  --color-clay: #d97757;
+  --color-clay-deep: #b85c3c;
+  --color-clay-soft: #f7dacb;
+  --color-lake: #2e86de;
+  --color-lake-deep: #1b5fa8;
+  --color-lake-soft: #d7e8fa;
+  --color-note: #ffe68c;
+  --color-note-pink: #ffcbd5;
+  --color-note-mint: #cdefd9;
+
+  --shadow-hard-sm: 2px 2px 0 0 var(--color-mud);
+  --shadow-hard: 3px 3px 0 0 var(--color-mud);
+  --shadow-hard-lg: 5px 5px 0 0 var(--color-mud);
+
+  /* The sidebar folds to an icon rail below this. */
+  --breakpoint-wide: 56.25rem;
 
   --animate-slide-in: slide-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-fade-in: fade-in 140ms ease-out both;
@@ -91,4 +164,35 @@
     @apply rounded-2xl border border-line bg-panel shadow-[0_1px_2px_rgba(23,22,29,0.04),0_4px_16px_-8px_rgba(23,22,29,0.08)];
   }
   .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
+
+  /* Paper look: 2px mud outlines and hard offset shadows, like cards pinned to a board. */
+  .paper {
+    font-family: var(--font-ui);
+    color: var(--color-mud);
+  }
+  .paper-card {
+    @apply rounded-2xl border-2 border-mud bg-paper shadow-hard;
+  }
+  .paper-btn {
+    @apply inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-mud bg-paper px-4 text-sm font-bold
+      whitespace-nowrap text-mud shadow-hard-sm transition select-none hover:bg-paper-deep active:translate-x-0.5 active:translate-y-0.5
+      active:shadow-none disabled:pointer-events-none disabled:opacity-50;
+  }
+  .paper-btn-primary {
+    @apply bg-clay text-paper hover:bg-clay-deep;
+  }
+  .paper-btn-icon {
+    @apply w-10 px-0;
+  }
+  /* A sticky note: paper square with a push-pin through the top edge. */
+  .note {
+    @apply relative rounded-lg border-2 border-mud bg-note p-4 shadow-hard;
+  }
+  .pin {
+    @apply absolute -top-2.5 left-1/2 h-5 w-5 -translate-x-1/2 rounded-full border-2 border-mud bg-clay
+      shadow-[inset_-2px_-2px_0_0_rgba(0,0,0,0.25),inset_2px_2px_0_0_rgba(255,255,255,0.35)];
+  }
+  .paper-tag {
+    @apply inline-flex items-center gap-1 rounded-md border border-mud/60 px-1.5 py-0.5 font-label text-xs leading-tight;
+  }
 }
