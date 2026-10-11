@@ -42,7 +42,9 @@ export interface Release {
  * from source, where the executable is Bun itself.
  */
 export function installTarget(execPath = process.execPath, platform = process.platform): string | null {
-  if (/^bun(\.exe)?$/i.test(path.basename(execPath))) return null;
+  // By `platform`'s rules, not the host's: POSIX basename doesn't split on "\".
+  const name = (platform === "win32" ? path.win32 : path.posix).basename(execPath);
+  if (/^bun(\.exe)?$/i.test(name)) return null;
   if (platform !== "darwin") return execPath;
   const app = path.resolve(execPath, "..", "..", "..");
   return app.endsWith(".app") ? app : null;
