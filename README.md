@@ -2,7 +2,9 @@
 
 **A free desktop CRM for sales prospecting that works on the spreadsheet you already have.**
 
-Open your Excel or CSV lead tracker in Mudd and work it like a CRM. Track each company and its contacts through your pipeline, let AI research the gaps and draft personal intros, then save straight back to the same file. Your formatting, formulas and other tabs are kept, so the spreadsheet stays the source of truth.
+Search for and find new cold prospects and their contact information for free using your AI agent.
+
+Open your Excel or CSV lead tracker in Mudd and edit it like a CRM. Track each company and its contacts through your pipeline, let AI research the gaps and draft personal intros. The spreadsheet acts as the source of truth.
 
 - **AI enrichment with sources**: Mudd researches each prospect on the web and fills columns you choose, such as industry, headcount or a decision-maker's name. Every suggestion links to its source, and you accept or reject it.
 - **Intros that sound like you**: write templates with `{{First name}}`-style placeholders, and AI fills them in with one or two real, checkable hooks per prospect.
@@ -41,13 +43,7 @@ bun run start        # opens the Mudd window
 | `bun run typecheck` | TypeScript check.                                                                           |
 | `bun test`          | Unit and round-trip tests (see below).                                                      |
 
-Your campaigns are stored in `%APPDATA%\Mudd\mudd.sqlite`. Set `MUDD_DATA_DIR` to use a different folder.
-
-## Releases
-
-Bump `version` in package.json, then run **Actions → Manual Release → Run workflow**, picking the branch to build (no other input: the release is tagged `v<version>`, e.g. `v0.1.4`). It builds a zip for Windows x64, Linux x64 and macOS (Apple silicon and Intel; the zip holds `Mudd.app`), the same file people download and Mudd updates itself from, and, only if all four succeed, attaches them to a **draft** release. Publish the draft from the Releases page when you're ready; that creates the tag if it doesn't exist yet. The builds are unsigned (macOS is ad-hoc signed), so Windows and macOS warn on first launch.
-
-**Updates.** Publishing a release is also what updates everyone. Mudd asks GitHub for the latest release of `dieharders/mudd-gtm-crm` when it opens and every 6 hours after, and when it's newer, offers it in the sidebar. **Update & restart** downloads this platform's zip, checks it against the SHA-256 GitHub lists for it, swaps it in for the running copy and restarts. That check is the only request Mudd makes on its own, and none of your data goes with it. Where Mudd can't replace itself (run from source, or from a folder it can't write to), the sidebar links to the download instead. Code: `src/server/update.ts`.
+App data is stored in `%APPDATA%\Mudd\mudd.sqlite`. Set `MUDD_DATA_DIR` to use a different folder.
 
 ## How it works
 
@@ -61,15 +57,7 @@ Bump `version` in package.json, then run **Actions → Manual Release → Run wo
 - **Templates**: per-campaign intro messages with `{{Column}}`, `{{First name}}` and `{{Column|fallback}}` placeholders. They're saved into an `Intro templates` tab and restored on re-import.
 - **Save file** writes into the workbook you imported, in place: only the cells you changed are rewritten (each keeping its format); a deleted prospect's row is blanked, never removed, so nothing below it moves; new prospects go under the data. Every other part of the file (other tabs, charts, notes, SharePoint properties) is kept byte for byte. Mudd asks before replacing a file that was changed outside it, keeps the previous version as a `.bak.xlsx` next to it, and the last ten versions under `backups/` in its data folder. When Mudd doesn't know where the file is (dropped in, a CSV, created in Mudd), it saves to Downloads and keeps saving there. **Save to cloud** (SharePoint) is coming.
 
-## Tests
-
-```powershell
-$env:MUDD_FIXTURE = "C:\Users\you\Downloads\base-tracker.xlsx"; bun test
-```
-
-The round-trip suite builds workbooks with the features real trackers have (formulas on another tab, column formats, notes, merges, dropdowns, tables) and checks what a save keeps. It can also read your own tracker from `MUDD_FIXTURE`, rather than from a copy in the repo, because a tracker contains real contact details.
-
-## Layout
+## File Layout
 
 ```
 main.ts                 native window + server worker
@@ -80,11 +68,9 @@ src/shared/             types and template merging (client + server)
 src/client/             React UI (Tailwind v4, lucide-react, react-hot-toast)
 ```
 
-## AI: Enrichment and intro messages
+## Using AI
 
 Mudd drives **your own signed-in agent CLI**. It never stores an API key, and research bills your plan.
-
-Already pay for Claude Pro or Max, or ChatGPT Plus, Pro or Business? Mudd uses that subscription. Sign in once in **AI settings** and it shows which account is in use and that research bills your subscription, not a pay-per-use API key.
 
 ![AI settings: Claude Code signed in on a Max plan, billing the subscription](docs/screenshots/ai-settings.webp)
 
@@ -93,7 +79,9 @@ Already pay for Claude Pro or Max, or ChatGPT Plus, Pro or Business? Mudd uses t
 | Claude Code (default) | `npm install -g @anthropic-ai/claude-code` | `claude auth login` (or **Sign in** in AI settings) |
 | Codex                 | `npm install -g @openai/codex`             | `codex login`                                       |
 
-Open **AI settings** from the bottom of the sidebar to pick the provider, model and effort. It shows the signed-in account and whether usage bills your subscription or an API key. "Bill my Claude subscription only" removes `ANTHROPIC_API_KEY` from the CLI's environment. It is switched off automatically if that key is your only credential.
+Open **AI settings** from the bottom of the sidebar to pick the provider, model and effort. It shows the signed-in account.
+
+### Enrichment and Outbound
 
 **What a research turn can do.** Claude Code gets `WebSearch` and `WebFetch` and nothing else: no shell, no file access. It runs in an empty scratch folder, with your CLAUDE.md, hooks and MCP servers ignored, and with no saved session. Codex runs `exec` with a read-only sandbox. Nothing leaves the machine until you press Run, and the first run asks for consent.
 
