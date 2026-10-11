@@ -7,7 +7,7 @@
  * A person's details (who decides, their email) belong to a contact: those outputs fill the
  * prospect's primary contact, and look only among the contact columns.
  */
-import { isSourcesColumn } from "./ai";
+import { isSourcesColumn, type RecipeDraft } from "./ai";
 import { norm } from "./merge";
 import { contactSchema, EMPLOYEES_HEADER, EMPLOYEES_HEADERS, HOOK_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
 import type { CampaignSchema, Column, ColumnType, Row } from "./types";
@@ -17,6 +17,8 @@ export interface PresetOutput {
   aliases: string[];
   type: ColumnType;
   hint: string;
+  /** The dropdown's choices, for a `select` output the recipe creates a column for. */
+  options?: string[];
   /** A detail of the person: filled on the primary contact. */
   person?: boolean;
   /** The person's name: the contacts' name column when no alias matches. */
@@ -85,7 +87,7 @@ export const PRESETS: Preset[] = [
       "Find a work email address for this contact that is published on the web (company site, press release, filings, conference pages). Never construct or guess an address from a naming pattern: if none is published for this person, return null.",
     outputs: [
       { header: "Email", aliases: ["email", "workemail", "emailaddress"], type: "email", hint: "Only an address you actually found published. Null if none.", person: true },
-      { header: "Email source", aliases: ["emailsource"], type: "select", hint: "Published if you saw it on a page; Reported if a data site reports it.", person: true },
+      { header: "Email source", aliases: ["emailsource"], type: "select", options: ["Published", "Reported", "Pattern", "Verified"], hint: "Published if you saw it on a page; Reported if a data site reports it.", person: true },
     ],
   },
   {
@@ -120,4 +122,31 @@ export function presetTargets(p: Preset, schema: CampaignSchema, rows: Pick<Row,
     if (match) used.add(match.key);
     return match;
   });
+}
+
+/**
+ * A preset as a recipe for this campaign: each output pointed at the column it fills, or at a
+ * new column (among the contacts' for a person's detail). The recipe panel and Discovery's
+ * accept step both make recipes this way, so a preset gives the same recipe from either.
+ */
+export function presetRecipe(p: Preset, schema: CampaignSchema, rows: Pick<Row, "cells">[]): RecipeDraft {
+  const targets = presetTargets(p, schema, rows);
+  return {
+    name: p.name,
+    instructions: p.instructions,
+    inputKeys: [],
+    webSearch: true,
+    presetId: p.id,
+    outputs: p.outputs.map((o, i) => {
+      const match = targets[i];
+      return {
+        key: match?.key,
+        header: match?.header ?? o.header,
+        hint: o.hint,
+        type: match?.type ?? o.type,
+        ...(o.options ? { options: [...o.options] } : {}),
+        ...(!match && o.person ? { contact: true } : {}),
+      };
+    }),
+  };
 }

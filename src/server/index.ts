@@ -4,8 +4,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { copySchema, genericSchema } from "../shared/schema";
-import { IMPORT_EXTENSIONS, type CampaignSchema, type CellEdit, type InspectResult, type Row } from "../shared/types";
+import { copySchema, discoverySchema, genericSchema } from "../shared/schema";
+import { IMPORT_EXTENSIONS, type CampaignBundle, type CampaignSchema, type CellEdit, type InspectResult, type Row } from "../shared/types";
 import { exportCampaign } from "../xlsx/export";
 import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook, type LoadedBook } from "../xlsx/import";
 import * as db from "./db";
@@ -13,6 +13,9 @@ import { registerAiRoutes } from "./ai-routes";
 import { dialogsSupported, downloadsDir, openDialog, openExternal } from "./dialogs";
 import { stopAllAiWork, stopCampaignRuns } from "./enrich/runner";
 import { markInterruptedRuns } from "./enrich/store";
+import { registerDiscoveryRoutes } from "./sourcing/routes";
+import { stopAllDiscovery, stopCampaignDiscovery } from "./sourcing/runner";
+import { markInterruptedDiscovery } from "./sourcing/store";
 import { checkForUpdate, installUpdate, releaseNotes } from "./update";
 
 const SECURITY_HEADERS = {
@@ -101,9 +104,9 @@ async function inspect(req: Request): Promise<InspectResult> {
   } catch (err) {
     throw new HttpError(400, `Could not read ${fileName}: ${(err as Error).message}`);
   }
-  const { sheets, templates } = inspectWorkbook(book);
+  const { sheets, templates, thesis } = inspectWorkbook(book);
   const token = stage({ buf, fileName, path: filePath, mtime, book });
-  return { token, fileName, path: filePath, sheets, templates };
+  return { token, fileName, path: filePath, sheets, templates, thesis };
 }
 
 async function doImport(req: Request) {
@@ -130,6 +133,8 @@ async function doImport(req: Request) {
     rows: imp.rows,
     contacts: imp.contacts,
     templates: imp.templates,
+    // A workbook Mudd saved from a Discovery campaign brings the campaign back as one.
+    thesis: imp.thesis,
   });
   staged.delete(b.token);
   return { ...campaign, skippedContacts: imp.skippedContacts, mismatchedContacts: imp.mismatchedContacts };
@@ -204,7 +209,7 @@ async function saveFile(id: string, req: Request) {
     }
   }
 
-  const bytes = await exportCampaign(c, db.getOriginal(id), db.listRowsForExport(id), db.listTemplates(id), db.listRowsForExport(id, "contacts"));
+  const bytes = await exportCampaign(c, db.getOriginal(id), db.listRowsForExport(id), db.listTemplates(id), db.listRowsForExport(id, "contacts"), db.getThesis(id));
   if (inPlace) {
     backUp(id, c.sourcePath!);
     writeFileSafely(c.sourcePath!, bytes);
@@ -229,16 +234,23 @@ on("GET", "/api/env", () => json({ platform: process.platform, dialogs: dialogsS
 
 on("GET", "/api/campaigns", () => json(db.listCampaigns()));
 on("POST", "/api/campaigns", async (req) => {
-  const b = await body<{ name: string; layout: "generic" | { copyFrom: string } }>(req);
+  const b = await body<{ name: string; layout: "generic" | "discovery" | { copyFrom: string }; thesis?: { offer?: string; avatar?: string } }>(req);
   if (!b.name?.trim()) throw new HttpError(400, "Give the campaign a name.");
   let schema: CampaignSchema;
   if (b.layout && typeof b.layout === "object") schema = copySchema(mustCampaign(b.layout.copyFrom).schema);
-  else schema = genericSchema();
+  else if (b.layout === "discovery") {
+    // A Discovery campaign: its own layout, and the two answers the engine can't work without.
+    const offer = b.thesis?.offer?.trim();
+    const avatar = b.thesis?.avatar?.trim();
+    if (!offer || !avatar) throw new HttpError(400, "Say what you sell and who qualifies: Discovery can't search without them.");
+    return json(db.createCampaign({ name: b.name.trim(), schema: discoverySchema(), sheets: [], thesis: { answers: { offer, avatar }, drafted: [] } }));
+  } else schema = genericSchema();
   return json(db.createCampaign({ name: b.name.trim(), schema, sheets: [] }));
 });
 on("GET", "/api/campaigns/:id", (_req, [id]) => {
   const campaign = mustCampaign(id!);
-  return json({ campaign, rows: db.listRows(id!), contacts: db.listRows(id!, "contacts"), templates: db.listTemplates(id!) });
+  const bundle: CampaignBundle = { campaign, rows: db.listRows(id!), contacts: db.listRows(id!, "contacts"), templates: db.listTemplates(id!), thesis: db.getThesis(id!) };
+  return json(bundle);
 });
 on("PATCH", "/api/campaigns/:id", async (req, [id]) => {
   mustCampaign(id!);
@@ -249,6 +261,7 @@ on("PATCH", "/api/campaigns/:id", async (req, [id]) => {
 // Removes the campaign from Mudd only: no file is ever deleted.
 on("DELETE", "/api/campaigns/:id", (_req, [id]) => {
   stopCampaignRuns(id!);
+  stopCampaignDiscovery(id!);
   db.deleteCampaign(id!);
   return json({ ok: true });
 });
@@ -307,17 +320,20 @@ on("GET", "/api/update/notes", async () => {
 on("POST", "/api/update/install", async () => {
   const installed = await installUpdate();
   // The page restarts Mudd next, and that quits at once, without the worker's shutdown.
+  stopAllDiscovery();
   stopAllAiWork();
   return json(installed);
 });
 
-registerAiRoutes(on, {
+const routeHelpers = {
   json,
   body,
-  fail: (status, message) => {
+  fail: (status: number, message: string): never => {
     throw new HttpError(status, message);
   },
-});
+};
+registerAiRoutes(on, routeHelpers);
+registerDiscoveryRoutes(on, routeHelpers);
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -340,6 +356,7 @@ export function fromOwnPage(req: Request): boolean {
 export function createFetchHandler() {
   try {
     markInterruptedRuns();
+    markInterruptedDiscovery();
   } catch (err) {
     console.error("could not tidy interrupted runs:", err);
   }

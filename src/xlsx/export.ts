@@ -25,10 +25,11 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { contactSchema, orgColumn } from "../shared/schema";
-import { ORG_ID_KEY, ORG_KEY, type Campaign, type CampaignSchema, type CellValue, type Column, type Row, type SheetMeta, type Template } from "../shared/types";
+import { THESIS_QUESTIONS, THESIS_SHEET } from "../shared/thesis";
+import { ORG_ID_KEY, ORG_KEY, type Campaign, type CampaignSchema, type CellValue, type Column, type Row, type SheetMeta, type Template, type Thesis } from "../shared/types";
 import { orderedContacts, parseFlag, sameValue } from "../shared/values";
 import { colLetter, hrefFor, numFmtFor, parseAppDate, toExcelValue, toNumber } from "./cells";
-import { TEMPLATES_SHEET } from "./import";
+import { TEMPLATES_SHEET, THESIS_DRAFT_MARK } from "./import";
 import {
   dataStyle, isYours, LIST_FORMULA_MAX, listFormula, pxToChars, STYLE, styleGeneratedSheet, VALIDATION_ROWS, YOURS_FILL,
 } from "./layouts";
@@ -48,7 +49,9 @@ export const CONTACTS_SHEET = "Contacts";
 
 /**
  * `rows` are the prospects, `contacts` their people. Contacts are required: a workbook's
- * Contacts tab written without them would lose every person on it.
+ * Contacts tab written without them would lose every person on it. So is the thesis (null for a
+ * campaign without one): a save that forgot it would drop the tab that makes the campaign a
+ * Discovery campaign when the file is imported again.
  */
 export async function exportCampaign(
   campaign: Campaign,
@@ -56,13 +59,25 @@ export async function exportCampaign(
   rows: ExportRow[],
   templates: Template[],
   contacts: ExportRow[],
+  thesis: Thesis | null,
 ): Promise<Uint8Array> {
   const ordered = [...rows].sort((a, b) => a.position - b.position);
   const tpls = [...templates].sort((a, b) => a.position - b.position);
   const people = contactExportRows(campaign.schema, ordered, contacts);
-  if (!original) return generatedWorkbook(campaign.schema, ordered, tpls, people);
-  return patchWorkbook(campaign, original, ordered, tpls, people);
+  if (!original) return generatedWorkbook(campaign.schema, ordered, tpls, people, thesis);
+  return patchWorkbook(campaign, original, ordered, tpls, people, thesis);
 }
+
+/** The thesis tab's rows: every question in order, its answer, and who filled it. */
+function thesisRows(thesis: Thesis): { question: string; answer: string; filledBy: string }[] {
+  return THESIS_QUESTIONS.map((q) => ({
+    question: q.label,
+    answer: thesis.answers[q.id] ?? "",
+    filledBy: thesis.answers[q.id] && thesis.drafted.includes(q.id) ? THESIS_DRAFT_MARK : "",
+  }));
+}
+
+const hasAnswers = (thesis: Thesis | null): thesis is Thesis => !!thesis && Object.values(thesis.answers).some((a) => a?.trim());
 
 /**
  * The Contacts tab's columns: the prospect's ID (what the tab links by) and its company (to read
@@ -113,7 +128,7 @@ function relsPrefix(xml: string, root: string): { xml: string; prefix: string } 
   return { xml: xml.replace(open[0], setAttr(open[0], "xmlns:r", RELS_NS)), prefix: "r" };
 }
 
-async function patchWorkbook(campaign: Campaign, original: Uint8Array, rows: ExportRow[], templates: Template[], contacts: ExportRow[]): Promise<Uint8Array> {
+async function patchWorkbook(campaign: Campaign, original: Uint8Array, rows: ExportRow[], templates: Template[], contacts: ExportRow[], thesis: Thesis | null): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(original);
   const parts = await sheetParts(zip);
   const wbPath = await workbookPath(zip);
@@ -133,6 +148,7 @@ async function patchWorkbook(campaign: Campaign, original: Uint8Array, rows: Exp
   if (res.filter) wbXml = setFilterName(wbXml, part, res.filter);
   wbXml = await writeContactsTab(zip, wbPath, wbXml, parts, campaign, contacts, book, date1904, res.headerStyle);
   wbXml = await writeTemplatesTab(zip, wbPath, wbXml, parts, campaign.sheets, templates, book, res.headerStyle);
+  wbXml = await writeThesisTab(zip, wbPath, wbXml, parts, campaign.sheets, thesis, book, res.headerStyle);
   wbXml = forceRecalc(wbXml);
   zip.file(wbPath, wbXml);
   if (book.changed) zip.file(stylesPath, book.toXml());
@@ -651,6 +667,69 @@ async function writeTemplatesTab(
   return (await appendSheet(zip, wbPath, wbXml, parts, TEMPLATES_SHEET, `A1:B${templates.length + 1}`, cols, rows.join(""))).wbXml;
 }
 
+// ---------- the ICP thesis tab ----------
+
+/**
+ * The thesis tab (Question | Answer | Filled by): the one import read the thesis from, rewritten
+ * row by row, or a new one when the campaign has a thesis with at least one answer.
+ */
+async function writeThesisTab(
+  zip: JSZip,
+  wbPath: string,
+  wbXml: string,
+  parts: SheetPart[],
+  sheets: SheetMeta[],
+  thesis: Thesis | null,
+  book: StyleBook,
+  headerStyle: string | null,
+): Promise<string> {
+  const meta = sheets.find((s) => s.role === "thesis");
+  const part = meta ? parts.find((x) => x.name === meta.name) : undefined;
+  const lines = thesis ? thesisRows(thesis) : [];
+  if (meta && part) {
+    const doc: SheetDoc = parseSheet((await readText(zip, part.path))!);
+    const p = doc.prefix;
+    const byNum = new Map(doc.rows.map((r) => [r.num, r]));
+    const typical = typicalStyles(doc.rows, 2, Math.max(2, meta.lastDataRow));
+    let wrap: string | null | undefined;
+    const wrapped = () => (wrap === undefined ? (wrap = book.derive(typical.get(meta.colMap.answer!) ?? null, { wrap: true })) : wrap);
+    const last = Math.max(meta.lastDataRow, lines.length + 1);
+    for (let n = 2; n <= last; n++) {
+      const line = lines[n - 2];
+      let row = byNum.get(n);
+      if (!row && !line) continue;
+      if (!row) byNum.set(n, (row = { num: n, attrs: "", cells: [], extra: "", raw: null }));
+      for (const [key, value] of [["question", line?.question], ["answer", line?.answer], ["filledBy", line?.filledBy]] as const) {
+        const idx = meta.colMap[key];
+        if (!idx) continue;
+        const cell = row.cells.find((c) => c.col === idx);
+        const style = cell ? cellStyle(cell) : typical.get(idx) ?? wrapped();
+        putCell(row, idx, makeCell(p, idx, n, style, value ? { s: value } : null));
+      }
+    }
+    doc.rows = [...byNum.values()].sort((a, b) => a.num - b.num);
+    let xml = serializeSheet(doc);
+    const dim = findBlock(xml, "dimension", p);
+    if (dim) {
+      const rg = parseRange(getAttr(dim.text, "ref") ?? "");
+      const ref = rangeText({ c1: 1, r1: 1, c2: Math.max(rg?.c2 ?? 3, 3), r2: Math.max(rg?.r2 ?? 1, last) });
+      xml = replaceAt(xml, dim, withStart(dim.text, (t) => setAttr(t, "ref", ref)));
+    }
+    zip.file(part.path, xml);
+    return wbXml;
+  }
+  if (!hasAnswers(thesis)) return wbXml;
+
+  const wrap = book.derive(null, { wrap: true });
+  const cell = (col: number, row: number, style: string | null, text: string) => makeCell("", col, row, style, text ? { s: text } : null);
+  const rows = [
+    `<row r="1" ht="21.75" customHeight="1">${cell(1, 1, headerStyle, "Question")}${cell(2, 1, headerStyle, "Answer")}${cell(3, 1, headerStyle, "Filled by")}</row>`,
+    ...lines.map((l, i) => `<row r="${i + 2}">${cell(1, i + 2, wrap, l.question)}${cell(2, i + 2, wrap, l.answer)}${cell(3, i + 2, wrap, l.filledBy)}</row>`),
+  ];
+  const cols = '<cols><col min="1" max="1" width="40" customWidth="1"/><col min="2" max="2" width="100" customWidth="1"/><col min="3" max="3" width="14" customWidth="1"/></cols>';
+  return (await appendSheet(zip, wbPath, wbXml, parts, THESIS_SHEET, `A1:C${lines.length + 1}`, cols, rows.join(""))).wbXml;
+}
+
 // ---------- the Contacts tab ----------
 
 /**
@@ -742,7 +821,7 @@ async function appendSheet(
 // ---------- a new workbook ----------
 
 /** A workbook in the base-tracker look, for a campaign that has none of its own. */
-async function generatedWorkbook(schema: CampaignSchema, rows: ExportRow[], templates: Template[], contacts: ExportRow[]): Promise<Uint8Array> {
+async function generatedWorkbook(schema: CampaignSchema, rows: ExportRow[], templates: Template[], contacts: ExportRow[], thesis: Thesis | null): Promise<Uint8Array> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Mudd";
   const sheet = (name: string, tabSchema: CampaignSchema, list: ExportRow[]) => {
@@ -777,6 +856,23 @@ async function generatedWorkbook(schema: CampaignSchema, rows: ExportRow[], temp
       row.getCell(1).value = tpl.name;
       row.getCell(2).value = tpl.body;
       for (const c of [1, 2]) row.getCell(c).style = { ...JSON.parse(JSON.stringify(STYLE.cell)), alignment: { vertical: "top", wrapText: true } };
+    });
+  }
+  if (hasAnswers(thesis)) {
+    const t = wb.addWorksheet(THESIS_SHEET);
+    [40, 100, 14].forEach((w, i) => (t.getColumn(i + 1).width = w));
+    const h = t.getRow(1);
+    h.height = 21.75;
+    ["Question", "Answer", "Filled by"].forEach((text, i) => {
+      h.getCell(i + 1).value = text;
+      h.getCell(i + 1).style = JSON.parse(JSON.stringify(STYLE.header));
+    });
+    thesisRows(thesis).forEach((line, i) => {
+      const row = t.getRow(i + 2);
+      [line.question, line.answer, line.filledBy].forEach((v, j) => {
+        row.getCell(j + 1).value = v || null;
+        row.getCell(j + 1).style = { ...JSON.parse(JSON.stringify(STYLE.cell)), alignment: { vertical: "top", wrapText: true } };
+      });
     });
   }
   return new Uint8Array(await wb.xlsx.writeBuffer());

@@ -25,6 +25,7 @@ export function ConsentDialog({ open, onConfirm, onCancel }: { open: boolean; on
     >
       <ul className="space-y-2 text-sm text-ink-soft">
         <li>• For each row you run, the columns the recipe uses are sent to {p.vendor} through your {p.label} CLI, and it may search the web about that prospect.</li>
+        <li>• Discovery sends your ICP thesis and the names of the companies already in the campaign, and searches the web for companies and people that fit.</li>
         <li>• Research turns can only search and read web pages. They can't run commands or open your files.</li>
         <li>• Results come back as suggestions. Your sheet only changes when you accept one, or for empty cells if you turned on auto-fill.</li>
         <li>• Usage counts toward your {p.plan} plan's limits.</li>

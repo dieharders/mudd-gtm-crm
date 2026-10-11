@@ -7,7 +7,7 @@
 import { Anchor, Building2, FlaskConical, Globe, Mail, Newspaper, Plus, Rocket, Sparkles, Trash2, TriangleAlert, UserRound, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { presetTargets, PRESETS, type Preset } from "../../../shared/presets";
+import { presetRecipe, PRESETS, type Preset } from "../../../shared/presets";
 import { isSourcesColumn, PROVIDERS, recipeMode, type EnrichRun, type Recipe } from "../../../shared/ai";
 import { allColumns, columnOf, contactSchema, typeFromHeader } from "../../../shared/schema";
 import { COLUMN_TYPES, isScreened, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../../shared/types";
@@ -43,6 +43,8 @@ interface Draft {
   inputKeys: string[];
   outputs: OutputDraft[];
   webSearch: boolean;
+  /** The preset it was started from, kept so Discovery can reuse the saved recipe. */
+  presetId?: string;
 }
 
 type Selection = { kind: "recipe"; id: string } | { kind: "draft"; from: string } | { kind: "run"; id: string } | null;
@@ -51,19 +53,23 @@ type Selection = { kind: "recipe"; id: string } | { kind: "draft"; from: string 
  *  until the user picks one, so re-importing the export types it the same. */
 const headerType = (header: string): ColumnType => typeFromHeader(header)?.type ?? "text";
 
+/** A preset as the editor shows it: the same recipe the server makes from it (presetRecipe). */
 function draftFromPreset(p: Preset, schema: CampaignSchema, rows: Row[]): Draft {
-  const targets = presetTargets(p, schema, rows);
-  const outputs = p.outputs.map((o, i) => {
-    const match = targets[i];
-    return {
-      target: match?.key ?? (o.person ? NEW_CONTACT : NEW),
-      header: match?.header ?? o.header,
-      hint: o.hint,
-      type: o.type,
-      options: o.type === "select" ? ["Published", "Reported", "Pattern", "Verified"] : undefined,
-    };
-  });
-  return { name: p.name, instructions: p.instructions, inputKeys: [], outputs, webSearch: true };
+  const r = presetRecipe(p, schema, rows);
+  return {
+    name: r.name,
+    instructions: r.instructions,
+    inputKeys: r.inputKeys,
+    webSearch: r.webSearch,
+    presetId: r.presetId,
+    outputs: r.outputs.map((o) => ({
+      target: o.key ?? (o.contact ? NEW_CONTACT : NEW),
+      header: o.header,
+      hint: o.hint ?? "",
+      type: o.type ?? headerType(o.header),
+      options: o.options,
+    })),
+  };
 }
 
 function draftFromRecipe(r: Recipe, schema: CampaignSchema): Draft {
@@ -72,6 +78,7 @@ function draftFromRecipe(r: Recipe, schema: CampaignSchema): Draft {
     instructions: r.instructions,
     inputKeys: r.inputKeys,
     webSearch: r.webSearch,
+    presetId: r.presetId,
     outputs: r.outputs.map((o) => {
       const col = columnOf(schema, o.key);
       return { target: col ? o.key : NEW, header: col?.header ?? o.header, hint: o.hint ?? "", type: col?.type ?? headerType(o.header) };
@@ -87,6 +94,7 @@ function toApi(d: Draft): RecipeDraft {
     instructions: d.instructions,
     inputKeys: d.inputKeys,
     webSearch: d.webSearch,
+    ...(d.presetId ? { presetId: d.presetId } : {}),
     outputs: d.outputs
       .filter((o) => o.header.trim())
       .map((o) => ({

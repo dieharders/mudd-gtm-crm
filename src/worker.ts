@@ -8,6 +8,7 @@
 import index from "./client/index.html";
 import { stopAllAiWork } from "./server/enrich/runner";
 import { createFetchHandler } from "./server/index";
+import { stopAllDiscovery } from "./server/sourcing/runner";
 
 const handler = createFetchHandler();
 
@@ -43,6 +44,8 @@ const server = (() => {
 declare let self: Worker;
 self.onmessage = (event: MessageEvent) => {
   if (event.data?.type !== "shutdown") return;
+  // Discovery first: its runs hold CLIs that stopAllAiWork then aborts with the rest.
+  stopAllDiscovery();
   stopAllAiWork();
   // "closed" only once the server has stopped: the main thread quits on it.
   void server.stop(true).finally(() => postMessage({ type: "closed" }));

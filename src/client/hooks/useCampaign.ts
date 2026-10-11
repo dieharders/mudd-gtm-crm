@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { newProspectId } from "../../shared/schema";
-import { CHECKED, isChecked, type Campaign, type CampaignSchema, type CellEdit, type CellValue, type Row, type Template } from "../../shared/types";
+import { CHECKED, isChecked, type Campaign, type CampaignSchema, type CellEdit, type CellValue, type Row, type Template, type Thesis } from "../../shared/types";
 import { applyCellEdits, sameValue } from "../../shared/values";
 import { api } from "../lib/api";
 
@@ -49,6 +49,8 @@ export function useCampaign(id: string) {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  /** The ICP thesis; null for a campaign that is not a Discovery campaign. */
+  const [thesis, setThesis] = useState<Thesis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [save, setSave] = useState<{ state: SaveState; at: number | null }>({ state: "idle", at: null });
   const [undoCount, setUndoCount] = useState(0);
@@ -69,6 +71,7 @@ export function useCampaign(id: string) {
       setCampaign(b.campaign);
       setRows([...b.rows, ...(b.contacts ?? [])]);
       setTemplates(b.templates);
+      setThesis(b.thesis ?? null);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -354,13 +357,16 @@ export function useCampaign(id: string) {
   }, [applyLocal]);
 
   /**
-   * Rows the server added (a run's first contact for a prospect): shown, not an undo step. One
-   * already here, or whose prospect was deleted meanwhile, is left out.
+   * Rows the server added (a run's first contact for a prospect; a Discovery accept's prospect
+   * with its contacts): shown, not an undo step. One already here, or whose prospect is neither
+   * here nor in the same batch, is left out.
    */
   const applyRemoteRows = useCallback((added: Row[]) => {
     setRows((prev) => {
       const ids = new Set(prev.map((r) => r.id));
-      const fresh = added.filter((r) => !ids.has(r.id) && (!r.parentId || ids.has(r.parentId)));
+      const parents = new Set(ids);
+      for (const r of added) if (!r.parentId) parents.add(r.id);
+      const fresh = added.filter((r) => !ids.has(r.id) && (!r.parentId || parents.has(r.parentId)));
       return fresh.length ? [...prev, ...fresh] : prev;
     });
   }, []);
@@ -413,9 +419,9 @@ export function useCampaign(id: string) {
   const contactsOf = useCallback((orgId: string) => views.contactsByOrg.get(orgId) ?? NO_CONTACTS, [views]);
 
   return {
-    campaign, rows: views.prospects, contacts: views.contacts, contactsOf, rowById: views.rowById, templates, error, save, canUndo: undoCount > 0,
+    campaign, rows: views.prospects, contacts: views.contacts, contactsOf, rowById: views.rowById, templates, thesis, error, save, canUndo: undoCount > 0,
     reload: load, edit, editContacts, addRow, addContact, duplicateRow, deleteRows, makePrimary, screenOut, restore, setSchema, rename, undo, flush,
-    addTemplate, updateTemplate, removeTemplate, setSource, applyRemote, applyRemoteRows, replaceCampaign,
+    addTemplate, updateTemplate, removeTemplate, setSource, applyRemote, applyRemoteRows, replaceCampaign, setThesis,
   };
 }
 

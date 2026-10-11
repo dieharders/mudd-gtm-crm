@@ -68,6 +68,9 @@ export interface StructuredRequest<T> {
   webSearch: boolean;
   signal: AbortSignal;
   onStep?: (label: string) => void;
+  /** For a long turn (a Discovery search): more agent turns and more time than a research turn gets. */
+  maxTurns?: number;
+  timeoutMs?: number;
 }
 
 export async function generateStructured<T>(req: StructuredRequest<T>): Promise<{ data: T; costUsd: number | null }> {
@@ -81,7 +84,7 @@ export async function generateStructured<T>(req: StructuredRequest<T>): Promise<
   for (let attempt = 0; attempt < 2; attempt++) {
     let result: { text: string; structured: unknown; costUsd: number | null } | null = null;
     for await (const ev of provider.turn(
-      { prompt, system: req.system, model: settings.model[id]!, effort: settings.effort[id]!, webSearch: req.webSearch, schema: req.jsonSchema, cwd: agentWorkDir() },
+      { prompt, system: req.system, model: settings.model[id]!, effort: settings.effort[id]!, webSearch: req.webSearch, schema: req.jsonSchema, cwd: agentWorkDir(), maxTurns: req.maxTurns, timeoutMs: req.timeoutMs },
       req.signal,
     )) {
       if (ev.type === "step") req.onStep?.(ev.label);

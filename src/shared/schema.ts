@@ -42,6 +42,21 @@ export const EMPLOYEES_HEADER = "# Employees";
 export const EMPLOYEES_HEADERS = ["employees", "staff", "headcount", "size", "companysize", "employeecount", "numemployees", "numberofemployees"];
 export const isEmployeesHeader = (header: string) => EMPLOYEES_HEADERS.includes(norm(header));
 
+/**
+ * The prospect's website: a column so headed, else the first link column that isn't a person's
+ * profile or the meeting link. Discovery reads it to tell a found company from one already in
+ * the list, and writes an accepted company's website into it: one rule for both.
+ */
+export const WEBSITE_HEADERS = ["website", "url", "domain", "site", "homepage", "web", "companywebsite"];
+export function websiteColumn(schema: Pick<CampaignSchema, "columns">): Column | undefined {
+  return columnByHeaders(schema.columns, WEBSITE_HEADERS)
+    ?? schema.columns.find((c) => c.type === "url" && !/linkedin|meeting|profile/i.test(c.header));
+}
+
+/** The first column headed by any of these names (normalised), the names in order of preference. */
+export const columnByHeaders = (cols: Column[], names: string[]): Column | undefined =>
+  names.map((n) => cols.find((c) => norm(c.header) === n)).find(Boolean);
+
 /** A contact's job title. "Title" is not among them: see TITLE_HEADER. */
 export const ROLE_HEADERS = ["role", "jobtitle", "position", "contactrole", "decisionmakertitle"];
 /** How a contact is addressed: Mr., Dr., Col. */
@@ -90,11 +105,12 @@ export const newProspectId = (taken: Iterable<string>): string => prospectIds(ta
 export { CHANNEL };
 
 /** The kinds of stakeholder a contact can be, and Channel for a way in that isn't a person. */
-export const CONTACT_TYPES = ["Economic Buyer", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", CHANNEL];
+export const CONTACT_TYPES = ["Economic Buyer", "Champion", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", CHANNEL];
 
 /** What each contact type means: the type picker's hints. */
 export const CONTACT_TYPE_HINTS: Record<string, string> = {
   "Economic Buyer": "Holds or controls the budget and gives final financial approval.",
+  Champion: "The advocate with the most to gain: feels the pain and sells the deal internally.",
   "Technical Buyer": "The evaluator: checks the product meets technical, security and data standards.",
   "End User": "The operator: uses the product every day.",
   Influencer: "Shapes the group's opinion, without final sign-off.",
@@ -310,6 +326,77 @@ export function genericSchema(): CampaignSchema {
   ];
   const schema: CampaignSchema = { columns };
   ensureAppColumns(schema);
+  return schema;
+}
+
+// ---------- the Discovery layout ----------
+
+/** A prospect's fit with the thesis, as Discovery rates it. */
+export const FIT_OPTIONS = ["High", "Medium", "Low"];
+
+export interface DiscoveryField {
+  id: "fit" | "whyFit" | "whyNow" | "budget" | "clock" | "dealRole" | "gain" | "angle";
+  header: string;
+  type: ColumnType;
+  options?: string[];
+  width?: number;
+  /** A detail of a person: one of the contact columns. */
+  person?: boolean;
+}
+
+/**
+ * The intel Discovery writes about each company and each of its people. A Discovery campaign
+ * starts with a column for each; accepting a company adds back any the user deleted, matched by
+ * header.
+ */
+export const DISCOVERY_FIELDS: DiscoveryField[] = [
+  { id: "fit", header: "Fit", type: "select", options: [...FIT_OPTIONS], width: 100 },
+  { id: "whyFit", header: "Why they fit", type: "longtext" },
+  { id: "whyNow", header: "Why now", type: "longtext" },
+  { id: "budget", header: "Budget source", type: "text", width: 200 },
+  { id: "clock", header: "Buying clock", type: "text", width: 180 },
+  { id: "dealRole", header: "Role in deal", type: "longtext", person: true },
+  { id: "gain", header: "What they gain", type: "longtext", person: true },
+  { id: "angle", header: "Angle", type: "longtext", person: true },
+];
+
+/** The column a Discovery field fills, found by header among the prospect's or the contacts' columns. */
+export function discoveryColumn(schema: CampaignSchema, field: DiscoveryField): Column | undefined {
+  const pool = field.person ? schema.contacts?.columns ?? [] : schema.columns;
+  return pool.find((c) => norm(c.header) === norm(field.header));
+}
+
+/**
+ * The layout a Discovery campaign starts with: the generic one without Rank and Type (Discovery
+ * rates fit instead), with the intel columns after the company's basics, and the contacts' intel
+ * after their details.
+ */
+export function discoverySchema(): CampaignSchema {
+  const taken = new Set<string>();
+  const c = (header: string, type: ColumnType, extra: Partial<Column> = {}) => newColumn(taken, header, type, extra);
+  const intel = (f: DiscoveryField) => c(f.header, f.type, { origin: "discovery", ...(f.options ? { options: [...f.options] } : {}), ...(f.width ? { width: f.width } : {}) });
+  const columns: Column[] = [
+    c("ID", "text", { width: 90, hidden: true, origin: "mudd" }),
+    c("Company", "text", { width: 190 }),
+    c("Website", "url"),
+    c("Location", "text"),
+    c(EMPLOYEES_HEADER, "number"),
+    ...DISCOVERY_FIELDS.filter((f) => !f.person).map(intel),
+    c("Status", "select", { options: [...DEFAULT_STAGES, DEAD] }),
+    c("Last touch", "date"),
+    c("Next step", "text", { width: 200 }),
+    c("Meeting URL", "url"),
+    c("Meeting at", "datetime"),
+    c("Hook", "longtext"),
+    c("Notes", "longtext"),
+    c("Source", "text"),
+    c("Intro message", "longtext", { width: 320 }),
+    c("Screened out", "checkbox", { width: 120 }),
+    c("Screened reason", "longtext", { width: 280 }),
+  ];
+  const schema: CampaignSchema = { columns };
+  ensureAppColumns(schema);
+  for (const f of DISCOVERY_FIELDS.filter((x) => x.person)) schema.contacts!.columns.push(newColumn(taken, f.header, f.type, { origin: "discovery", ...(f.width ? { width: f.width } : {}) }));
   return schema;
 }
 

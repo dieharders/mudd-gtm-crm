@@ -55,8 +55,11 @@ export interface Column {
   /** The header as imported. Export rewrites a sheet's header cell only when this differs
    *  (the user renamed the column), so matched headers such as Org/Company stay as they were. */
   importedHeader?: string;
-  /** Who made the column. `mudd` = added by the app itself (Intro message, Meeting URL…). */
-  origin?: "sheet" | "user" | "mudd" | "enrichment";
+  /**
+   * Who made the column. `mudd` = added by the app itself (Intro message, Meeting URL…);
+   * `discovery` = the intel columns a Discovery campaign starts with (Fit, Why they fit…).
+   */
+  origin?: "sheet" | "user" | "mudd" | "enrichment" | "discovery";
   /** Phase 2: the enrichment recipe that fills this column. */
   recipeId?: string;
 }
@@ -121,7 +124,8 @@ export interface Row {
   sourceRow?: number | null;
 }
 
-export type SheetRole = "prospects" | "contacts" | "passthrough" | "templates";
+/** `thesis`: a Mudd "ICP thesis" tab, the questionnaire a Discovery campaign is driven by. */
+export type SheetRole = "prospects" | "contacts" | "passthrough" | "templates" | "thesis";
 
 /**
  * The Contacts tab's link columns, as keys in its `colMap` and in a contact's export cells:
@@ -188,6 +192,24 @@ export interface CampaignBundle {
   rows: Row[];
   contacts: Row[];
   templates: Template[];
+  /** The ICP thesis; null for a campaign that is not a Discovery campaign (see isDiscovery). */
+  thesis: Thesis | null;
+}
+
+/** The questions of the ICP thesis, by id (see THESIS_SECTIONS in thesis.ts). */
+export type ThesisId =
+  | "offer" | "avatar" | "pains" | "fit" | "jobs"
+  | "painRoles" | "payerRoles" | "gainRoles" | "friction"
+  | "exclude" | "triggers" | "channels"
+  | "dealShape" | "clock" | "approach" | "win";
+
+/** A Discovery campaign's ICP thesis: the answers that drive the search for prospects. */
+export interface Thesis {
+  campaignId: string;
+  answers: Partial<Record<ThesisId, string>>;
+  /** Answers the AI drafted and the user has neither edited nor kept. */
+  drafted: ThesisId[];
+  updatedAt: number;
 }
 
 export interface Meeting {
@@ -240,6 +262,8 @@ export interface InspectResult {
   sheets: InspectSheet[];
   /** A Mudd-exported "Intro templates" sheet was found. */
   templates: number;
+  /** Answers on a Mudd-exported "ICP thesis" sheet, if one was found. */
+  thesis: number;
 }
 
 export interface CellEdit {

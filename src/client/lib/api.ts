@@ -1,9 +1,30 @@
 /** Typed calls to the local API. Every request is same-origin; the page itself never goes online. */
-import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeOutput, RunKind, SetupEvent, Suggestion, SuggestionStatus } from "../../shared/ai";
-import type { ColumnType } from "../../shared/types";
+import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeDraft, RunKind, SetupEvent, Suggestion, SuggestionStatus } from "../../shared/ai";
+import type { Candidate, DiscoveryKind, DiscoveryRun, EnrichChoice } from "../../shared/sourcing";
 import type {
-  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, ReleaseNotes, Row, Template, UpdateInfo,
+  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, ReleaseNotes, Row, Template, Thesis, ThesisId, UpdateInfo,
 } from "../../shared/types";
+
+export type { RecipeDraft };
+
+/** How a new campaign starts: the generic layout, another campaign's columns, or Discovery with its first two answers. */
+export type NewCampaignLayout = "generic" | "discovery" | { copyFrom: string };
+
+export interface StartDiscoveryBody {
+  kind: DiscoveryKind;
+  target?: number;
+  perCompany?: number;
+  focus?: string | null;
+  enrich?: EnrichChoice;
+  concurrency?: number;
+  candidateIds?: string[];
+}
+
+export interface AcceptCandidatesResult {
+  campaign: Campaign;
+  rows: Row[];
+  candidates: Candidate[];
+}
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public code?: string) {
@@ -85,8 +106,8 @@ export const api = {
   env: () => call<{ platform: string; dialogs: boolean; dataDir: string }>("GET", "/api/env"),
 
   campaigns: () => call<CampaignSummary[]>("GET", "/api/campaigns"),
-  createCampaign: (name: string, layout: "generic" | { copyFrom: string }) =>
-    call<Campaign>("POST", "/api/campaigns", { name, layout }),
+  createCampaign: (name: string, layout: NewCampaignLayout, thesis?: { offer: string; avatar: string }) =>
+    call<Campaign>("POST", "/api/campaigns", { name, layout, ...(thesis ? { thesis } : {}) }),
   campaign: (id: string) => call<CampaignBundle>("GET", `/api/campaigns/${id}`),
   updateCampaign: (id: string, patch: { name?: string; schema?: CampaignSchema }) =>
     call<Campaign>("PATCH", `/api/campaigns/${id}`, patch),
@@ -155,13 +176,17 @@ export const api = {
 
   suggestions: (id: string, status: SuggestionStatus = "pending") => call<Suggestion[]>("GET", `/api/campaigns/${id}/suggestions?status=${status}`),
   setSuggestions: (id: string, ids: string[], status: SuggestionStatus) => call<Suggestion[]>("PATCH", `/api/campaigns/${id}/suggestions`, { ids, status }),
-};
 
-export interface RecipeDraft {
-  name: string;
-  instructions: string;
-  inputKeys: string[];
-  /** `contact`: a new column is created among the contact columns (a person's detail). */
-  outputs: (Partial<RecipeOutput> & { header: string; type?: ColumnType; options?: string[]; contact?: boolean })[];
-  webSearch: boolean;
-}
+  // ----- Discovery -----
+  /** Change some answers (a blank clears one); `keep` makes AI drafts the user's without changing them. */
+  updateThesis: (id: string, patch: { answers?: Partial<Record<ThesisId, string | null>>; keep?: ThesisId[] }) =>
+    call<Thesis>("PUT", `/api/campaigns/${id}/thesis`, patch),
+  discovery: (id: string) => call<{ runs: DiscoveryRun[]; candidates: Candidate[] }>("GET", `/api/campaigns/${id}/discovery`),
+  startDiscovery: (id: string, body: StartDiscoveryBody) => call<DiscoveryRun>("POST", `/api/campaigns/${id}/discovery/runs`, body),
+  discoveryAction: (rid: string, action: "pause" | "resume" | "stop") => call<DiscoveryRun>("POST", `/api/discovery/${rid}/${action}`),
+  acceptCandidates: (id: string, picks: { id: string; contactIds: string[] }[]) =>
+    call<AcceptCandidatesResult>("POST", `/api/campaigns/${id}/candidates/accept`, { picks }),
+  dismissCandidates: (id: string, ids: string[], reason: string | null) =>
+    call<Candidate[]>("POST", `/api/campaigns/${id}/candidates/dismiss`, { ids, reason }),
+  restoreCandidates: (id: string, ids: string[]) => call<Candidate[]>("POST", `/api/campaigns/${id}/candidates/restore`, { ids }),
+};

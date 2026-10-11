@@ -4,7 +4,7 @@ import { recipeMode } from "./ai";
 import { PRESETS, presetTargets } from "./presets";
 import { assignRoles, CONTACT_TYPES, ensureAppColumns, genericSchema, makeKey, NAME_HEADERS, newProspectId, prospectSchema } from "./schema";
 import { CHECKED, type CampaignSchema, type CellValue } from "./types";
-import { contactLabel, contactOf, isChannel, isEmptyContact, orderedContacts, primaryOf, prospectCells, prospectTitle } from "./values";
+import { CompanyIndex, companyKeys, contactLabel, contactOf, isChannel, isEmptyContact, orderedContacts, primaryOf, prospectCells, prospectTitle } from "./values";
 
 /** A schema with these headers, keyed by header ("Job title" → job_title), roles assigned. */
 function sheet(...headers: string[]): CampaignSchema {
@@ -143,6 +143,43 @@ describe("prospect IDs and contact columns", () => {
     expect(schema.contacts!.nameKey).toBe("name_2");
     ensureAppColumns(schema);
     expect(schema.contacts!.columns.filter((c) => c.header === "Name")).toHaveLength(1);
+  });
+});
+
+describe("telling companies apart", () => {
+  test("a company is known by its domain, its name without legal forms, and the domain's label", () => {
+    expect(companyKeys("Acme, Inc.", "https://www.Acme.com/about")).toEqual(["d:acme.com", "n:acme"]);
+    expect(companyKeys("Beta Forge Ltd", null)).toEqual(["n:betaforge"]);
+    const index = new CompanyIndex<string>();
+    index.add("Acme, Inc.", "acme.com", "P-001");
+    expect(index.find("ACME", null)).toBe("P-001");
+    expect(index.find("Something Else", "https://acme.com/")).toBe("P-001");
+    expect(index.find("Beta Forge", "https://betaforge.com")).toBeUndefined();
+  });
+
+  test("the domain's label is the registered one: a subdomain names no company, nor does a public suffix", () => {
+    expect(companyKeys("Acme", "https://info.acme.com")).toEqual(["d:info.acme.com", "n:acme"]);
+    expect(companyKeys("Beta", "https://info.beta.com")).toEqual(["d:info.beta.com", "n:beta"]);
+    expect(companyKeys("Gamma Ltd", "https://www.gamma.co.uk/")).toEqual(["d:gamma.co.uk", "n:gamma"]);
+    const index = new CompanyIndex<string>();
+    index.add("Acme", "https://info.acme.com", "P-001");
+    expect(index.find("Beta", "https://info.beta.com")).toBeUndefined();
+    expect(index.find("Info", null)).toBeUndefined();
+    // A prospect whose site is portal.example.com is not "Portal Inc".
+    index.add("Example", "https://portal.example.com", "P-002");
+    expect(index.find("Portal Inc", null)).toBeUndefined();
+    expect(index.find("Example Co", null)).toBe("P-002");
+  });
+
+  test("two companies whose website is a page on a shared host are not one company", () => {
+    const index = new CompanyIndex<string>();
+    index.add("Acme", "https://www.linkedin.com/company/acme/", "P-001");
+    expect(index.find("Beta", "https://www.linkedin.com/company/beta")).toBeUndefined();
+    expect(index.find("Gamma", "https://sites.google.com/view/gamma")).toBeUndefined();
+    // The same page, under another name, is the same company; a bare shared host names no one.
+    expect(index.find("Acme Metal Works", "https://linkedin.com/company/acme")).toBe("P-001");
+    expect(companyKeys("Delta", "https://facebook.com")).toEqual(["n:delta"]);
+    expect(companyKeys(null, "https://facebook.com/")).toEqual([]);
   });
 });
 

@@ -190,6 +190,101 @@ export function prospectTitle(org: Pick<Row, "cells">, primary: Pick<Row, "cells
   return rowTitle({ cells: prospectCells(org, primary) }, prospectSchema(schema));
 }
 
+// ---------- telling companies apart ----------
+
+/** A link's host without "www.", lowercased: "https://www.Acme.com/about" is acme.com. Null for no link. */
+export function domainOf(url: CellValue | undefined): string | null {
+  return parseLink(url)?.host ?? null;
+}
+
+/**
+ * Hosts many companies share, where the path names the company, not the host: a small firm's
+ * "website" is often its LinkedIn or Facebook page, or a free site builder's subdomain.
+ */
+const SHARED_HOST = /(^|\.)(linkedin\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com|tiktok\.com|medium\.com|crunchbase\.com|yelp\.com|google\.com|sites\.google\.com|wixsite\.com|wordpress\.com|squarespace\.com|weebly\.com|webflow\.io|github\.io|blogspot\.com|notion\.site|carrd\.co|godaddysites\.com)$/i;
+
+function parseLink(url: CellValue | undefined): { host: string; path: string } | null {
+  if (url === null || url === undefined) return null;
+  const href = hrefFor(String(url));
+  if (!href || !/^https?:/i.test(href)) return null;
+  try {
+    const u = new URL(href);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    if (!host.includes(".")) return null;
+    return { host, path: u.pathname.toLowerCase().replace(/\/+$/, "") };
+  } catch {
+    return null;
+  }
+}
+
+// Legal forms and the like, which one list writes and another leaves out.
+const COMPANY_SUFFIX = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|corp|corporation|co|company|plc|gmbh|ag|sa|sas|srl|bv|nv|pty|llp|lp|group|holdings?|the)\b\.?/gi;
+
+/** A company name as it is compared: case, punctuation and legal forms ignored ("Acme, Inc." is acme). */
+export function companyKey(name: CellValue | undefined): string {
+  if (name === null || name === undefined) return "";
+  return norm(String(name).replace(/[&+]/g, " and ").replace(COMPANY_SUFFIX, " "));
+}
+
+// Second-level labels that are part of the public suffix (acme.co.uk, acme.com.au), not a name.
+const SUFFIX_LABEL = /^(co|com|org|net|gov|edu|ac|mil|ltd|plc|nhs|police)$/;
+
+/**
+ * The label a domain is registered under: acme from acme.com, info.acme.com or acme.co.uk. The
+ * first label of a host is a subdomain (info, shop, portal) as often as a name, so it is never
+ * the key: info.acme.com and info.beta.com are two companies.
+ */
+function domainLabel(host: string): string {
+  const labels = host.split(".");
+  if (labels.length < 2) return "";
+  let i = labels.length - 2;
+  if (i > 0 && SUFFIX_LABEL.test(labels[i]!)) i--;
+  return labels[i]!;
+}
+
+/**
+ * The keys a company is known by: its domain, its name, and the domain's own label (acme from
+ * acme.com), so "Acme Inc." with no website still meets acme.com. On a shared host (a LinkedIn
+ * page, a Google Site) the host names no company: the page does, so the key is host and path,
+ * and a bare shared host is no key at all.
+ */
+export function companyKeys(name: CellValue | undefined, website: CellValue | undefined): string[] {
+  const keys: string[] = [];
+  const link = parseLink(website);
+  if (link && SHARED_HOST.test(link.host)) {
+    if (link.path) keys.push(`d:${link.host}${link.path}`);
+  } else if (link) {
+    keys.push(`d:${link.host}`);
+    const label = domainLabel(link.host);
+    if (label.length >= 3) keys.push(`n:${norm(label)}`);
+  }
+  const n = companyKey(name);
+  if (n) keys.push(`n:${n}`);
+  return [...new Set(keys)];
+}
+
+/** Companies already known, for telling a new one from a repeat: by domain, by name, either way round. */
+export class CompanyIndex<T = string> {
+  private byKey = new Map<string, T>();
+
+  add(name: CellValue | undefined, website: CellValue | undefined, value: T): void {
+    for (const k of companyKeys(name, website)) if (!this.byKey.has(k)) this.byKey.set(k, value);
+  }
+
+  /** What a company of this name or website is already known as, if anything. */
+  find(name: CellValue | undefined, website: CellValue | undefined): T | undefined {
+    for (const k of companyKeys(name, website)) {
+      const hit = this.byKey.get(k);
+      if (hit !== undefined) return hit;
+    }
+    return undefined;
+  }
+
+  has(name: CellValue | undefined, website: CellValue | undefined): boolean {
+    return this.find(name, website) !== undefined;
+  }
+}
+
 /** What to call a contact: their name, else their email, else "Unnamed contact". */
 export function contactLabel(contact: Pick<Row, "cells">, schema: CampaignSchema): string {
   const cs = contactSchema(schema);

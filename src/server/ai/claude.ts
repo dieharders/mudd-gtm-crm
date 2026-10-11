@@ -91,7 +91,7 @@ async function* turn(opts: TurnOptions, signal: AbortSignal): AsyncGenerator<AiE
     if (stall) clearTimeout(stall);
     stall = setTimeout(() => stop("timeout"), STALL_MS);
   };
-  const wall = setTimeout(() => stop("timeout"), WALL_MS);
+  const wall = setTimeout(() => stop("timeout"), opts.timeoutMs ?? WALL_MS);
   const onAbort = () => stop("aborted");
   signal.addEventListener("abort", onAbort, { once: true });
   if (signal.aborted) stop("aborted");
@@ -112,7 +112,7 @@ async function* turn(opts: TurnOptions, signal: AbortSignal): AsyncGenerator<AiE
     settingSources: [],
     strictMcpConfig: true,
     persistSession: false,
-    maxTurns: opts.webSearch ? 16 : 4,
+    maxTurns: opts.maxTurns ?? (opts.webSearch ? 16 : 4),
     systemPrompt: opts.system,
     ...(opts.schema ? { outputFormat: { type: "json_schema" as const, schema: opts.schema } } : {}),
   };
@@ -140,9 +140,9 @@ async function* turn(opts: TurnOptions, signal: AbortSignal): AsyncGenerator<AiE
       } else if (msg.type === "result") {
         if (msg.is_error || (msg.subtype && msg.subtype !== "success")) {
           const auth = /not (logged in|authenticated)|please log in|\/login/i.test(`${msg.result ?? ""} ${stderrTail}`);
-          yield auth
-            ? { type: "error", code: "not_authenticated", message: copy("not_authenticated") }
-            : { type: "error", code: msg.subtype === "error_max_structured_output_retries" ? "bad_output" : "cli_failed", message: copy(msg.subtype === "error_max_structured_output_retries" ? "bad_output" : "cli_failed") };
+          // Out of agent turns: the answer is lost the same way as when it ran out of time.
+          const code = auth ? "not_authenticated" : msg.subtype === "error_max_structured_output_retries" ? "bad_output" : msg.subtype === "error_max_turns" ? "timeout" : "cli_failed";
+          yield { type: "error", code, message: copy(code) };
           return;
         }
         yield { type: "result", text: msg.result ?? "", structured: msg.structured_output ?? null, costUsd: typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null };
