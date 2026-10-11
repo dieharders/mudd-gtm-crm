@@ -20,8 +20,9 @@ import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isThesisId, THESIS_IDS } from "../shared/thesis";
 import type {
-  Campaign, CampaignSchema, CampaignSummary, CellEdit, CellValue, Meeting, Row, SheetMeta, Template,
+  Campaign, CampaignSchema, CampaignSummary, CellEdit, CellValue, Meeting, Row, SheetMeta, Template, Thesis, ThesisId,
 } from "../shared/types";
 import { DEAD, isScreened, stagesOf } from "../shared/types";
 import { applyCellEdits, primaryOf, prospectTitle } from "../shared/values";
@@ -111,6 +112,27 @@ export function getDb(): Database {
     );
     CREATE INDEX IF NOT EXISTS suggestions_campaign ON suggestions(campaign_id, status);
     CREATE INDEX IF NOT EXISTS suggestions_row ON suggestions(campaign_id, row_id, status);
+    CREATE TABLE IF NOT EXISTS theses (
+      campaign_id TEXT PRIMARY KEY REFERENCES campaigns(id) ON DELETE CASCADE,
+      json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS discovery_runs (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      json TEXT NOT NULL,
+      started_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS discovery_runs_campaign ON discovery_runs(campaign_id, started_at);
+    CREATE TABLE IF NOT EXISTS candidates (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      run_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS candidates_campaign ON candidates(campaign_id, status);
   `);
   return db;
 }
@@ -187,6 +209,8 @@ export function createCampaign(input: {
   /** Each with the index in `rows` of its prospect. */
   contacts?: (NewRow & { parent: number })[];
   templates?: { name: string; body: string }[];
+  /** The ICP thesis: given, this is a Discovery campaign. */
+  thesis?: Pick<Thesis, "answers" | "drafted"> | null;
 }): Campaign {
   const d = getDb();
   const id = newId();
@@ -199,6 +223,10 @@ export function createCampaign(input: {
       id, input.name, now, now, input.sourceName ?? null, input.sourcePath ?? null, input.sourceMtime ?? null,
       input.original ?? null, JSON.stringify(input.schema), JSON.stringify(input.sheets),
     );
+    if (input.thesis) {
+      const thesis: Thesis = { campaignId: id, answers: cleanAnswers(input.thesis.answers), drafted: input.thesis.drafted.filter(isThesisId), updatedAt: now };
+      d.query("INSERT INTO theses (campaign_id, json, updated_at) VALUES (?, ?, ?)").run(id, JSON.stringify(thesis), now);
+    }
     const ins = d.query(
       "INSERT INTO rows (id, campaign_id, position, source_sheet, source_row, cells_json, orig_json, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     );
@@ -480,6 +508,47 @@ export function deleteTemplate(id: string): void {
   const cur = d.query("SELECT campaign_id FROM templates WHERE id = ?").get(id) as { campaign_id: string } | null;
   d.query("DELETE FROM templates WHERE id = ?").run(id);
   if (cur) touchCampaign(cur.campaign_id);
+}
+
+// ---------- the ICP thesis ----------
+
+/** Only the questionnaire's questions, trimmed, blanks left out. */
+function cleanAnswers(answers: Partial<Record<string, string | null | undefined>>): Thesis["answers"] {
+  const out: Thesis["answers"] = {};
+  for (const id of THESIS_IDS) {
+    const v = answers[id];
+    if (typeof v === "string" && v.trim()) out[id] = v.trim();
+  }
+  return out;
+}
+
+/** The campaign's thesis; null when it has none (it is not a Discovery campaign). */
+export function getThesis(campaignId: string): Thesis | null {
+  const r = getDb().query("SELECT json FROM theses WHERE campaign_id = ?").get(campaignId) as { json: string } | null;
+  return r ? (JSON.parse(r.json) as Thesis) : null;
+}
+
+/**
+ * Change some answers: only the questions sent are touched (a blank clears one). An answer the
+ * user edits is theirs, so its drafted flag goes; `drafted` names the ones the AI just wrote.
+ * Null when the campaign has no thesis.
+ */
+export function patchThesis(campaignId: string, patch: Partial<Record<string, string | null>>, drafted: ThesisId[] = []): Thesis | null {
+  const cur = getThesis(campaignId);
+  if (!cur) return null;
+  const answers = { ...cur.answers };
+  const keep = new Set(cur.drafted);
+  for (const [id, v] of Object.entries(patch)) {
+    if (!isThesisId(id)) continue;
+    if (typeof v === "string" && v.trim()) answers[id] = v.trim();
+    else delete answers[id];
+    keep.delete(id);
+  }
+  for (const id of drafted) if (answers[id]) keep.add(id);
+  const next: Thesis = { campaignId, answers, drafted: THESIS_IDS.filter((id) => keep.has(id)), updatedAt: Date.now() };
+  getDb().query("UPDATE theses SET json = ?, updated_at = ? WHERE campaign_id = ?").run(JSON.stringify(next), next.updatedAt, campaignId);
+  touchCampaign(campaignId);
+  return next;
 }
 
 // ---------- meetings ----------

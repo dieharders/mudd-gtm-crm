@@ -35,12 +35,14 @@ const bundle = (id: string): CampaignBundle =>
         { id: "al", position: 3, parentId: "acme", cells: { name: "Al" } },
       ],
       templates: [],
+      thesis: null,
     }
     : {
       campaign: { id, name: id, createdAt: 0, updatedAt: 0, sourceName: null, sourcePath: null, hasOriginal: false, schema: { columns: [{ key: "company", header: "Company", type: "text" }] }, sheets: [] },
       rows: [{ id: `${id}-row`, position: 0, cells: { company: `${id} Co` } }],
       contacts: [],
       templates: [],
+      thesis: null,
     };
 void mock.module("../lib/api", () => ({
   ApiError: class ApiError extends Error {},
@@ -215,4 +217,16 @@ test("a contact the server made is shown once, and not for a prospect deleted me
     expect(s().contacts.some((c) => c.id === "orphan")).toBe(false);
     // Not an undo step.
     expect(s().canUndo).toBe(false);
+  }));
+
+test("a prospect and its contacts that arrive in one batch (a Discovery accept) are all shown", () =>
+  withCampaign("P", async (s) => {
+    await act(() => s().applyRemoteRows([
+      { id: "gamma", position: 20, cells: { id: "P-005", company: "Gamma" } },
+      { id: "gil", position: 21, parentId: "gamma", cells: { name: "Gil", primary: CHECKED } },
+      { id: "gus", position: 22, parentId: "gamma", cells: { name: "Gus" } },
+    ]));
+    expect(s().rows.map((r) => r.id)).toEqual(["acme", "beta", "gamma"]);
+    expect(s().contactsOf("gamma").map((c) => c.id)).toEqual(["gil", "gus"]);
+    expect(s().thesis).toBeNull();
   }));

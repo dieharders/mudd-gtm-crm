@@ -25,6 +25,10 @@ export interface TurnOptions {
   schema?: Record<string, unknown>;
   /** An empty scratch directory: the CLI's working directory, never the user's files. */
   cwd: string;
+  /** How many agent turns (tool calls and replies) the CLI may take; the provider's default otherwise. */
+  maxTurns?: number;
+  /** The whole turn's time limit; the provider's default (7 min) otherwise. */
+  timeoutMs?: number;
 }
 
 export interface Provider {

@@ -5,7 +5,8 @@
  * Codex — so enrichment bills the user's plan.
  */
 import { isContactKey } from "./schema";
-import type { CampaignSchema, CellValue, Column, Row } from "./types";
+import type { Candidate, DiscoveryRun } from "./sourcing";
+import type { CampaignSchema, CellValue, Column, ColumnType, Row, Thesis } from "./types";
 
 export type ProviderId = "claude" | "codex";
 export const PROVIDER_IDS: ProviderId[] = ["claude", "codex"];
@@ -123,8 +124,21 @@ export interface Recipe {
   inputKeys: string[];
   outputs: RecipeOutput[];
   webSearch: boolean;
+  /** The preset this recipe was made from, so Discovery can reuse it rather than make another. */
+  presetId?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+/** A recipe as the page sends it to be created or updated. */
+export interface RecipeDraft {
+  name: string;
+  instructions: string;
+  inputKeys: string[];
+  /** `contact`: a new column is created among the contact columns (a person's detail). */
+  outputs: (Partial<RecipeOutput> & { header: string; type?: ColumnType; options?: string[]; contact?: boolean })[];
+  webSearch: boolean;
+  presetId?: string;
 }
 
 export type RunKind = "enrich" | "intro";
@@ -217,7 +231,13 @@ export type CampaignEvent =
   | { type: "suggestions"; suggestions: Suggestion[] }
   | { type: "cells"; edits: { rowId: string; key: string; value: CellValue }[] }
   /** Rows the server added (a run's first contact for a prospect that had none). */
-  | { type: "rows"; rows: Row[] };
+  | { type: "rows"; rows: Row[] }
+  /** A Discovery run, whole: it is small (angles and per-company steps), so it goes whole, at most one every 400 ms. */
+  | { type: "discovery"; run: DiscoveryRun }
+  /** Candidates made or changed by a Discovery run, or by accepting and dismissing. */
+  | { type: "candidates"; candidates: Candidate[] }
+  /** The thesis changed on the server (the AI drafted answers). */
+  | { type: "thesis"; thesis: Thesis };
 
 /** The runs with one row update applied. The same array when the run isn't among them. */
 export function applyRunRow(runs: EnrichRun[], ev: RunRowEvent): EnrichRun[] {

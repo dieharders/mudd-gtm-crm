@@ -190,6 +190,69 @@ export function prospectTitle(org: Pick<Row, "cells">, primary: Pick<Row, "cells
   return rowTitle({ cells: prospectCells(org, primary) }, prospectSchema(schema));
 }
 
+// ---------- telling companies apart ----------
+
+/** A link's host without "www.", lowercased: "https://www.Acme.com/about" is acme.com. Null for no link. */
+export function domainOf(url: CellValue | undefined): string | null {
+  if (url === null || url === undefined) return null;
+  const href = hrefFor(String(url));
+  if (!href || !/^https?:/i.test(href)) return null;
+  try {
+    const host = new URL(href).hostname.toLowerCase().replace(/^www\./, "");
+    return host.includes(".") ? host : null;
+  } catch {
+    return null;
+  }
+}
+
+// Legal forms and the like, which one list writes and another leaves out.
+const COMPANY_SUFFIX = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|corp|corporation|co|company|plc|gmbh|ag|sa|sas|srl|bv|nv|pty|llp|lp|group|holdings?|the)\b\.?/gi;
+
+/** A company name as it is compared: case, punctuation and legal forms ignored ("Acme, Inc." is acme). */
+export function companyKey(name: CellValue | undefined): string {
+  if (name === null || name === undefined) return "";
+  return norm(String(name).replace(/[&+]/g, " and ").replace(COMPANY_SUFFIX, " "));
+}
+
+/**
+ * The keys a company is known by: its domain, its name, and the domain's own label (acme from
+ * acme.com), so "Acme Inc." with no website still meets acme.com.
+ */
+export function companyKeys(name: CellValue | undefined, website: CellValue | undefined): string[] {
+  const keys: string[] = [];
+  const domain = domainOf(website);
+  if (domain) {
+    keys.push(`d:${domain}`);
+    const label = domain.split(".")[0] ?? "";
+    if (label.length >= 3) keys.push(`n:${norm(label)}`);
+  }
+  const n = companyKey(name);
+  if (n) keys.push(`n:${n}`);
+  return [...new Set(keys)];
+}
+
+/** Companies already known, for telling a new one from a repeat: by domain, by name, either way round. */
+export class CompanyIndex<T = string> {
+  private byKey = new Map<string, T>();
+
+  add(name: CellValue | undefined, website: CellValue | undefined, value: T): void {
+    for (const k of companyKeys(name, website)) if (!this.byKey.has(k)) this.byKey.set(k, value);
+  }
+
+  /** What a company of this name or website is already known as, if anything. */
+  find(name: CellValue | undefined, website: CellValue | undefined): T | undefined {
+    for (const k of companyKeys(name, website)) {
+      const hit = this.byKey.get(k);
+      if (hit !== undefined) return hit;
+    }
+    return undefined;
+  }
+
+  has(name: CellValue | undefined, website: CellValue | undefined): boolean {
+    return this.find(name, website) !== undefined;
+  }
+}
+
 /** What to call a contact: their name, else their email, else "Unnamed contact". */
 export function contactLabel(contact: Pick<Row, "cells">, schema: CampaignSchema): string {
   const cs = contactSchema(schema);

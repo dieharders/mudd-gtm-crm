@@ -16,7 +16,8 @@ import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { norm } from "../shared/merge";
 import { COMPANY_HEADERS, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds } from "../shared/schema";
-import { ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole } from "../shared/types";
+import { questionByLabel } from "../shared/thesis";
+import { ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole, type Thesis, type ThesisId } from "../shared/types";
 import { colLetter, readCellValue } from "./cells";
 import { charsToPx, detectType, parseListFormula, type ColumnSample } from "./layouts";
 import {
@@ -331,6 +332,42 @@ const templatesName = (name: string) => /^introtemplates\d*$/.test(norm(name));
 /** A Mudd "Intro templates" tab: that name and a Template column. */
 const isTemplatesTab = (name: string, t: SheetTable) => templatesName(name) && templateColumns(t) !== null;
 
+// ---------- the ICP thesis tab ----------
+
+/** How the tab marks an answer the AI drafted, in its "Filled by" column. */
+export const THESIS_DRAFT_MARK = "AI draft";
+
+/** "ICP thesis", in any case, or "ICP thesis 2" when the name was taken. */
+const thesisName = (name: string) => /^icpthesis\d*$/.test(norm(name));
+
+/** The tab's columns: Question | Answer | Filled by (optional). Null for a tab laid out otherwise. */
+function thesisColumns(t: SheetTable): { question: number; answer: number; filledBy: number } | null {
+  const question = t.headers.findIndex((h) => norm(h) === "question");
+  const answer = t.headers.findIndex((h) => norm(h) === "answer");
+  const filledBy = t.headers.findIndex((h) => norm(h) === "filledby");
+  return question < 0 || answer < 0 ? null : { question, answer, filledBy };
+}
+
+/** A Mudd "ICP thesis" tab: that name and the Question and Answer columns. */
+const isThesisTab = (name: string, t: SheetTable) => thesisName(name) && thesisColumns(t) !== null;
+
+export type ImportedThesis = Pick<Thesis, "answers" | "drafted">;
+
+/** The answers on the tab, by the question each row names; rows naming no question are skipped. */
+function readThesis(t: SheetTable, cols: { question: number; answer: number; filledBy: number }): ImportedThesis {
+  const answers: Thesis["answers"] = {};
+  const drafted: ThesisId[] = [];
+  for (const r of t.rows) {
+    const q = questionByLabel(String(readCellValue(r.values[cols.question] ?? null) ?? ""));
+    const answer = String(readCellValue(r.values[cols.answer] ?? null) ?? "").trim();
+    if (!q || !answer) continue;
+    answers[q.id] = answer;
+    const by = cols.filledBy >= 0 ? String(readCellValue(r.values[cols.filledBy] ?? null) ?? "") : "";
+    if (norm(by) === norm(THESIS_DRAFT_MARK)) drafted.push(q.id);
+  }
+  return { answers, drafted };
+}
+
 /** "Contacts", in any case, or "Contacts 2". */
 const contactsName = (name: string) => /^contacts\d*$/.test(norm(name));
 
@@ -346,9 +383,10 @@ function isContactsTab(name: string, t: SheetTable): boolean {
   return contactsName(name) && !t.hasFormulas && (link.id >= 0 || link.company >= 0);
 }
 
-export function guessRoles(sheets: Omit<InspectSheet, "guess">[], templatesAt: number, contactsAt = -1): SheetRole[] {
+export function guessRoles(sheets: Omit<InspectSheet, "guess">[], templatesAt: number, contactsAt = -1, thesisAt = -1): SheetRole[] {
   const roles: SheetRole[] = sheets.map(() => "passthrough");
   if (templatesAt >= 0) roles[templatesAt] = "templates";
+  if (thesisAt >= 0) roles[thesisAt] = "thesis";
   // Never the default Prospects tab, though it can still be picked as one.
   if (contactsAt >= 0) roles[contactsAt] = "contacts";
   const open = (s: Omit<InspectSheet, "guess">, i: number) => roles[i] === "passthrough" && !s.hasFormulas && !looksLikeScreenedTab(s.name);
@@ -358,10 +396,10 @@ export function guessRoles(sheets: Omit<InspectSheet, "guess">[], templatesAt: n
   return roles;
 }
 
-export function inspectWorkbook(book: LoadedBook): { sheets: InspectSheet[]; templates: number } {
+export function inspectWorkbook(book: LoadedBook): { sheets: InspectSheet[]; templates: number; thesis: number } {
   const tables = book.wb.worksheets.map((ws) => {
     const name = book.realName(ws);
-    return { name, t: readSheet(ws, book, { footnotes: !templatesName(name) }) };
+    return { name, t: readSheet(ws, book, { footnotes: !templatesName(name) && !thesisName(name) }) };
   });
   const base = tables.map(({ name, t }) => ({
     name,
@@ -373,11 +411,14 @@ export function inspectWorkbook(book: LoadedBook): { sheets: InspectSheet[]; tem
     footnotes: t.footnotes,
   }));
   const tplAt = tables.findIndex(({ name, t }) => isTemplatesTab(name, t));
-  const roles = guessRoles(base, tplAt, tables.findIndex(({ name, t }) => isContactsTab(name, t)));
+  const thesisAt = tables.findIndex(({ name, t }) => isThesisTab(name, t));
+  const roles = guessRoles(base, tplAt, tables.findIndex(({ name, t }) => isContactsTab(name, t)), thesisAt);
   const tpl = tables[tplAt];
+  const th = tables[thesisAt];
   return {
     sheets: base.map((s, i) => ({ ...s, guess: roles[i]! })),
     templates: tpl ? readTemplates(tpl.t, templateColumns(tpl.t)!).length : 0,
+    thesis: th ? Object.keys(readThesis(th.t, thesisColumns(th.t)!).answers).length : 0,
   };
 }
 
@@ -399,6 +440,8 @@ export interface ImportedCampaign {
    */
   mismatchedContacts: number;
   templates: { name: string; body: string }[];
+  /** The ICP thesis, from a Mudd "ICP thesis" tab: the campaign is a Discovery campaign. Null otherwise. */
+  thesis: ImportedThesis | null;
 }
 
 /** An ID or company as it is matched: case, spacing and punctuation ignored ("Acme, Inc." is Acme Inc). */
@@ -574,5 +617,21 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
     meta.lastCol = tt.lastCol;
     break;
   }
-  return { schema, sheets, rows, contacts, skippedContacts, mismatchedContacts, templates };
+
+  let thesis: ImportedThesis | null = null;
+  for (const w of book.wb.worksheets) {
+    const name = book.realName(w);
+    if (w === ws || w === contactsTab?.ws || !thesisName(name)) continue;
+    const tt = readSheet(w, book, { footnotes: false });
+    const cols = thesisColumns(tt);
+    if (!cols) continue;
+    thesis = readThesis(tt, cols);
+    const meta = sheets.find((s) => s.name === name)!;
+    meta.role = "thesis";
+    meta.colMap = { question: cols.question + 1, answer: cols.answer + 1, ...(cols.filledBy >= 0 ? { filledBy: cols.filledBy + 1 } : {}) };
+    meta.lastDataRow = tt.lastDataRow;
+    meta.lastCol = tt.lastCol;
+    break;
+  }
+  return { schema, sheets, rows, contacts, skippedContacts, mismatchedContacts, templates, thesis };
 }

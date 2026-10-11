@@ -12,8 +12,8 @@ import { describe, expect, test } from "bun:test";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import fs from "node:fs";
-import { allColumns, genericSchema } from "../shared/schema";
-import { CHECKED, isScreened, type Campaign, type Template } from "../shared/types";
+import { allColumns, discoverySchema, genericSchema } from "../shared/schema";
+import { CHECKED, isScreened, type Campaign, type Template, type Thesis, type ThesisId } from "../shared/types";
 import { exportCampaign, type ExportRow } from "./export";
 import { importWorkbook, inspectWorkbook, loadWorkbook } from "./import";
 
@@ -47,7 +47,7 @@ async function importFrom(buf: Uint8Array, name = "t.xlsx", prospects?: string) 
   };
   // The prospect's columns first, then its contacts'.
   const key = (header: string) => allColumns(imp.schema).find((c) => c.header === header)!.key;
-  return { campaign, rows, contacts, skipped: imp.skippedContacts, mismatched: imp.mismatchedContacts, templates: imp.templates, inspected, key };
+  return { campaign, rows, contacts, skipped: imp.skippedContacts, mismatched: imp.mismatchedContacts, templates: imp.templates, inspected, key, imported: imp };
 }
 
 /** Every part of a package, as text. */
@@ -92,6 +92,7 @@ function wellFormed(xml: string): boolean {
 }
 
 const tpl = (name: string, body: string, i: number): Template => ({ id: `t${i}`, campaignId: "c1", name, body, position: i, updatedAt: 0 });
+const thesisOf = (answers: Partial<Record<ThesisId, string>>, drafted: ThesisId[] = []): Thesis => ({ campaignId: "c1", answers, drafted, updatedAt: 0 });
 
 /** A small tracker: Prospects (formatted, a note, a link, rich text, IDs), Summary with formulas. */
 function tracker(wb: ExcelJS.Workbook) {
@@ -129,7 +130,7 @@ describe("Save file patches the imported workbook", () => {
   test("an unedited save changes nothing but the appended Mudd columns", async () => {
     const original = await xlsxOf(tracker, withCustomParts);
     const { campaign, rows } = await importFrom(original);
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const before = await partsOf(original);
     const after = await partsOf(out);
     const prospectsText = await sheetXml(original, "Prospects");
@@ -165,7 +166,7 @@ describe("Save file patches the imported workbook", () => {
     rows[2]!.cells[s.meetingAtKey!] = "2026-10-02T14:30";
     rows[2]!.cells[s.meetingUrlKey!] = "https://meet.google.com/abc-defg-hij";
     const before = await sheetXml(original, "Prospects");
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const after = await sheetXml(out, "Prospects");
     // Untouched cells: identical, rich text and links included.
     for (const ref of ["A2", "B2", "E2", "F2", "G2", "A3", "G3", "A4", "F4"]) expect(cellXml(after, ref)).toBe(cellXml(before, ref));
@@ -192,7 +193,7 @@ describe("Save file patches the imported workbook", () => {
     const { campaign, rows } = await importFrom(original);
     const kept = rows.filter((r) => r.sourceRow !== 3); // delete Beta
     const before = await sheetXml(original, "Prospects");
-    const out = await exportCampaign(campaign, original, kept, [], []);
+    const out = await exportCampaign(campaign, original, kept, [], [], null);
     const after = await sheetXml(out, "Prospects");
     expect(rowXml(after, 2)).toBe(rowXml(before, 2));
     expect(rowXml(after, 4)).toBe(rowXml(before, 4));
@@ -219,7 +220,7 @@ describe("Save file patches the imported workbook", () => {
     expect(campaign.sheets[0]!.trailer).toEqual({ from: 5, to: 5 });
     rows.push({ id: "n1", position: 10, cells: { [key("Company")]: "New Co", [key("Status")]: "Contacted" } });
     rows.push({ id: "n2", position: 11, cells: { [key("Company")]: "Newer Co" } });
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const ws = (await read(out)).getWorksheet("Leads")!;
     expect(ws.getCell("A4").value).toBe("New Co");
     expect(ws.getCell("A5").value).toBe("Newer Co");
@@ -243,7 +244,7 @@ describe("Save file patches the imported workbook", () => {
     expect(campaign.schema.columns.map((c) => c.header).slice(0, 4)).toEqual(["Company", "Contact", "Status", "Column D"]);
     const meta = campaign.sheets.find((s) => s.role === "prospects")!;
     expect(meta.lastCol).toBe(5); // the Yes/No dropdown on E counts as used
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const ws = (await read(out)).getWorksheet("Prospects")!;
     expect(ws.getCell("D2").value).toBe("call back Tue");
     expect(ws.getCell("F1").value).toBe("Meeting URL");
@@ -254,7 +255,7 @@ describe("Save file patches the imported workbook", () => {
     const { campaign, rows, key } = await importFrom(original);
     campaign.schema.columns.find((c) => c.key === key("Last touch"))!.type = "date";
     const before = await sheetXml(original, "Prospects");
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const after = await sheetXml(out, "Prospects");
     for (const ref of ["D2", "D3", "D4"]) expect(cellXml(after, ref)).toBe(cellXml(before, ref));
   });
@@ -267,7 +268,7 @@ describe("Save file patches the imported workbook", () => {
     const notes = campaign.schema.columns.find((c) => c.key === key("Notes"))!;
     notes.type = "select";
     notes.options = ["Warm", "Hot", "Cold"];
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const xml = await sheetXml(out, "Prospects");
     expect(xml).toContain("&quot;Not contacted,Contacted,Nurture,Replied,Dead&quot;");
     expect(xml).toMatch(/sqref="G2:G1000"><formula1>&quot;Warm,Hot,Cold&quot;/);
@@ -281,7 +282,7 @@ describe("Save file patches the imported workbook", () => {
     const s = campaign.schema;
     rows[1]!.cells[s.screenedKey!] = CHECKED;
     rows[1]!.cells[s.reasonKey!] = "Has an agency of record";
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const ws = (await read(out)).getWorksheet("Prospects")!;
     const headers = ws.getRow(1).values as unknown[];
     const col = headers.indexOf("Screened out");
@@ -304,20 +305,20 @@ describe("Save file patches the imported workbook", () => {
     const { campaign, rows, inspected } = await importFrom(original);
     expect(inspected.sheets.find((s) => s.name === "Screened out")!.guess).toBe("passthrough");
     expect(rows.every((r) => r.sourceSheet === "Prospects")).toBe(true);
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     expect(await sheetXml(out, "Screened out")).toBe(await sheetXml(original, "Screened out"));
   });
 
   test("templates: a new tab, then updated in place", async () => {
     const original = await xlsxOf(tracker);
     const first = await importFrom(original);
-    const out1 = await exportCampaign(first.campaign, original, first.rows, [tpl("Warm", "Hi {{First name}},\nshort intro.", 0)], []);
+    const out1 = await exportCampaign(first.campaign, original, first.rows, [tpl("Warm", "Hi {{First name}},\nshort intro.", 0)], [], null);
     const again = await importFrom(out1);
     expect(again.templates).toEqual([{ name: "Warm", body: "Hi {{First name}},\nshort intro." }]);
-    const out2 = await exportCampaign(again.campaign, out1, again.rows, [tpl("Cold", "Hello {{Company}}", 0), tpl("Warm", "Hi again", 1)], []);
+    const out2 = await exportCampaign(again.campaign, out1, again.rows, [tpl("Cold", "Hello {{Company}}", 0), tpl("Warm", "Hi again", 1)], [], null);
     const third = await importFrom(out2);
     expect(third.templates).toEqual([{ name: "Cold", body: "Hello {{Company}}" }, { name: "Warm", body: "Hi again" }]);
-    const out3 = await exportCampaign(third.campaign, out2, third.rows, [], []);
+    const out3 = await exportCampaign(third.campaign, out2, third.rows, [], [], null);
     expect((await read(out3)).worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary", "Intro templates"]);
     expect((await importFrom(out3)).templates).toEqual([]);
   });
@@ -328,18 +329,59 @@ describe("Save file patches the imported workbook", () => {
       wb.addWorksheet("INTRO TEMPLATES").addRow(["Subject", "Notes"]);
     });
     const { campaign, rows } = await importFrom(original);
-    const out = await exportCampaign(campaign, original, rows, [tpl("One", "Hello", 0)], []);
+    const out = await exportCampaign(campaign, original, rows, [tpl("One", "Hello", 0)], [], null);
     const names = (await read(out)).worksheets.map((w) => w.name);
     expect(names).toEqual(["Prospects", "Summary", "INTRO TEMPLATES", "Intro templates 2"]);
     expect(await sheetXml(out, "INTRO TEMPLATES")).toBe(await sheetXml(original, "INTRO TEMPLATES"));
     expect((await importFrom(out)).templates).toEqual([{ name: "One", body: "Hello" }]);
   });
 
+  test("the ICP thesis: a new tab, re-imported with its AI drafts, then patched in place", async () => {
+    const original = await xlsxOf(tracker);
+    const first = await importFrom(original);
+    expect(first.inspected.thesis).toBe(0);
+    expect(first.imported.thesis).toBeNull();
+    const out1 = await exportCampaign(first.campaign, original, first.rows, [], [], thesisOf({ offer: "SOC monitoring", avatar: "Manufacturers", channels: "Association lists" }, ["channels"]));
+    expect((await read(out1)).worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary", "ICP thesis"]);
+    const again = await importFrom(out1);
+    expect(again.inspected.thesis).toBe(3);
+    expect(again.inspected.sheets.find((s) => s.name === "ICP thesis")!.guess).toBe("thesis");
+    expect(again.imported.thesis).toEqual({ answers: { offer: "SOC monitoring", avatar: "Manufacturers", channels: "Association lists" }, drafted: ["channels"] });
+    expect(again.campaign.sheets.find((s) => s.role === "thesis")).toMatchObject({ name: "ICP thesis", colMap: { question: 1, answer: 2, filledBy: 3 } });
+    // Kept, changed, and one cleared: rewritten row by row in the same tab.
+    const out2 = await exportCampaign(again.campaign, out1, again.rows, [], [], thesisOf({ offer: "SOC monitoring", avatar: "US manufacturers", channels: "Association lists" }));
+    const third = await importFrom(out2);
+    expect((await read(out2)).worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary", "ICP thesis"]);
+    expect(third.imported.thesis).toEqual({ answers: { offer: "SOC monitoring", avatar: "US manufacturers", channels: "Association lists" }, drafted: [] });
+    const ws = (await read(out2)).getWorksheet("ICP thesis")!;
+    expect([ws.getCell("A1").value, ws.getCell("B1").value, ws.getCell("C1").value]).toEqual(["Question", "Answer", "Filled by"]);
+    expect(ws.getCell("A2").value).toBe("What do you sell?");
+    // A campaign without a thesis never gets the tab.
+    const none = await exportCampaign(first.campaign, original, first.rows, [], [], null);
+    expect((await read(none)).worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary"]);
+  });
+
+  test("a user's own 'ICP Thesis' tab with other headers is not taken over", async () => {
+    const original = await xlsxOf((wb) => {
+      tracker(wb);
+      const mine = wb.addWorksheet("ICP THESIS");
+      mine.addRow(["Topic", "Notes"]);
+      mine.addRow(["Pricing", "Per site"]);
+    });
+    const { campaign, rows, inspected } = await importFrom(original);
+    expect(inspected.thesis).toBe(0);
+    expect(inspected.sheets.find((s) => s.name === "ICP THESIS")!.guess).toBe("passthrough");
+    const out = await exportCampaign(campaign, original, rows, [], [], thesisOf({ offer: "SOC", avatar: "Manufacturers" }));
+    expect((await read(out)).worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary", "ICP THESIS", "ICP thesis 2"]);
+    expect(await sheetXml(out, "ICP THESIS")).toBe(await sheetXml(original, "ICP THESIS"));
+    expect((await importFrom(out)).imported.thesis).toEqual({ answers: { offer: "SOC", avatar: "Manufacturers" }, drafted: [] });
+  });
+
   test("an edited link cell gets a working hyperlink", async () => {
     const original = await xlsxOf(tracker);
     const { campaign, rows, key } = await importFrom(original);
     rows[2]!.cells[key("Website")] = "https://gamma.org/about";
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const ws = (await read(out)).getWorksheet("Prospects")!;
     expect((ws.getCell("F4").value as { hyperlink: string }).hyperlink).toBe("https://gamma.org/about");
     expect((ws.getCell("F2").value as { hyperlink: string }).hyperlink).toBe("https://acme.com");
@@ -357,7 +399,7 @@ describe("Save file patches the imported workbook", () => {
     const { campaign, rows, key } = await importFrom(original);
     campaign.schema.columns.find((c) => c.key === key("Status"))!.header = "Stage";
     rows.push({ id: "n", position: 9, cells: { [key("Company")]: "Gamma" } });
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const parts = await partsOf(out);
     const table = [...parts.entries()].find(([k]) => k.startsWith("xl/tables/"))![1];
     expect(table).toMatch(/ref="A1:H4"/);
@@ -388,7 +430,7 @@ describe("Save file patches the imported workbook", () => {
     });
     const { campaign, rows, key } = await importFrom(original);
     rows[1]!.cells[key("Next date")] = "2026-02-01";
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     const cell = (await read(out)).getWorksheet("Prospects")!.getCell("B3");
     expect(cell.value).toEqual(new Date(Date.UTC(2026, 1, 1)));
     expect(cell.numFmt).toMatch(/y/);
@@ -431,7 +473,7 @@ describe("import", () => {
     expect(opts("Stage")).toEqual(["Cold", "Warm", "Hot"]);
     expect(opts("Tier")).toEqual(["1", "2", "3"]);
     expect(opts("Region")).toEqual(["EU", "US"]);
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     expect(await sheetXml(out, "Prospects")).toContain("<xm:f>Lists!$A$1:$A$3</xm:f>");
   });
 
@@ -482,7 +524,7 @@ describe("import", () => {
     });
     const { campaign, rows } = await importFrom(original, "t.xlsx", "History");
     expect(rows).toHaveLength(1);
-    const out = await exportCampaign(campaign, original, rows, [], []);
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
     expect((await partsOf(out)).get("xl/workbook.xml")).toContain('name="History"');
   });
 
@@ -526,7 +568,7 @@ describe("campaigns created in Mudd", () => {
       { id: "z", position: 5, parentId: "b", cells: { [k("Name")]: "Bo Chen", [k("Email")]: "bo@beta.io", [k("Primary")]: CHECKED } },
     ];
     const campaign: Campaign = { id: "c", name: "Fresh", createdAt: 0, updatedAt: 0, sourceName: null, sourcePath: null, hasOriginal: false, schema, sheets: [] };
-    const out = await exportCampaign(campaign, null, rows, [tpl("One", "Hello {{Company}}", 0)], contacts);
+    const out = await exportCampaign(campaign, null, rows, [tpl("One", "Hello {{Company}}", 0)], contacts, null);
     const wb = await read(out);
     expect(wb.worksheets.map((w) => w.name)).toEqual(["Prospects", "Contacts", "Intro templates"]);
     const ws = wb.getWorksheet("Prospects")!;
@@ -556,6 +598,32 @@ describe("campaigns created in Mudd", () => {
     expect(ann.cells[cs.primaryKey!]).toBe(CHECKED);
     expect(again.contacts.find((c) => c.cells[cs.nameKey!] === "Bo Chen")!.parentId).toBe(byCompany("Beta").id);
     expect(again.skipped).toBe(0);
+  });
+
+  test("a Discovery campaign's workbook carries its thesis, intel columns and the Champion type", async () => {
+    const schema = discoverySchema();
+    const k = (h: string) => allColumns(schema).find((c) => c.header === h)!.key;
+    const rows: ExportRow[] = [{ id: "a", position: 0, cells: { [k("ID")]: "P-001", [k("Company")]: "Acme Metal", [k("Fit")]: "High", [k("Why they fit")]: "Two plants", [k("Source")]: "Discovery" } }];
+    const contacts: ExportRow[] = [{ id: "x", position: 1, parentId: "a", cells: { [k("Name")]: "Ann Lee", [k("Contact type")]: "Champion", [k("Role in deal")]: "Starts it", [k("Primary")]: CHECKED } }];
+    const campaign: Campaign = { id: "c", name: "Disco", createdAt: 0, updatedAt: 0, sourceName: null, sourcePath: null, hasOriginal: false, schema, sheets: [] };
+    const out = await exportCampaign(campaign, null, rows, [], contacts, thesisOf({ offer: "SOC", avatar: "Manufacturers", pains: "Audits" }, ["pains"]));
+    const wb = await read(out);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["Prospects", "Contacts", "ICP thesis"]);
+    const t = wb.getWorksheet("ICP thesis")!;
+    expect([t.getCell("A2").value, t.getCell("B2").value, t.getCell("C2").value]).toEqual(["What do you sell?", "SOC", null]);
+    expect([t.getCell("A4").value, t.getCell("B4").value, t.getCell("C4").value]).toEqual(["Their pain points", "Audits", "AI draft"]);
+
+    const again = await importFrom(out, "disco.xlsx", "Prospects");
+    expect(again.imported.thesis).toEqual({ answers: { offer: "SOC", avatar: "Manufacturers", pains: "Audits" }, drafted: ["pains"] });
+    const s2 = again.campaign.schema;
+    expect(s2.columns.find((c) => c.header === "Fit")).toMatchObject({ type: "select", options: ["High", "Medium", "Low"] });
+    expect(s2.columns.map((c) => c.header)).toEqual(expect.arrayContaining(["Why they fit", "Why now", "Budget source", "Buying clock"]));
+    expect(again.rows[0]!.cells[again.key("Why they fit")]).toBe("Two plants");
+    const cs = s2.contacts!;
+    expect(cs.columns.map((c) => c.header)).toEqual(expect.arrayContaining(["Role in deal", "What they gain", "Angle"]));
+    expect(cs.columns.find((c) => c.key === cs.typeKey)!.options).toContain("Champion");
+    expect(again.contacts[0]!.cells[cs.typeKey!]).toBe("Champion");
+    expect(again.contacts[0]!.cells[again.key("Role in deal")]).toBe("Starts it");
   });
 
   test("CSV imports gain Status, an ID and the Mudd columns", async () => {
@@ -626,7 +694,7 @@ describe("the Contacts tab", () => {
   test("an unedited save leaves the Contacts tab exactly as it was", async () => {
     const original = await xlsxOf((wb) => withContacts(wb, people));
     const { campaign, rows, contacts } = await importFrom(original);
-    const out = await exportCampaign(campaign, original, rows, [], contacts);
+    const out = await exportCampaign(campaign, original, rows, [], contacts, null);
     expect(await sheetXml(out, "Contacts")).toBe(await sheetXml(original, "Contacts"));
     expect((await read(out)).getWorksheet("Prospects")!.getCell("A3").value).toBe("P-002");
   });
@@ -639,7 +707,7 @@ describe("the Contacts tab", () => {
     const kept = contacts.filter((c) => c.cells[key("Name")] !== "Al Ng");
     kept.push({ id: "new", position: 99, parentId: rows[1]!.id, cells: { [key("Name")]: "Bea Moss", [key("Contact type")]: "Gatekeeper" } });
     const before = await sheetXml(original, "Contacts");
-    const out = await exportCampaign(campaign, original, rows, [], kept);
+    const out = await exportCampaign(campaign, original, rows, [], kept, null);
     const after = await sheetXml(out, "Contacts");
     for (const ref of ["A2", "B2", "C2", "D2", "E2", "A4", "C4", "A5", "B5", "C5"]) expect(cellXml(after, ref)).toBe(cellXml(before, ref));
     const ws = (await read(out)).getWorksheet("Contacts")!;
@@ -658,19 +726,19 @@ describe("the Contacts tab", () => {
   test("a workbook without one gets a Contacts tab once there are people", async () => {
     const original = await xlsxOf(tracker);
     const { campaign, rows } = await importFrom(original);
-    const none = await exportCampaign(campaign, original, rows, [], []);
+    const none = await exportCampaign(campaign, original, rows, [], [], null);
     expect((await read(none)).worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary"]);
     // This tracker's prospects have a Name column of their own: the contact's is another.
     const cs = campaign.schema.contacts!;
     const contacts: ExportRow[] = [{ id: "k", position: 9, parentId: rows[2]!.id, cells: { [cs.nameKey!]: "Cy Dee", [cs.typeKey!]: "Influencer", [cs.primaryKey!]: CHECKED } }];
-    const out = await exportCampaign(campaign, original, rows, [tpl("One", "Hi", 0)], contacts);
+    const out = await exportCampaign(campaign, original, rows, [tpl("One", "Hi", 0)], contacts, null);
     const wb = await read(out);
     expect(wb.worksheets.map((w) => w.name)).toEqual(["Prospects", "Summary", "Contacts", "Intro templates"]);
     const ws = wb.getWorksheet("Contacts")!;
     expect([ws.getCell("A1").value, ws.getCell("B1").value, ws.getCell("C1").value]).toEqual(["Prospect ID", "Company", "Name"]);
     expect([ws.getCell("A2").value, ws.getCell("B2").value, ws.getCell("C2").value]).toEqual(["P-003", "Gamma", "Cy Dee"]);
     // The Contact type column is a dropdown there too.
-    expect(await sheetXml(out, "Contacts")).toContain("Economic Buyer,Technical Buyer");
+    expect(await sheetXml(out, "Contacts")).toContain("Economic Buyer,Champion,Technical Buyer");
     for (const [name, text] of await partsOf(out)) if (name.endsWith(".xml") || name.endsWith(".rels")) expect({ name, ok: wellFormed(text) }).toEqual({ name, ok: true });
     const again = await importFrom(out);
     const cs2 = again.campaign.schema.contacts!;
@@ -688,7 +756,7 @@ describe("the Contacts tab", () => {
     const { campaign, rows } = await importFrom(original);
     const id = campaign.schema.idKey!;
     expect(rows.map((r) => r.cells[id])).toEqual(["P-004", "P-005", "P-006"]);
-    const ws = (await read(await exportCampaign(campaign, original, rows, [], []))).getWorksheet("Prospects")!;
+    const ws = (await read(await exportCampaign(campaign, original, rows, [], [], null))).getWorksheet("Prospects")!;
     expect([ws.getCell("A2").value, ws.getCell("A3").value, ws.getCell("A4").value]).toEqual(["P-004", "P-005", "P-006"]);
   });
 
@@ -748,7 +816,7 @@ describe("the Contacts tab", () => {
     });
     const { campaign, rows, contacts } = await importFrom(original);
     expect(campaign.schema.companyKey).toBeUndefined();
-    const out = await exportCampaign(campaign, original, rows, [], contacts);
+    const out = await exportCampaign(campaign, original, rows, [], contacts, null);
     expect(cellXml(await sheetXml(out, "Contacts"), "B2")).toBe(cellXml(await sheetXml(original, "Contacts"), "B2"));
     expect((await read(out)).getWorksheet("Contacts")!.getCell("B2").value).toBe("Acme");
   });
@@ -762,7 +830,7 @@ describe.skipIf(!hasFixture)("round trip with MUDD_FIXTURE", () => {
   test("an unedited save keeps every other part and every original cell", async () => {
     const { campaign, rows, contacts } = await importFrom(original);
     const meta = campaign.sheets.find((s) => s.role === "prospects")!;
-    const out = await exportCampaign(campaign, original, rows, [], contacts);
+    const out = await exportCampaign(campaign, original, rows, [], contacts, null);
     const before = await partsOf(original);
     const after = await partsOf(out);
     const prospects = await sheetXml(original, meta.name);
@@ -787,7 +855,7 @@ describe.skipIf(!hasFixture)("round trip with MUDD_FIXTURE", () => {
     third!.cells[s.reasonKey!] = "Has an agency of record";
     const kept = rows.filter((r) => r.id !== second!.id);
     kept.push({ id: "new", position: 9_999, cells: { [s.companyKey!]: "New Co", [s.statusKey!]: "Contacted" } });
-    const out = await exportCampaign(campaign, original, kept, [tpl("Warm", "Hi {{First name}}", 0)], contacts);
+    const out = await exportCampaign(campaign, original, kept, [tpl("Warm", "Hi {{First name}}", 0)], contacts, null);
     const meta = campaign.sheets.find((x) => x.role === "prospects")!;
     const again = await importFrom(out, "fixture.xlsx", meta.name);
     const s2 = again.campaign.schema;

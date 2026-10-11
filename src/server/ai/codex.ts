@@ -85,7 +85,7 @@ async function* turn(opts: TurnOptions, signal: AbortSignal): AsyncGenerator<AiE
     if (stall) clearTimeout(stall);
     stall = setTimeout(() => stop("timeout"), STALL_MS);
   };
-  const wall = setTimeout(() => stop("timeout"), WALL_MS);
+  const wall = setTimeout(() => stop("timeout"), opts.timeoutMs ?? WALL_MS);
   const onAbort = () => stop("aborted");
   signal.addEventListener("abort", onAbort, { once: true });
   controller.signal.addEventListener("abort", onAbort, { once: true });

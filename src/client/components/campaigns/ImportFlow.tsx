@@ -134,8 +134,8 @@ export function ImportProvider({ children }: { children: ReactNode }) {
 
 function MappingDialog({ result, onClose }: { result: InspectResult; onClose: () => void }) {
   const navigate = useNavigate();
-  // An old Screened-out list is never offered, and never shown.
-  const candidates = result.sheets.filter((s) => s.guess !== "templates" && !looksLikeScreenedTab(s.name));
+  // An old Screened-out list is never offered, and never shown; nor are Mudd's own tabs.
+  const candidates = result.sheets.filter((s) => s.guess !== "templates" && s.guess !== "thesis" && !looksLikeScreenedTab(s.name));
   const usable = candidates.filter((s) => !s.hasFormulas);
   const initialP = result.sheets.find((s) => s.guess === "prospects")?.name ?? usable[0]?.name ?? "";
   const [prospects, setProspects] = useState(initialP);
@@ -256,6 +256,7 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
             )}
             <p>Meeting, Intro message, Screened out and ID columns are added after your last column when the tab lacks them, so formulas that point at existing columns keep working.</p>
             {result.templates > 0 && <p>{result.templates} intro template{result.templates === 1 ? "" : "s"} found and will be restored.</p>}
+            {result.thesis > 0 && <p>An ICP thesis with {result.thesis} answer{result.thesis === 1 ? "" : "s"} was found: this comes back as a Discovery campaign.</p>}
             {!result.path && (
               <p className="text-brand-700">
                 This file was dropped in, so Mudd doesn't know where it lives: <em>Save file</em> will put a copy in Downloads and keep saving there. To save straight back to this file, import it with the Import button instead.

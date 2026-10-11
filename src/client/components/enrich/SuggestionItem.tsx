@@ -14,6 +14,17 @@ const CONF: Record<string, string> = {
 
 const host = (url: string) => url.replace(/^https?:\/\/(www\.)?/, "").split(/[/?#]/)[0] ?? url;
 
+/** A source link as a small chip: the page's host, opening the page outside the app. */
+export function SourceChip({ url, title, className }: { url: string; title?: string; className?: string }) {
+  const href = hrefOf(url, "url");
+  if (!href) return null;
+  return (
+    <button onClick={() => openLink(href)} title={title ?? url} className={cn("tag max-w-[16rem] bg-sky-50 text-sky-800 ring-1 ring-sky-100 hover:bg-sky-100", className)}>
+      <ExternalLink size={10} className="shrink-0" /> <span className="truncate">{host(url)}</span>
+    </button>
+  );
+}
+
 function show(v: Suggestion["value"], col?: Column): string {
   const t = display(v);
   return col?.type === "date" && /^\d{4}-\d{2}-\d{2}$/.test(t) ? formatDate(t) : t;
@@ -43,15 +54,7 @@ export function SuggestionItem({ s, col, onAccept, onReject, compact }: {
           </p>
           {(s.sources.length > 0 || s.note) && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {s.sources.slice(0, 4).map((src) => {
-                const href = hrefOf(src.url, "url");
-                return href ? (
-                  <button key={src.url} onClick={() => openLink(href)} title={src.title ?? src.url}
-                    className="tag max-w-[16rem] bg-sky-50 text-sky-800 ring-1 ring-sky-100 hover:bg-sky-100">
-                    <ExternalLink size={10} className="shrink-0" /> <span className="truncate">{host(src.url)}</span>
-                  </button>
-                ) : null;
-              })}
+              {s.sources.slice(0, 4).map((src) => <SourceChip key={src.url} url={src.url} title={src.title} />)}
               {s.note && (
                 <span className="inline-flex max-w-full items-start gap-1 text-[11.5px] leading-snug text-ink-soft">
                   <Info size={11} className="mt-0.5 shrink-0 text-ink-faint" /> <span className="whitespace-pre-line">{s.note}</span>

@@ -1,6 +1,6 @@
 import {
-  ArchiveRestore, ArrowLeft, Building2, CheckCircle2, Columns3, FileSpreadsheet, Link2, Loader2, MessageSquareText, MoreHorizontal, Plus,
-  Loader2 as Spinner, MessageSquarePlus, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
+  ArchiveRestore, ArrowLeft, Building2, CheckCircle2, Columns3, FileSpreadsheet, Inbox, Link2, Loader2, MessageSquareText, MoreHorizontal, Plus,
+  Loader2 as Spinner, MessageSquarePlus, Radar, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -11,7 +11,10 @@ import {
 } from "../../../shared/types";
 import { sameValue } from "../../../shared/values";
 import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
+import { useConsentGate } from "../../hooks/useConsentGate";
+import { useDiscovery } from "../../hooks/useDiscovery";
 import { useEnrichment, type EnrichmentState } from "../../hooks/useEnrichment";
+import { DiscoverPanel, type DiscoverSection } from "../discover/DiscoverPanel";
 import { ConsentDialog } from "../enrich/ConsentDialog";
 import { EnrichPanel } from "../enrich/EnrichPanel";
 import { ReviewPanel } from "../enrich/ReviewPanel";
@@ -108,6 +111,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   const stages = useMemo(() => stagesOf(schema), [schema]);
   const [params, setParams] = useSearchParams();
   const initialRow = params.get("row");
+  const initialDiscover = params.get("discover");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -121,9 +125,15 @@ function CampaignView({ state }: { state: CampaignState }) {
   const [showColumns, setShowColumns] = useState(false);
   const [showEnrich, setShowEnrich] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  // The Discover panel, open on one of its sections.
+  const [showDiscover, setShowDiscover] = useState<DiscoverSection | null>(null);
   const [removing, setRemoving] = useState(false);
   const navigate = useNavigate();
-  const enrich = useEnrichment(state);
+  // One consent dialog for both: enrichment and Discovery each ask the same thing once.
+  const consent = useConsentGate();
+  const enrich = useEnrichment(state, consent);
+  const discovery = useDiscovery(state, consent);
+  const liveDiscovery = discovery.activeRuns[0];
   const pendingKeys = useMemo(() => {
     const m = new Map<string, Set<string>>();
     for (const s of enrich.suggestions) m.set(s.rowId, new Set([...(m.get(s.rowId) ?? []), s.key]));
@@ -146,6 +156,12 @@ function CampaignView({ state }: { state: CampaignState }) {
     setOpenRowId(initialRow);
     setParams({}, { replace: true });
   }, [initialRow, setParams]);
+  // A new Discovery campaign arrives with ?discover=thesis: the panel opens on the rest of the thesis.
+  useEffect(() => {
+    if (!initialDiscover) return;
+    setShowDiscover(initialDiscover === "find" || initialDiscover === "inbox" ? initialDiscover : "thesis");
+    setParams({}, { replace: true });
+  }, [initialDiscover, setParams]);
 
   // One list: screened-out prospects stay in it, greyed out, so every visible column shows.
   const columns = useMemo(() => schema.columns.filter((c) => !c.hidden), [schema]);
@@ -357,6 +373,24 @@ function CampaignView({ state }: { state: CampaignState }) {
             Review <span className="rounded-md bg-yellow-300 px-1.5 text-[11px] font-bold text-yellow-900">{enrich.suggestions.length}</span>
           </Button>
         )}
+        {discovery.enabled && (
+          <>
+            {liveDiscovery && (
+              <button onClick={() => setShowDiscover("find")} className="tag h-8 rounded-lg bg-emerald-100 px-2.5 text-emerald-800 hover:bg-emerald-200" title="Open the running Discovery">
+                <Spinner size={12} className={liveDiscovery.status === "running" ? "animate-spin" : ""} />
+                {liveDiscovery.kind === "find" ? `Discovery: ${liveDiscovery.found}/${liveDiscovery.target} found` : liveDiscovery.kind === "map" ? "Mapping…" : "Drafting thesis…"}{liveDiscovery.status === "paused" ? " · paused" : ""}
+              </button>
+            )}
+            {discovery.inbox.length > 0 && (
+              <Button onClick={() => setShowDiscover("inbox")} className="border-emerald-300 bg-emerald-50 hover:bg-emerald-100">
+                <Inbox size={15} /> Inbox <span className="rounded-md bg-emerald-300 px-1.5 text-[11px] font-bold text-emerald-900">{discovery.inbox.length}</span>
+              </Button>
+            )}
+            <Button variant="subtle" onClick={() => setShowDiscover(discovery.inbox.length ? "inbox" : "find")}>
+              <Radar size={15} /> Discover
+            </Button>
+          </>
+        )}
         <Button variant="subtle" onClick={() => setShowEnrich(true)}>
           <Sparkles size={15} /> Enrich
         </Button>
@@ -476,7 +510,7 @@ function CampaignView({ state }: { state: CampaignState }) {
             </>
           )
         ) : state.rows.length === 0 ? (
-          <EmptyList onAdd={addRow} />
+          <EmptyList onAdd={addRow} discovery={discovery.enabled ? { waiting: discovery.inbox.length, open: () => setShowDiscover(discovery.inbox.length ? "inbox" : discovery.runs.length ? "find" : "thesis") } : null} />
         ) : (
           <>
             {view === "reading" ? (
@@ -536,9 +570,12 @@ function CampaignView({ state }: { state: CampaignState }) {
           onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }} onOpenRow={(id) => { setShowEnrich(false); showRow(id); }} />
       )}
       {showReview && <ReviewPanel state={state} enrich={enrich} onClose={() => setShowReview(false)} onOpenRow={showRow} />}
+      {showDiscover && discovery.enabled && (
+        <DiscoverPanel state={state} enrich={enrich} discovery={discovery} initial={showDiscover} onClose={() => setShowDiscover(null)} />
+      )}
       <RemoveCampaignDialog campaign={removing ? campaign : null} onClose={() => setRemoving(false)}
         beforeRemove={state.flush} onRemoved={() => void navigate("/")} />
-      <ConsentDialog open={!!enrich.needsConsent} onConfirm={() => enrich.needsConsent?.confirm()} onCancel={() => enrich.needsConsent?.cancel()} />
+      <ConsentDialog open={!!consent.needsConsent} onConfirm={() => consent.needsConsent?.confirm()} onCancel={() => consent.needsConsent?.cancel()} />
       {onContacts ? (
         <ColumnsDialog key="contacts" open={showColumns} onClose={() => setShowColumns(false)} kind="contacts" schema={contactSchema(schema)} inSheet={inSheet} usedKeys={usedKeys}
           onSave={(s) => state.setSchema({ ...schema, contacts: { ...contactSchema(schema), columns: s.columns } })} />
@@ -664,7 +701,21 @@ function Chip({ active, onClick, label, count, tone }: { active: boolean; onClic
   );
 }
 
-function EmptyList({ onAdd }: { onAdd: () => void }) {
+/** No prospects yet. A Discovery campaign's come from its inbox; any other's are typed or pasted. */
+function EmptyList({ onAdd, discovery }: { onAdd: () => void; discovery: { waiting: number; open: () => void } | null }) {
+  if (discovery) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+        <Radar className="text-brand-300" size={32} />
+        <p className="text-sm font-medium">{discovery.waiting ? `${discovery.waiting} compan${discovery.waiting === 1 ? "y" : "ies"} waiting in the Discovery inbox` : "Discovery hasn't run yet"}</p>
+        <p className="max-w-sm text-xs text-ink-faint">Your prospects will appear here once you accept them from the Discovery inbox.</p>
+        <div className="mt-2 flex gap-2">
+          <Button size="sm" variant="primary" onClick={discovery.open}><Radar size={13} /> {discovery.waiting ? "Open inbox" : "Open Discover"}</Button>
+          <Button size="sm" variant="ghost" onClick={onAdd}><Plus size={13} /> Add one by hand</Button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
       <FileSpreadsheet className="text-brand-300" size={32} />

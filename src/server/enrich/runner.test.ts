@@ -13,7 +13,7 @@ import * as ai from "../ai";
 import { updateAiSettings } from "../ai/settings";
 import * as db from "../db";
 import { eventStream } from "./hub";
-import { ensureSourcesColumn, liveRuns, normaliseValue, recentRuns, startRun, stopCampaignRuns } from "./runner";
+import { ensureSourcesColumn, liveRuns, normaliseValue, pauseRun, recentRuns, resumeRun, runDone, startRun, stopCampaignRuns, stopRun } from "./runner";
 import * as store from "./store";
 
 // Module mocks outlive this file, so anything that isn't one of these tests gets the real turn.
@@ -401,6 +401,47 @@ describe("runs", () => {
     expect(run.rows.r2).toMatchObject({ state: "skipped" });
     expect(store.getRun(run.id)).toBeNull();
     expect(store.listSuggestions(id)).toEqual([]);
+  });
+
+  test("paused with two rows in flight, every worker wakes on resume, and on stop", async () => {
+    // Each turn waits to be released, so the pause lands while both workers are mid-row.
+    const release: (() => void)[] = [];
+    let started = 0;
+    fakeTurn = (req) => new Promise((resolve, reject) => {
+      started++;
+      release.push(() => resolve({ data: { fields: { [k("Type")]: { value: "Incubator", source: null, confidence: "low" } }, notes: null }, costUsd: null }));
+      req.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+    });
+    const rows = ["r1", "r2", "r3", "r4"];
+    const id = campaign(rows.map((r) => ({ id: r, cells: { [k("Company")]: r } })));
+    const recipe = recipeFor(id);
+
+    const run = startRun({ campaignId: id, kind: "enrich", recipeId: recipe.id, rowIds: rows, test: false, autoFill: true, concurrency: 2 });
+    await until(() => started === 2);
+    pauseRun(run.id);
+    release.splice(0).forEach((r) => r());
+    await until(() => run.completed === 2);
+    // Paused: both workers wait, and no third row starts.
+    await Bun.sleep(20);
+    expect(started).toBe(2);
+    resumeRun(run.id);
+    await until(() => started === 4);
+    release.splice(0).forEach((r) => r());
+    await until(() => run.status === "done");
+    await runDone(run.id);
+    expect(run.completed).toBe(4);
+
+    // Pause, then stop: the paused workers must wake to end the run.
+    started = 0;
+    const second = startRun({ campaignId: id, kind: "enrich", recipeId: recipe.id, rowIds: rows, test: false, autoFill: true, concurrency: 2 });
+    await until(() => started === 2);
+    pauseRun(second.id);
+    release.splice(0).forEach((r) => r());
+    await until(() => second.completed === 2);
+    stopRun(second.id);
+    await until(() => second.status === "stopped");
+    expect(second.rows.r3).toMatchObject({ state: "skipped" });
+    fakeTurn = null;
   });
 
   test("a contact's id is not a prospect to research", async () => {

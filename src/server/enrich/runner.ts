@@ -24,15 +24,19 @@ import { mergeSources, recipeMode, SOURCES_HEADER, sourcesColumn, type EnrichRun
 import { allColumns, columnOf, isContactKey, makeKey } from "../../shared/schema";
 import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../shared/types";
 import { contactLabel, parseFlag, primaryOf, prospectCells, researchedContacts, sameValue, samePerson, toNumber } from "../../shared/values";
-import { AiError, generateStructured } from "../ai";
+import { generateStructured } from "../ai";
 import { abortAll } from "../ai/proc";
 import { getAiSettings } from "../ai/settings";
 import * as db from "../db";
+import { Gate, retryTurn } from "../jobs";
 
 interface Controller {
   run: EnrichRun;
   abort: AbortController;
-  resume: (() => void) | null;
+  /** Where the workers wait while the run is paused. */
+  gate: Gate;
+  /** Resolves when the run has ended, whichever way. */
+  done: Promise<void>;
   /** When the run was last stored, and the save waiting to follow it. */
   savedAt: number;
   saveTimer: ReturnType<typeof setTimeout> | null;
@@ -40,7 +44,6 @@ interface Controller {
   stepAt: number;
 }
 const active = new Map<string, Controller>();
-const MAX_RETRIES = 2;
 
 // Every 2 s, and less often for big runs, whose document is big: at 5k rows, every 50 s.
 const saveEvery = (run: EnrichRun) => Math.max(2_000, run.total * 10);
@@ -154,11 +157,16 @@ export function startRun(input: StartRunInput): EnrichRun {
     error: null,
     costUsd: null,
   };
-  const ctrl: Controller = { run, abort: new AbortController(), resume: null, savedAt: 0, saveTimer: null, stepAt: 0 };
+  const ctrl: Controller = { run, abort: new AbortController(), gate: new Gate(), done: Promise.resolve(), savedAt: 0, saveTimer: null, stepAt: 0 };
   active.set(run.id, ctrl);
   emitRun(ctrl);
-  void pump(ctrl);
+  ctrl.done = pump(ctrl);
   return run;
+}
+
+/** Resolves once the run has ended (at once for a run that isn't live). */
+export function runDone(id: string): Promise<void> {
+  return active.get(id)?.done ?? Promise.resolve();
 }
 
 export function pauseRun(id: string): EnrichRun | null {
@@ -174,8 +182,7 @@ export function resumeRun(id: string): EnrichRun | null {
   if (!c || c.run.status !== "paused") return c?.run ?? store.getRun(id);
   c.run.status = "running";
   emitRun(c);
-  c.resume?.();
-  c.resume = null;
+  c.gate.open();
   return c.run;
 }
 
@@ -185,7 +192,7 @@ export function stopRun(id: string): EnrichRun | null {
   c.run.status = "stopping";
   emitRun(c);
   c.abort.abort();
-  c.resume?.();
+  c.gate.open();
   return c.run;
 }
 
@@ -205,7 +212,7 @@ async function pump(ctrl: Controller): Promise<void> {
   const queue = [...run.rowIds];
   const worker = async () => {
     for (;;) {
-      while (run.status === "paused") await new Promise<void>((r) => (ctrl.resume = r));
+      while (run.status === "paused") await ctrl.gate.wait();
       if (ctrl.abort.signal.aborted || run.status === "failed") return;
       const rowId = queue.shift();
       if (!rowId) return;
@@ -326,36 +333,28 @@ type TurnResult = { found: number | null } | { error: string } | { stop: "aborte
 async function runTurn(ctrl: Controller, rowId: string, schema: CampaignSchema, turn: Turn, onStep: (s: string) => void): Promise<TurnResult> {
   const { run } = ctrl;
   const state = run.rows[rowId]!;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const found = run.kind === "intro"
-        ? await doIntro(run, schema, turn.cells, rowId, ctrl.abort.signal, onStep)
-        : await doEnrich(run, schema, turn, rowId, ctrl.abort.signal, onStep);
-      return { found };
-    } catch (err) {
-      if (ctrl.abort.signal.aborted) return { stop: "aborted" };
-      const message = (err as Error).message;
-      const code = err instanceof AiError ? err.code : "cli_failed";
-      if (code === "cli_missing" || code === "not_authenticated") {
-        state.state = "error";
-        state.error = message;
-        run.failed++;
-        run.status = "failed";
-        run.error = message;
-        ctrl.abort.abort();
-        emitRun(ctrl);
-        return { stop: "fatal" };
-      }
-      if (attempt < MAX_RETRIES) {
-        state.step = `${turn.label ? `${turn.label}: ` : ""}Retrying (${attempt + 1}/${MAX_RETRIES})`;
-        emitRow(ctrl, rowId);
-        await Bun.sleep(attempt === 0 ? 3_000 : 8_000);
-        continue;
-      }
-      console.error(`[enrich] row ${rowId} failed:`, err);
-      return { error: message };
-    }
-  }
+  const result = await retryTurn({
+    attempt: () => (run.kind === "intro"
+      ? doIntro(run, schema, turn.cells, rowId, ctrl.abort.signal, onStep)
+      : doEnrich(run, schema, turn, rowId, ctrl.abort.signal, onStep)),
+    signal: ctrl.abort.signal,
+    label: `enrich row ${rowId}`,
+    onRetry: (n, max) => {
+      state.step = `${turn.label ? `${turn.label}: ` : ""}Retrying (${n}/${max})`;
+      emitRow(ctrl, rowId);
+    },
+    onFatal: (message) => {
+      state.state = "error";
+      state.error = message;
+      run.failed++;
+      run.status = "failed";
+      run.error = message;
+      ctrl.abort.abort();
+      ctrl.gate.open();
+      emitRun(ctrl);
+    },
+  });
+  return "ok" in result ? { found: result.ok } : result;
 }
 
 const EMPTY = /^(n\/?a|none|null|unknown|not found|-|—)$/i;
