@@ -90,6 +90,19 @@ describe("Discovery campaigns", () => {
     expect(r.json.error).toMatch(/thesis/);
   });
 
+  test("a run with a malformed enrichment choice is refused, not stored", async () => {
+    const c = await newDiscovery();
+    settings.updateAiSettings({ consented: true });
+    try {
+      const r = await call<{ error: string }>("POST", `/api/campaigns/${c.id}/discovery/runs`, { kind: "find", target: 5, enrich: { presets: "snapshot" } });
+      expect(r.status).toBe(400);
+      expect(r.json.error).toMatch(/enrichment choice/);
+      expect((await call<{ runs: unknown[] }>("GET", `/api/campaigns/${c.id}/discovery`)).json.runs).toEqual([]);
+    } finally {
+      settings.updateAiSettings({ consented: false });
+    }
+  });
+
   test("a partial thesis PUT changes only the questions sent; keep makes a draft the user's", async () => {
     const c = await newDiscovery();
     const first = await call<Thesis>("PUT", `/api/campaigns/${c.id}/thesis`, { answers: { pains: " Ransomware ", bogus: "ignored" } });

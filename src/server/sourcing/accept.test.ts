@@ -147,6 +147,16 @@ describe("accept", () => {
     expect(res.candidates.map((c) => [c.status, c.dismissReason])).toEqual([["dismissed", "Already in the list as P-012"], ["dismissed", "Already in the list as P-012"]]);
   });
 
+  test("a candidate picked twice is accepted once, not then dismissed as its own duplicate", () => {
+    const id = campaign();
+    const c = candidate(id, "Twice", [person("Ann", "Champion")]);
+    const res = acceptCandidates(id, [{ id: c.id, contactIds: [] }, { id: c.id, contactIds: c.contacts.map((p) => p.id) }]);
+    expect(res.candidates).toHaveLength(1);
+    expect(res.candidates[0]).toMatchObject({ id: c.id, status: "accepted" });
+    expect(res.rows).toHaveLength(1);
+    expect(store.getCandidate(id, c.id)).toMatchObject({ status: "accepted", rowId: res.rows[0]!.id });
+  });
+
   test("the enrichment queue runs each chosen preset's recipe on the new rows, one run after another", async () => {
     const id = campaign(discoverySchema(), { presets: ["snapshot", "email"], recipeIds: [], autoFill: true });
     const prompts: { rows: string; keys: string[] }[] = [];

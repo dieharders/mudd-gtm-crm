@@ -12,6 +12,22 @@ type On = (method: string, pattern: string, h: (req: Request, params: string[]) 
 type Body = <T>(req: Request) => Promise<T>;
 type Fail = (status: number, message: string) => never;
 
+const strings = (v: unknown): string[] | null => (Array.isArray(v) && v.every((x) => typeof x === "string") ? v : null);
+const numberOr = (v: unknown, fallback: number | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+
+/**
+ * An enrichment choice as the page sends it, or none (the run's default); a malformed one is
+ * refused here, since the run keeps it, and every accept from the run would fail on it later.
+ */
+function enrichChoice(v: unknown, fail: Fail): EnrichChoice | undefined {
+  if (v === undefined || v === null) return undefined;
+  const o = typeof v === "object" ? (v as Record<string, unknown>) : null;
+  const presets = strings(o?.presets);
+  const recipeIds = strings(o?.recipeIds);
+  if (!o || !presets || !recipeIds) fail(400, "Bad enrichment choice: presets and recipeIds must be lists of ids.");
+  return { presets, recipeIds, autoFill: o.autoFill === true };
+}
+
 export function registerDiscoveryRoutes(on: On, { json, body, fail }: { json: Json; body: Body; fail: Fail }) {
   const mustCampaign = (id: string) => db.getCampaign(id) ?? fail(404, "Campaign not found.");
   const mustThesis = (id: string) => {
@@ -36,10 +52,21 @@ export function registerDiscoveryRoutes(on: On, { json, body, fail }: { json: Js
 
   on("POST", "/api/campaigns/:id/discovery/runs", async (req, [id]) => {
     mustThesis(id!);
-    const b = await body<Omit<StartDiscoveryInput, "campaignId"> & { enrich?: EnrichChoice }>(req);
+    const b = await body<Record<string, unknown>>(req);
     if (!getAiSettings().consented) fail(403, "Confirm that Mudd may send your thesis to your AI provider first.");
+    // Only what a run takes, each field as its type: the run stores them as they come.
+    const input: StartDiscoveryInput = {
+      campaignId: id!,
+      kind: b.kind === "thesis" || b.kind === "map" ? b.kind : "find",
+      target: numberOr(b.target, undefined),
+      perCompany: numberOr(b.perCompany, undefined),
+      concurrency: numberOr(b.concurrency, undefined),
+      focus: typeof b.focus === "string" ? b.focus : null,
+      enrich: enrichChoice(b.enrich, fail),
+      candidateIds: strings(b.candidateIds) ?? [],
+    };
     try {
-      return json(startDiscovery({ ...b, campaignId: id!, kind: b.kind === "thesis" || b.kind === "map" ? b.kind : "find" }));
+      return json(startDiscovery(input));
     } catch (err) {
       return fail(400, (err as Error).message);
     }

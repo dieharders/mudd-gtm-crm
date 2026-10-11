@@ -150,7 +150,8 @@ Answer as JSON: {"angles": [{"label": a short name for the angle (3–6 words), 
     required: ["angles"],
     additionalProperties: false,
   };
-  const schema = z.object({ angles: z.array(z.object({ label: z.string().min(1), query: z.string().min(1) })).min(1).max(8) });
+  // No upper bound: a plan with more angles than asked is trimmed to the count, not refused.
+  const schema = z.object({ angles: z.array(z.object({ label: z.string().min(1), query: z.string().min(1) })).min(1) });
   return { system: SOURCING_RULES, prompt, jsonSchema, schema, count: n };
 }
 
@@ -161,6 +162,7 @@ export const FIND_BATCH = 6;
 
 export function findRequest(thesis: Thesis, angle: { label: string; query: string }, focus: string | null, ex: Examples, want: number) {
   const n = Math.max(1, Math.min(FIND_BATCH, want));
+  const examplesBlock = examplesText(ex);
   const prompt = `Task: search the web along this angle and name up to ${n} companies that fit the thesis. Open the pages you find and read them: a company counts only if you saw it named on a page. Prefer companies that show a trigger event or intent signal. Fit is "High" when the company matches "${thesisQuestion("avatar").label}" closely and shows a trigger, "Medium" when it matches but shows no trigger, "Low" when it only partly matches.
 
 Angle: ${angle.label}
@@ -168,7 +170,7 @@ ${angle.query}
 ${focus?.trim() ? `\nThe user adds, for this run: ${focus.trim()}\n` : ""}
 Thesis:
 ${JSON.stringify(thesisData(thesis))}
-${examplesText(ex) ? `\n${examplesText(ex)}\n` : ""}
+${examplesBlock ? `\n${examplesBlock}\n` : ""}
 Answer as JSON: {"companies": [{"company": the organisation's name, "website": its official website URL or null, "location": city and state/country or null, "employees": your best estimate as a whole number or null, "fit": "High" | "Medium" | "Low", "whyFit": one or two sentences on why it matches the thesis, "whyNow": the trigger or signal that makes now the moment, or null, "budget": where the money would come from (a budget line, a grant, a program) or null, "clock": what is known of its buying clock (fiscal year, renewal, season) or null, "source": the URL of the page it was found on}]}`;
   const company = {
     type: "object",

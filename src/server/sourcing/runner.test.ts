@@ -7,13 +7,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { discoverySchema } from "../../shared/schema";
-import type { Candidate, DiscoveryRun } from "../../shared/sourcing";
+import { angleCount, type Candidate, type DiscoveryRun } from "../../shared/sourcing";
 import type { ThesisId } from "../../shared/types";
 import * as ai from "../ai";
 import { updateAiSettings } from "../ai/settings";
 import * as db from "../db";
 import { dismissCandidates } from "./accept";
-import { liveDiscovery, pauseDiscovery, resumeDiscovery, startDiscovery, stopDiscovery } from "./runner";
+import { FIND_RUNNING, liveDiscovery, pauseDiscovery, resumeDiscovery, startDiscovery, stopDiscovery } from "./runner";
 import * as store from "./store";
 
 const realAi = { ...ai };
@@ -267,6 +267,39 @@ describe("a Find run", () => {
     expect(second.status).toBe("stopped");
     expect(second.angles.map((a) => a.state)).toEqual(["done", "done", "skipped", "skipped"]);
     expect(liveDiscovery(id)).toEqual([]);
+    fakeTurn = null;
+  });
+
+  test("a plan with more angles than asked is trimmed, not refused", async () => {
+    const id = campaign();
+    agent({ plan: () => angles(9), find: () => ({ companies: [] }) });
+    const run = startDiscovery({ campaignId: id, kind: "find", target: 5, concurrency: 1 });
+    await until(() => finished(run));
+    expect(run.status).toBe("done");
+    expect(run.angles).toHaveLength(angleCount(5));
+    fakeTurn = null;
+  });
+
+  test("one Find at a time per campaign: a second is refused while the first is live", async () => {
+    const id = campaign();
+    const release: (() => void)[] = [];
+    agent({
+      plan: () => angles(2),
+      find: () => new Promise((resolve) => release.push(() => resolve({ companies: [] }))),
+    });
+    const run = startDiscovery({ campaignId: id, kind: "find", target: 5, concurrency: 1 });
+    await until(() => release.length === 1);
+    expect(() => startDiscovery({ campaignId: id, kind: "find", target: 5 })).toThrow(FIND_RUNNING);
+    // Another campaign, and a thesis draft on this one, are not held up.
+    expect(startDiscovery({ campaignId: id, kind: "thesis" }).kind).toBe("thesis");
+    stopDiscovery(run.id);
+    release.splice(0).forEach((r) => r());
+    await until(() => finished(run) && liveDiscovery(id).length === 0);
+    const again = startDiscovery({ campaignId: id, kind: "find", target: 5 });
+    expect(again.kind).toBe("find");
+    stopDiscovery(again.id);
+    release.splice(0).forEach((r) => r());
+    await until(() => liveDiscovery(id).length === 0);
     fakeTurn = null;
   });
 

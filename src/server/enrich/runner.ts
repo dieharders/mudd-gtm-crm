@@ -222,6 +222,12 @@ async function pump(ctrl: Controller): Promise<void> {
   };
   try {
     await Promise.all(Array.from({ length: run.concurrency }, worker));
+  } catch (err) {
+    // A throw processRow did not expect (the store, mid-write): the run failed, and says so,
+    // rather than ending "done" with its rows skipped, or leaving `done` rejected.
+    console.error("[enrich] run failed:", err);
+    run.status = "failed";
+    run.error ??= (err as Error).message;
   } finally {
     for (const r of Object.values(run.rows)) if (r.state === "pending" || r.state === "running") r.state = "skipped";
     if (run.status !== "failed") run.status = ctrl.abort.signal.aborted ? "stopped" : "done";

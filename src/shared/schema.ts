@@ -49,9 +49,13 @@ export const isEmployeesHeader = (header: string) => EMPLOYEES_HEADERS.includes(
  */
 export const WEBSITE_HEADERS = ["website", "url", "domain", "site", "homepage", "web", "companywebsite"];
 export function websiteColumn(schema: Pick<CampaignSchema, "columns">): Column | undefined {
-  return WEBSITE_HEADERS.map((n) => schema.columns.find((c) => norm(c.header) === n)).find(Boolean)
+  return columnByHeaders(schema.columns, WEBSITE_HEADERS)
     ?? schema.columns.find((c) => c.type === "url" && !/linkedin|meeting|profile/i.test(c.header));
 }
+
+/** The first column headed by any of these names (normalised), the names in order of preference. */
+export const columnByHeaders = (cols: Column[], names: string[]): Column | undefined =>
+  names.map((n) => cols.find((c) => norm(c.header) === n)).find(Boolean);
 
 /** A contact's job title. "Title" is not among them: see TITLE_HEADER. */
 export const ROLE_HEADERS = ["role", "jobtitle", "position", "contactrole", "decisionmakertitle"];

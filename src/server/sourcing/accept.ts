@@ -5,8 +5,7 @@
  * example for them.
  */
 import { mergeSources, sourcesColumn, type Source } from "../../shared/ai";
-import { norm } from "../../shared/merge";
-import { allColumns, DISCOVERY_FIELDS, discoveryColumn, EMPLOYEES_HEADER, FIT_OPTIONS, isEmployeesHeader, makeKey, prospectIds, ROLE_HEADERS, websiteColumn } from "../../shared/schema";
+import { allColumns, columnByHeaders, DISCOVERY_FIELDS, discoveryColumn, EMPLOYEES_HEADER, FIT_OPTIONS, isEmployeesHeader, makeKey, prospectIds, ROLE_HEADERS, websiteColumn } from "../../shared/schema";
 import { DEAL_ROLES, discoveryColumns, type Candidate, type CandidateContact, type EnrichChoice } from "../../shared/sourcing";
 import { CHECKED, stagesOf, type Campaign, type CampaignSchema, type CellValue, type Column, type Row } from "../../shared/types";
 import { CompanyIndex } from "../../shared/values";
@@ -84,8 +83,6 @@ export interface AcceptResult {
   candidates: Candidate[];
 }
 
-const byHeader = (cols: Column[], names: string[]) => names.map((n) => cols.find((c) => norm(c.header) === n)).find(Boolean);
-
 /** Set a cell from a found value, as the column stores it; nothing for an empty one. */
 function put(cells: Record<string, CellValue>, col: Column | undefined, raw: string | number | null | undefined): void {
   if (!col || raw === null || raw === undefined) return;
@@ -116,8 +113,11 @@ function recipesFor(campaignId: string, choice: EnrichChoice): string[] {
 
 export function acceptCandidates(campaignId: string, picks: AcceptPick[]): AcceptResult {
   // The candidates to accept, and the enrichment their runs chose, resolved first: a throw here
-  // leaves the list as it was, rather than prospects added and the reply lost to an error.
+  // leaves the list as it was, rather than prospects added and the reply lost to an error. A
+  // candidate picked twice is accepted once: its second pass would find itself in the list.
+  const seen = new Set<string>();
   const picked = picks
+    .filter((pick) => !seen.has(pick.id) && seen.add(pick.id))
     .map((pick) => ({ pick, c: store.getCandidate(campaignId, pick.id) }))
     .filter((x): x is { pick: AcceptPick; c: Candidate } => !!x.c && x.c.status !== "accepted" && x.c.status !== "dismissed" && x.c.status !== "mapping");
   const enrichment = new Map<string, { recipes: string[]; autoFill: boolean }>();
@@ -132,12 +132,12 @@ export function acceptCandidates(campaignId: string, picks: AcceptPick[]): Accep
   const intel = discoveryColumns(schema);
   const stages = stagesOf(schema);
   const website = websiteColumn(schema);
-  const location = byHeader(schema.columns, ["location", "city", "hq", "headquarters"]);
+  const location = columnByHeaders(schema.columns, ["location", "city", "hq", "headquarters"]);
   const employees = schema.columns.find((c) => c.header === EMPLOYEES_HEADER) ?? schema.columns.find((c) => isEmployeesHeader(c.header));
-  const sourceCol = byHeader(schema.columns, ["source"]);
+  const sourceCol = columnByHeaders(schema.columns, ["source"]);
   const sourcesKey = sourcesColumn(schema)?.key;
-  const roleCol = byHeader(cs.columns, ROLE_HEADERS);
-  const linkedinCol = byHeader(cs.columns, ["linkedin", "linkedinurl"]);
+  const roleCol = columnByHeaders(cs.columns, ROLE_HEADERS);
+  const linkedinCol = columnByHeaders(cs.columns, ["linkedin", "linkedinurl"]);
   const typeCol = cs.columns.find((c) => c.key === cs.typeKey);
   const fitCol = intel.fit && intel.fit.type === "select" ? { ...intel.fit, options: intel.fit.options?.length ? intel.fit.options : [...FIT_OPTIONS] } : intel.fit;
 

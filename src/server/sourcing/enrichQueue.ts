@@ -41,10 +41,16 @@ export function enqueueEnrichment(campaignId: string, rowIds: string[], recipeId
  */
 function kick(campaignId: string, q: Queue): void {
   if (q.running || !q.pending) return;
-  q.running = drain(campaignId, q).finally(() => {
-    q.running = null;
-    kick(campaignId, q);
-  });
+  q.running = drain(campaignId, q)
+    .catch((err: unknown) => {
+      // Never a rejected `running`: it would stay unhandled, and idle waiters would throw.
+      console.error("[discovery] enrichment of accepted prospects failed:", err);
+      q.pending = null;
+    })
+    .finally(() => {
+      q.running = null;
+      kick(campaignId, q);
+    });
 }
 
 /** Resolves once nothing is queued or running for the campaign (for tests). */
@@ -67,7 +73,9 @@ async function drain(campaignId: string, q: Queue): Promise<void> {
         console.error("[discovery] could not start enrichment of accepted prospects:", err);
         continue;
       }
-      await runDone(run.id);
+      // A run whose pump threw (a store error mid-row) is one that failed: its recipe's turn is
+      // over, and the batch's other recipes still get theirs.
+      await runDone(run.id).catch((err: unknown) => console.error("[discovery] enrichment run ended in error:", err));
       if (run.status === "failed") {
         q.pending = null;
         return;

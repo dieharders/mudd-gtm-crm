@@ -157,6 +157,20 @@ describe("telling companies apart", () => {
     expect(index.find("Beta Forge", "https://betaforge.com")).toBeUndefined();
   });
 
+  test("the domain's label is the registered one: a subdomain names no company, nor does a public suffix", () => {
+    expect(companyKeys("Acme", "https://info.acme.com")).toEqual(["d:info.acme.com", "n:acme"]);
+    expect(companyKeys("Beta", "https://info.beta.com")).toEqual(["d:info.beta.com", "n:beta"]);
+    expect(companyKeys("Gamma Ltd", "https://www.gamma.co.uk/")).toEqual(["d:gamma.co.uk", "n:gamma"]);
+    const index = new CompanyIndex<string>();
+    index.add("Acme", "https://info.acme.com", "P-001");
+    expect(index.find("Beta", "https://info.beta.com")).toBeUndefined();
+    expect(index.find("Info", null)).toBeUndefined();
+    // A prospect whose site is portal.example.com is not "Portal Inc".
+    index.add("Example", "https://portal.example.com", "P-002");
+    expect(index.find("Portal Inc", null)).toBeUndefined();
+    expect(index.find("Example Co", null)).toBe("P-002");
+  });
+
   test("two companies whose website is a page on a shared host are not one company", () => {
     const index = new CompanyIndex<string>();
     index.add("Acme", "https://www.linkedin.com/company/acme/", "P-001");

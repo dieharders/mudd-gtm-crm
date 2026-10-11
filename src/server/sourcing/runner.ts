@@ -57,6 +57,7 @@ const SAVE_EVERY = 2_000;
 
 export const NOT_DISCOVERY = "Discovery is for campaigns created with it.";
 export const THESIS_TOO_THIN = 'Answer "What do you sell?" and "Who qualifies?" first: Discovery can\'t search without them.';
+export const FIND_RUNNING = "Discovery is already searching this campaign. Wait for it to finish, or stop it first.";
 
 // ---------- storing and sending ----------
 
@@ -185,6 +186,9 @@ export function startDiscovery(input: StartDiscoveryInput): DiscoveryRun {
   const thesis = db.getThesis(input.campaignId);
   if (!thesis) throw new Error(NOT_DISCOVERY);
   if (input.kind === "find" && !canFind(thesis)) throw new Error(THESIS_TOO_THIN);
+  // One Find at a time per campaign: each run de-duplicates against what was known when it
+  // started, so two at once would both suggest the same companies.
+  if (input.kind === "find" && liveDiscovery(input.campaignId).some((r) => r.kind === "find")) throw new Error(FIND_RUNNING);
   const candidateIds = [...new Set(input.candidateIds ?? [])];
   if (input.kind === "map" && !candidateIds.length) throw new Error("Nothing to map.");
   const target = Math.max(1, Math.min(50, Math.round(input.target ?? 10) || 10));
@@ -415,7 +419,7 @@ async function worker(ctrl: Controller): Promise<void> {
 
 const normaliseType = (t: string | null): string | null => (t ? DEAL_ROLES.find((r) => r.toLowerCase() === t.trim().toLowerCase()) ?? null : null);
 const normaliseFit = (f: string | null): Candidate["fit"] => (f ? (FIT_OPTIONS.find((o) => o.toLowerCase() === f.trim().toLowerCase()) as Candidate["fit"] | undefined) ?? null : null);
-const link = (v: string | null): string | null => (v && hrefFor(v) ? hrefFor(v) : null);
+const link = (v: string | null): string | null => (v ? hrefFor(v) || null : null);
 
 async function doAngle(ctrl: Controller, angle: SearchAngle): Promise<void> {
   const { run } = ctrl;

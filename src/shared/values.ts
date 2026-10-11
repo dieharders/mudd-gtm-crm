@@ -226,6 +226,22 @@ export function companyKey(name: CellValue | undefined): string {
   return norm(String(name).replace(/[&+]/g, " and ").replace(COMPANY_SUFFIX, " "));
 }
 
+// Second-level labels that are part of the public suffix (acme.co.uk, acme.com.au), not a name.
+const SUFFIX_LABEL = /^(co|com|org|net|gov|edu|ac|mil|ltd|plc|nhs|police)$/;
+
+/**
+ * The label a domain is registered under: acme from acme.com, info.acme.com or acme.co.uk. The
+ * first label of a host is a subdomain (info, shop, portal) as often as a name, so it is never
+ * the key: info.acme.com and info.beta.com are two companies.
+ */
+function domainLabel(host: string): string {
+  const labels = host.split(".");
+  if (labels.length < 2) return "";
+  let i = labels.length - 2;
+  if (i > 0 && SUFFIX_LABEL.test(labels[i]!)) i--;
+  return labels[i]!;
+}
+
 /**
  * The keys a company is known by: its domain, its name, and the domain's own label (acme from
  * acme.com), so "Acme Inc." with no website still meets acme.com. On a shared host (a LinkedIn
@@ -239,7 +255,7 @@ export function companyKeys(name: CellValue | undefined, website: CellValue | un
     if (link.path) keys.push(`d:${link.host}${link.path}`);
   } else if (link) {
     keys.push(`d:${link.host}`);
-    const label = link.host.split(".")[0] ?? "";
+    const label = domainLabel(link.host);
     if (label.length >= 3) keys.push(`n:${norm(label)}`);
   }
   const n = companyKey(name);

@@ -49,18 +49,26 @@ export function useDiscovery(state: CampaignState, consent: ConsentGate) {
   });
 
   // ----- the thesis: typed answers go to the server a moment after the typing stops -----
+  // What is typed and not yet sent, and what is sent and not yet acknowledged: both are the
+  // user's, and win over a thesis the server publishes meanwhile (a draft turn that ran before
+  // the PUT landed would otherwise put its draft back over the typed answer).
   const pending = useRef<Map<ThesisId, string | null>>(new Map());
+  const inflight = useRef<Map<ThesisId, string | null>>(new Map());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushThesis = useCallback(async () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     if (!pending.current.size || !id) return;
     const answers = Object.fromEntries(pending.current) as Partial<Record<ThesisId, string | null>>;
+    for (const [qid, v] of pending.current) inflight.current.set(qid, v);
     pending.current.clear();
     try {
       await api.updateThesis(id, { answers });
     } catch (err) {
       toast.error(`Thesis not saved: ${(err as Error).message}`, { id: "thesis-error" });
+    } finally {
+      // Only what this PUT carried: a later flush may have the same question in flight anew.
+      for (const [qid, v] of Object.entries(answers) as [ThesisId, string | null][]) if (inflight.current.get(qid) === v) inflight.current.delete(qid);
     }
   }, [id]);
   useEffect(() => () => {
@@ -105,12 +113,12 @@ export function useDiscovery(state: CampaignState, consent: ConsentGate) {
     } else if (ev.type === "candidates") {
       setCandidates((prev) => withCandidates(prev, ev.candidates));
     } else if (ev.type === "thesis") {
-      // The server drafted answers: the user's own typing (waiting to be sent) wins over them.
+      // The server drafted answers: the user's own typing (sent or waiting to be) wins over them.
       setThesis((t: Thesis | null) => {
         if (!t) return ev.thesis;
         const answers = { ...ev.thesis.answers };
         const drafted = new Set(ev.thesis.drafted);
-        for (const [qid, v] of pending.current) {
+        for (const [qid, v] of [...inflight.current, ...pending.current]) {
           if (v === null) delete answers[qid];
           else answers[qid] = v;
           drafted.delete(qid);
