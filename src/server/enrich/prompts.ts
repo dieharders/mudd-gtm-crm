@@ -13,10 +13,9 @@ import type { Recipe } from "../../shared/ai";
 import { mergeTemplate, norm } from "../../shared/merge";
 import { columnOf, contactSchema, hookColumns, isContactKey, prospectSchema } from "../../shared/schema";
 import type { CampaignSchema, CellValue, Column, Template } from "../../shared/types";
+import { clip } from "../ai/prompt";
 
 const display = (v: CellValue | undefined) => (v === null || v === undefined ? "" : String(v).trim());
-/** A long cell (a pasted article) is cut: it is sent on every row of a run. */
-const clip = (v: string) => (v.length > 600 ? `${v.slice(0, 600)}…` : v);
 
 /** The contact's fields go under this, so a header both have (Notes) keeps both values. */
 export const CONTACT_FIELD = "Primary contact";

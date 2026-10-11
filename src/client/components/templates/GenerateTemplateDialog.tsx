@@ -5,21 +5,19 @@
  */
 import { RefreshCw, Wand2 } from "lucide-react";
 import { useState } from "react";
-import { THESIS_QUESTIONS } from "../../../shared/thesis";
+import { OUTREACH_PROBLEM_IDS, THESIS_QUESTIONS } from "../../../shared/thesis";
 import type { Thesis } from "../../../shared/types";
 import type { ConsentGate } from "../../hooks/useConsentGate";
 import { api, type GeneratedTemplate } from "../../lib/api";
 import { fire } from "../../lib/fire";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
-
-/** The thesis answers that describe the problem: what is sold, the pains, and the approach. */
-const PREFILL_IDS = ["offer", "pains", "approach"] as const;
+import { UnknownPlaceholders } from "./UnknownPlaceholders";
 
 /** A first draft of the problem description, from the thesis; empty without one. */
 export function prefillFromThesis(thesis: Thesis | null): string {
   if (!thesis) return "";
-  return PREFILL_IDS
+  return OUTREACH_PROBLEM_IDS
     .map((id) => {
       const a = thesis.answers[id]?.trim();
       const q = THESIS_QUESTIONS.find((x) => x.id === id);
@@ -47,8 +45,9 @@ export function GenerateTemplateDialog({ open, campaignId, thesis, consent, onKe
     try {
       const d = await consent.withConsent(() => api.generateTemplate(campaignId, problem));
       if (d) {
+        // A name the user already edited survives a regenerate; the model's is taken otherwise.
+        setName((cur) => (draft && cur.trim() && cur !== draft.name ? cur : d.name));
         setDraft(d);
-        setName(d.name);
       }
     } finally {
       setBusy(false);
@@ -98,11 +97,7 @@ export function GenerateTemplateDialog({ open, campaignId, thesis, consent, onKe
           <div>
             <p className="label">Message</p>
             <div className="rounded-xl border border-line bg-white p-3.5 font-mono text-[13px] leading-relaxed whitespace-pre-wrap shadow-xs" data-testid="gen-body">{draft.body}</div>
-            {draft.unknown.length > 0 && (
-              <p className="mt-1.5 text-xs text-amber-700">
-                {draft.unknown.map((u) => `{{${u}}}`).join(", ")} match no column and will be left as-is.
-              </p>
-            )}
+            <UnknownPlaceholders names={draft.unknown} />
           </div>
         </div>
       ) : (

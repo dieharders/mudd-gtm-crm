@@ -11,6 +11,13 @@ import type { Thesis, ThesisId } from "./types";
 
 export const THESIS_SHEET = "ICP thesis";
 
+/**
+ * The answers that describe the problem the founder is working on: what is sold, the pains, and
+ * the approach. "Generate with AI" for templates prefills its problem box with them, so the
+ * server leaves them out of the thesis it sends alongside.
+ */
+export const OUTREACH_PROBLEM_IDS: readonly ThesisId[] = ["offer", "pains", "approach"];
+
 export interface ThesisQuestion {
   id: ThesisId;
   label: string;

@@ -5,7 +5,7 @@
  */
 import { Braces, Plus, Trash2, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { mergeTemplate, placeholdersFor, tokenize } from "../../../shared/merge";
+import { mergeTemplate, placeholdersFor } from "../../../shared/merge";
 import { prospectSchema } from "../../../shared/schema";
 import { isScreened, type CampaignSchema, type Row, type Template, type Thesis } from "../../../shared/types";
 import { primaryOf, prospectCells, prospectTitle } from "../../../shared/values";
@@ -16,6 +16,7 @@ import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
 import { fire } from "../../lib/fire";
 import { GenerateTemplateDialog } from "./GenerateTemplateDialog";
+import { UnknownPlaceholders } from "./UnknownPlaceholders";
 
 const STARTER = `Hi {{First name}},
 
@@ -45,8 +46,10 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, co
   const [generating, setGenerating] = useState(false);
   const ai = useAi();
   const { ready: aiReady } = useActiveProvider();
-  // Without a provider signed in, the button opens the AI settings instead.
+  // Without a provider signed in, the button opens the AI settings instead. While the status is
+  // still loading it waits, so a signed-in provider isn't mistaken for none.
   const openGenerate = () => (aiReady ? setGenerating(true) : ai.setOpen(true));
+  const generateTitle = ai.loading ? "Checking AI setup…" : aiReady ? "Draft a template with AI" : "Set up AI first";
   // Preview against prospects still in play: nobody writes an intro to a screened-out one.
   const prospects = useMemo(() => rows.filter((r) => !isScreened(r, schema)), [rows, schema]);
   const [previewId, setPreviewId] = useState<string>(previewRowId ?? prospects[0]?.id ?? "");
@@ -94,7 +97,7 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, co
           <div className="flex w-56 shrink-0 flex-col border-r border-line">
             <div className="flex flex-col gap-1.5 border-b border-line p-2">
               <Button variant="primary" size="sm" onClick={() => fire(create())}><Plus size={14} /> New template</Button>
-              <Button size="sm" onClick={openGenerate} title={aiReady ? "Draft a template with AI" : "Set up AI first"}><Wand2 size={14} /> Generate with AI</Button>
+              <Button size="sm" onClick={openGenerate} disabled={ai.loading} title={generateTitle}><Wand2 size={14} /> Generate with AI</Button>
             </div>
           <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2 scroll-thin">
             {templates.map((t) => (
@@ -137,7 +140,10 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, co
         </div>
       </div>
       {generating && state.campaign && (
-        <GenerateTemplateDialog open campaignId={state.campaign.id} thesis={thesis} consent={consent} onKeep={keepGenerated} onClose={() => setGenerating(false)} />
+        // A click on the dialog's own backdrop must not reach the panel's, which would close both.
+        <div onMouseDown={(e) => e.stopPropagation()}>
+          <GenerateTemplateDialog open campaignId={state.campaign.id} thesis={thesis} consent={consent} onKeep={keepGenerated} onClose={() => setGenerating(false)} />
+        </div>
       )}
     </div>
   );
@@ -159,8 +165,7 @@ function Editor({ tpl, schema, state, preview, previewSelect, onDelete, confirmi
   const latest = useRef({ name, body });
   latest.current = { name, body };
   const chips = useMemo(() => placeholdersFor(schema), [schema]);
-  const tokens = useMemo(() => tokenize(body, schema), [body, schema]);
-  const unknown = tokens.filter((t) => t.placeholder && !t.placeholder.known).map((t) => t.placeholder!.name);
+  const unknown = useMemo(() => mergeTemplate(body, schema, {}).unknown, [body, schema]);
   const merged = preview ? mergeTemplate(body, schema, preview.cells) : null;
 
   // Saved as you type, a moment after you stop.
@@ -214,11 +219,7 @@ function Editor({ tpl, schema, state, preview, previewSelect, onDelete, confirmi
             value={body}
             onChange={(e) => { setBody(e.target.value); queueSave({ name, body: e.target.value }); }}
           />
-          {unknown.length > 0 && (
-            <p className="mt-1.5 text-xs text-amber-700">
-              {[...new Set(unknown)].map((u) => `{{${u}}}`).join(", ")} match no column and will be left as-is.
-            </p>
-          )}
+          <UnknownPlaceholders names={unknown} />
         </div>
         <div>
           <p className="label flex items-center gap-1"><Braces size={12} /> Insert a placeholder</p>

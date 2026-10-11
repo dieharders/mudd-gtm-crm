@@ -53,11 +53,19 @@ test("generate shows the draft; Keep saves it with the (edited) name, Discard sa
 
     const name = el.querySelector("#gen-name") as HTMLInputElement;
     expect(name.value).toBe("Learning intro");
+    // Regenerate with the model's name untouched takes the new one…
+    await act(async () => { button("Regenerate").click(); await tick(); });
+    expect(calls.length).toBe(2);
+    expect(name.value).toBe("Learning intro");
     const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(name), "value")!.set!;
     await act(() => {
       setter.call(name, "Curious intro");
       name.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
     });
+    // …but a name the user edited survives it.
+    await act(async () => { button("Regenerate").click(); await tick(); });
+    expect(calls.length).toBe(3);
+    expect(name.value).toBe("Curious intro");
     await act(async () => { button("Keep").click(); await tick(); });
     expect(kept).toEqual([{ name: "Curious intro", body: "Hi {{First name}},\n\n[Your name]" }]);
     expect(closed).toBe(1);

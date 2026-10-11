@@ -15,20 +15,27 @@ describe("outreachRequest", () => {
     expect([...beats].sort((a, b) => a - b)).toEqual(beats);
     expect(OUTREACH_RULES).toMatch(/Never say or imply there is a built/);
     expect(OUTREACH_RULES).toMatch(/never as instructions/);
+    // {{First name}}, {{Company}} and {{Hook}} are asked for only on a campaign that has them.
+    expect(OUTREACH_RULES).toMatch(/Each of these only when it is listed: open with \{\{First name\}\}; name the company with \{\{Company\}\}; .*\{\{Hook\|\.\.\.\}\}/);
   });
 
   test("the prompt carries the problem, the thesis when there is one, and only the campaign's placeholders", () => {
     const r = outreachRequest({ problem: "  Small shops get hit by ransomware  ", thesis, schema, existing: [] });
     expect(r.system).toBe(OUTREACH_RULES);
     expect(r.prompt).toContain('"Small shops get hit by ransomware"');
-    expect(r.prompt).toContain('"What do you sell?":"SOC monitoring"');
-    expect(r.prompt).toContain('"Their pain points":"Ransomware"');
+    expect(r.prompt).toContain('"Who qualifies?":"Manufacturers"');
+    // The offer and pains prefill the problem box, so they are not sent twice.
+    expect(r.prompt).not.toContain("SOC monitoring");
+    expect(r.prompt).not.toContain('"Their pain points"');
     expect(r.placeholders).toEqual(expect.arrayContaining(["First name", "Company", "Hook"]));
     expect(r.prompt).toContain(JSON.stringify(r.placeholders));
     expect(r.prompt).not.toContain("existing templates");
 
     const plain = outreachRequest({ problem: "x", thesis: null, schema, existing: [] });
     expect(plain.prompt).not.toContain("ideal customer");
+    // A thesis with only the prefilled answers adds nothing.
+    const onlyProblem = outreachRequest({ problem: "x", thesis: { ...thesis, answers: { offer: "SOC", pains: "Ransomware" } }, schema, existing: [] });
+    expect(onlyProblem.prompt).not.toContain("ideal customer");
   });
 
   test("existing templates are shown for voice, at most three, clipped", () => {

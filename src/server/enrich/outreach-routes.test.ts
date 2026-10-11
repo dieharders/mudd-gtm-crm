@@ -52,6 +52,8 @@ describe("POST /api/campaigns/:id/templates/generate", () => {
     const c = (await call<Campaign>("POST", "/api/campaigns", { name: "Plain", layout: "generic" })).json;
     settings.updateAiSettings({ consented: false });
     expect((await generate(c.id, "   ")).status).toBe(400);
+    expect((await call("POST", `/api/campaigns/${c.id}/templates/generate`, { problem: 42 })).status).toBe(400);
+    expect((await call("POST", `/api/campaigns/${c.id}/templates/generate`, {})).status).toBe(400);
     const r = await generate(c.id, "Ransomware at small shops");
     expect(r.status).toBe(403);
     expect(r.json.error).toMatch(/AI provider/);
@@ -72,7 +74,7 @@ describe("POST /api/campaigns/:id/templates/generate", () => {
       expect(r.json).toEqual({ name: "Learning intro", body: "Hi {{First name}} at {{Company}}, {{Budget}}\n\n[Your name]", unknown: ["Budget"] });
       expect(seen!.webSearch).toBe(false);
       expect(seen!.prompt).toContain("Ransomware at small shops");
-      expect(seen!.prompt).toContain('"SOC monitoring"');
+      expect(seen!.prompt).toContain('"Manufacturers"');
       expect((await call<Template[]>("GET", `/api/campaigns/${c.id}/templates`)).json).toEqual([]);
 
       fakeTurn = () => Promise.reject(new ai.AiError("bad_output", "The reply could not be read."));

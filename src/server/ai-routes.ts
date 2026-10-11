@@ -87,8 +87,8 @@ export function registerAiRoutes(on: On, { json, body, fail }: { json: Json; bod
   // the page shows it first, and Keep creates it through the ordinary templates route.
   on("POST", "/api/campaigns/:id/templates/generate", async (req, [id]) => {
     const campaign = mustCampaign(id!);
-    const b = await body<{ problem?: string }>(req);
-    const problem = b.problem?.trim() ?? "";
+    const b = await body<{ problem?: unknown }>(req);
+    const problem = typeof b.problem === "string" ? b.problem.trim() : "";
     if (!problem) fail(400, "Say what problem you're working on first.");
     if (!getAiSettings().consented) fail(403, "Confirm that Mudd may send these rows to your AI provider first.");
     const r = outreachRequest({ problem, thesis: db.getThesis(id!), schema: campaign.schema, existing: db.listTemplates(id!) });
