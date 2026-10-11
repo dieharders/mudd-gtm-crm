@@ -13,7 +13,7 @@ import { registerAiRoutes } from "./ai-routes";
 import { dialogsSupported, downloadsDir, openDialog, openExternal } from "./dialogs";
 import { stopAllAiWork, stopCampaignRuns } from "./enrich/runner";
 import { markInterruptedRuns } from "./enrich/store";
-import { checkForUpdate, installUpdate } from "./update";
+import { checkForUpdate, installUpdate, releaseNotes } from "./update";
 
 const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
@@ -297,6 +297,13 @@ on("POST", "/api/open-url", async (req) => {
 on("GET", "/api/meetings", () => json(db.listMeetings()));
 
 on("GET", "/api/update", async () => json(await checkForUpdate()));
+on("GET", "/api/update/notes", async () => {
+  try {
+    return json(await releaseNotes());
+  } catch (err) {
+    throw new HttpError(502, (err as Error).message);
+  }
+});
 on("POST", "/api/update/install", async () => {
   const installed = await installUpdate();
   // The page restarts Mudd next, and that quits at once, without the worker's shutdown.

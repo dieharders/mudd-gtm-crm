@@ -20,7 +20,7 @@ import { domainAcceptsMail } from "./mx";
 import { enrichRequest, introRequest } from "./prompts";
 import * as store from "./store";
 import { publish } from "./hub";
-import { mergeSources, recipeMode, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type RunKind, type Source, type Suggestion } from "../../shared/ai";
+import { mergeSources, recipeMode, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type ProviderId, type RunKind, type Source, type Suggestion } from "../../shared/ai";
 import { allColumns, columnOf, isContactKey, makeKey } from "../../shared/schema";
 import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../shared/types";
 import { contactLabel, parseFlag, primaryOf, prospectCells, researchedContacts, sameValue, samePerson, toNumber } from "../../shared/values";
@@ -103,6 +103,11 @@ export function liveRuns(campaignId: string): EnrichRun[] {
   return [...active.values()].filter((c) => c.run.campaignId === campaignId).map((c) => c.run);
 }
 
+/** How many runs, in any campaign, are still going on a provider's sign-in. */
+export function liveRunsOn(provider: ProviderId): number {
+  return [...active.values()].filter((c) => c.run.provider === provider).length;
+}
+
 export interface StartRunInput {
   campaignId: string;
   kind: RunKind;
@@ -116,6 +121,8 @@ export interface StartRunInput {
 
 export function startRun(input: StartRunInput): EnrichRun {
   const settings = getAiSettings();
+  const provider = settings.provider;
+  if (!provider) throw new Error("No AI provider chosen. Open AI settings to pick one.");
   const recipe = input.recipeId ? store.getRecipe(input.recipeId) : null;
   if (input.kind === "enrich" && !recipe) throw new Error("That recipe no longer exists.");
   if (input.kind === "intro" && !db.listTemplates(input.campaignId).length) throw new Error("Add an intro template first: the AI writes from your templates.");
@@ -130,8 +137,8 @@ export function startRun(input: StartRunInput): EnrichRun {
     label: input.kind === "intro" ? "Intro messages" : recipe!.name,
     status: "running",
     test: input.test,
-    provider: settings.provider,
-    model: settings.model[settings.provider]!,
+    provider,
+    model: settings.model[provider]!,
     concurrency: Math.max(1, Math.min(4, Math.round(input.concurrency) || 2)),
     autoFill: input.autoFill,
     rowIds,

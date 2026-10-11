@@ -17,8 +17,9 @@ export interface ProviderInfo {
   plan: string;
   models: { value: string; label: string }[];
   efforts: string[];
-  install: string;
-  loginHint: string;
+  /** The CLI's own sign-in and sign-out subcommands. */
+  loginArgs: string[];
+  logoutArgs: string[];
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
@@ -34,8 +35,8 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
       { value: "default", label: "Claude Code default" },
     ],
     efforts: ["low", "medium", "high"],
-    install: "npm install -g @anthropic-ai/claude-code",
-    loginHint: "claude auth login",
+    loginArgs: ["auth", "login"],
+    logoutArgs: ["auth", "logout"],
   },
   codex: {
     id: "codex",
@@ -44,8 +45,8 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     plan: "ChatGPT Plus, Pro or Business",
     models: [{ value: "default", label: "Codex default" }],
     efforts: ["low", "medium", "high"],
-    install: "npm install -g @openai/codex",
-    loginHint: "codex login",
+    loginArgs: ["login"],
+    logoutArgs: ["logout"],
   },
 };
 
@@ -67,21 +68,28 @@ export interface ProviderStatus {
   auth: ProviderAuth;
 }
 
+/**
+ * Server → page while installing a CLI or signing in, over the request's own event stream.
+ * `url` says the sign-in page can be reopened.
+ */
+export type SetupEvent =
+  | { type: "log"; line: string }
+  | { type: "url" }
+  | { type: "done"; ok: boolean; message: string };
+
 export interface AiSettings {
-  provider: ProviderId;
+  /** Null until the user picks one in AI settings: Mudd doesn't choose a vendor for them. */
+  provider: ProviderId | null;
   model: Record<ProviderId, string>;
   effort: Record<ProviderId, string>;
-  /** `subscription` strips API-key variables from the CLI's environment. */
-  credentialMode: "subscription" | "auto";
   /** The user has agreed that enrichment sends row data to their provider. */
   consented: boolean;
 }
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
-  provider: "claude",
+  provider: null,
   model: { claude: "sonnet", codex: "default" },
   effort: { claude: "low", codex: "low" },
-  credentialMode: "subscription",
   consented: false,
 };
 
@@ -209,8 +217,7 @@ export type CampaignEvent =
   | { type: "suggestions"; suggestions: Suggestion[] }
   | { type: "cells"; edits: { rowId: string; key: string; value: CellValue }[] }
   /** Rows the server added (a run's first contact for a prospect that had none). */
-  | { type: "rows"; rows: Row[] }
-  | { type: "ping" };
+  | { type: "rows"; rows: Row[] };
 
 /** The runs with one row update applied. The same array when the run isn't among them. */
 export function applyRunRow(runs: EnrichRun[], ev: RunRowEvent): EnrichRun[] {

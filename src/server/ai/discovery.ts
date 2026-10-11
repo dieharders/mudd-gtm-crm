@@ -5,18 +5,22 @@
  * spawning a `.cmd` goes through cmd.exe, which re-parses arguments — so a shim is resolved to
  * what it actually launches (`claude.exe`, or `[node, codex.js]`) and that is spawned directly.
  *
- * Search order: explicit env override → PATH (shims resolved) → the npm global prefix →
- * well-known directories → the copy bundled with the Claude Agent SDK. Each candidate is asked
- * for `--version`, and copies older than the minimum this app drives are passed over.
+ * Search order: explicit env override → the copy Mudd installed (install.ts) → PATH (shims
+ * resolved) → the npm global prefix → well-known directories → the copy bundled with the Claude
+ * Agent SDK. Each candidate is asked for `--version`, and copies older than the minimum this app
+ * drives are passed over.
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { ProviderId } from "../../shared/ai";
+import { managedBinary } from "./install";
 import { captureCommand } from "./proc";
 
 const IS_WIN = process.platform === "win32";
 
 export interface CliSpec {
+  id: ProviderId;
   binary: string;
   npm: { package: string; bin: string[] };
   /** Packages that bundle a platform binary (the Agent SDK ships Claude Code). */
@@ -40,6 +44,7 @@ export const MIN_CLAUDE_VERSION = "2.1.41";
 export const MIN_CODEX_VERSION = "0.79.0";
 
 export const CLAUDE_SPEC: CliSpec = {
+  id: "claude",
   binary: "claude",
   npm: { package: "@anthropic-ai/claude-code", bin: ["bin", IS_WIN ? "claude.exe" : "claude"] },
   bundled: [{ package: `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`, bin: IS_WIN ? "claude.exe" : "claude" }],
@@ -48,6 +53,7 @@ export const CLAUDE_SPEC: CliSpec = {
 };
 
 export const CODEX_SPEC: CliSpec = {
+  id: "codex",
   binary: "codex",
   npm: { package: "@openai/codex", bin: ["bin", "codex.js"] },
   minVersion: MIN_CODEX_VERSION,
@@ -120,6 +126,8 @@ function candidates(spec: CliSpec): string[] {
     if (p && !out.includes(p)) out.push(p);
   };
   add(process.env[spec.envOverride]);
+  // Before PATH: the copy Mudd installed is the one it knows works.
+  add(managedBinary(spec.id));
   const onPath = Bun.which(spec.binary);
   if (onPath) add(IS_WIN && /\.(cmd|ps1|bat)$/i.test(onPath) ? resolveShim(onPath, spec) : onPath);
   if (IS_WIN) {

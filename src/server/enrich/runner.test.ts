@@ -10,6 +10,7 @@ import type { CampaignEvent, Suggestion } from "../../shared/ai";
 import { allColumns, genericSchema } from "../../shared/schema";
 import { CHECKED, type CellValue } from "../../shared/types";
 import * as ai from "../ai";
+import { updateAiSettings } from "../ai/settings";
 import * as db from "../db";
 import { eventStream } from "./hub";
 import { ensureSourcesColumn, liveRuns, normaliseValue, recentRuns, startRun, stopCampaignRuns } from "./runner";
@@ -29,6 +30,8 @@ beforeAll(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-runner-"));
   db.closeDb();
   process.env.MUDD_DATA_DIR = dir;
+  // A run needs a provider chosen; the turns themselves are faked.
+  updateAiSettings({ provider: "claude" });
 });
 afterAll(() => {
   fakeTurn = null;
@@ -156,7 +159,7 @@ describe("runs", () => {
     // The page: the whole run, then one event per row, then the whole run again.
     await until(() => sse.events.some((e) => e.type === "run" && e.run.status === "done"));
     void sse.close();
-    const events = sse.events.filter((e) => e.type !== "ping");
+    const { events } = sse;
     expect(events[0]).toMatchObject({ type: "run", run: { id: run.id, status: "running" } });
     expect(events.at(-1)).toMatchObject({ type: "run", run: { id: run.id, status: "done" } });
     const rows = events.slice(1, -1);

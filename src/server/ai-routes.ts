@@ -1,13 +1,14 @@
 /** API routes for AI settings, recipes, enrichment runs, suggestions and the event stream. */
 import type { AiSettings, CampaignEvent, IntroOptions, ProviderId, RecipeOutput, RunKind, SuggestionStatus } from "../shared/ai";
-import { PROVIDER_IDS } from "../shared/ai";
+import { PROVIDER_IDS, PROVIDERS } from "../shared/ai";
 import { allColumns, columnOf, EMPLOYEES_HEADER, isEmployeesHeader, makeKey, typeFromHeader } from "../shared/schema";
 import type { CampaignSchema, ColumnType } from "../shared/types";
-import { openSignIn, providerStatus } from "./ai";
+import { providerStatus } from "./ai";
 import { getAiSettings, updateAiSettings } from "./ai/settings";
+import { installStream, openSignInPage, signInStream, signOut } from "./ai/setup";
 import * as db from "./db";
 import { eventStream } from "./enrich/hub";
-import { ensureSourcesColumn, liveRuns, pauseRun, recentRuns, resumeRun, startRun, stopRun } from "./enrich/runner";
+import { ensureSourcesColumn, liveRuns, liveRunsOn, pauseRun, recentRuns, resumeRun, startRun, stopRun } from "./enrich/runner";
 import * as store from "./enrich/store";
 
 type Json = (data: unknown, status?: number) => Response;
@@ -66,10 +67,17 @@ export function registerAiRoutes(on: On, { json, body, fail }: { json: Json; bod
     return json({ settings: getAiSettings(), providers });
   });
   on("PATCH", "/api/ai/settings", async (req) => json(updateAiSettings(await body<Partial<AiSettings>>(req))));
-  on("POST", "/api/ai/signin", async (req) => {
-    const { provider } = await body<{ provider: ProviderId }>(req);
-    if (!PROVIDER_IDS.includes(provider)) fail(400, "Unknown provider.");
-    return json(await openSignIn(provider));
+  const providerOf = (b: { provider?: unknown }) => (PROVIDER_IDS.includes(b.provider as ProviderId) ? (b.provider as ProviderId) : fail(400, "Unknown provider."));
+  // Install and sign-in answer with an event stream; closing it cancels them.
+  on("POST", "/api/ai/install", async (req) => installStream(providerOf(await body<{ provider?: unknown }>(req)), req.signal));
+  on("POST", "/api/ai/signin", async (req) => signInStream(providerOf(await body<{ provider?: unknown }>(req)), req.signal));
+  on("POST", "/api/ai/signin/open", async (req) => json({ ok: openSignInPage(providerOf(await body<{ provider?: unknown }>(req))) }));
+  on("POST", "/api/ai/signout", async (req) => {
+    const provider = providerOf(await body<{ provider?: unknown }>(req));
+    // The sign-in is one per machine: removing it mid-run fails every turn left.
+    const live = liveRunsOn(provider);
+    if (live) fail(409, `${live === 1 ? "A run is" : `${live} runs are`} still using ${PROVIDERS[provider].label}. Stop ${live === 1 ? "it" : "them"} first, then sign out.`);
+    return json(await signOut(provider));
   });
 
   // ----- recipes -----

@@ -3,11 +3,10 @@
  * The page opens one stream while a campaign is on screen.
  */
 import type { CampaignEvent } from "../../shared/ai";
+import { sseFrame, sseResponse } from "../sse";
 
 type Send = (frame: string) => void;
 const subscribers = new Map<string, Set<Send>>();
-
-const frame = (ev: CampaignEvent) => `data: ${JSON.stringify(ev)}\n\n`;
 
 /**
  * Send an event to every page showing the campaign. It is serialised once, before this
@@ -16,7 +15,7 @@ const frame = (ev: CampaignEvent) => `data: ${JSON.stringify(ev)}\n\n`;
 export function publish(campaignId: string, ev: CampaignEvent): void {
   const subs = subscribers.get(campaignId);
   if (!subs?.size) return;
-  const data = frame(ev);
+  const data = sseFrame(ev);
   for (const send of subs) send(data);
 }
 
@@ -26,32 +25,17 @@ export function publish(campaignId: string, ev: CampaignEvent): void {
  * mid-run gets each live run as it is now, then every change to it.
  */
 export function eventStream(campaignId: string, snapshot: () => CampaignEvent[] = () => []): Response {
-  const enc = new TextEncoder();
   let send: Send | null = null;
-  let ping: ReturnType<typeof setInterval> | null = null;
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      send = (data) => {
-        try {
-          controller.enqueue(enc.encode(data));
-        } catch {
-          /* closed */
-        }
-      };
+  return sseResponse(
+    (push) => {
+      send = push;
       const set = subscribers.get(campaignId) ?? new Set();
       set.add(send);
       subscribers.set(campaignId, set);
-      controller.enqueue(enc.encode(": connected\n\n"));
-      for (const ev of snapshot()) send(frame(ev));
-      // Under the server's idle timeout, so a quiet stream is never cut.
-      ping = setInterval(() => send?.(frame({ type: "ping" })), 25_000);
+      for (const ev of snapshot()) send(sseFrame(ev));
     },
-    cancel() {
-      if (ping) clearInterval(ping);
+    () => {
       if (send) subscribers.get(campaignId)?.delete(send);
     },
-  });
-  return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" },
-  });
+  );
 }

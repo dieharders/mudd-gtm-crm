@@ -7,7 +7,8 @@ interface AiState {
   settings: AiSettings | null;
   providers: ProviderStatus[];
   loading: boolean;
-  refresh: (fresh?: boolean) => Promise<void>;
+  /** Re-read every provider's status; resolves to it. */
+  refresh: (fresh?: boolean) => Promise<ProviderStatus[]>;
   update: (patch: Partial<AiSettings>) => Promise<AiSettings>;
   open: boolean;
   setOpen: (v: boolean) => void;
@@ -31,6 +32,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
       const s = await api.aiStatus(fresh);
       setSettings(s.settings);
       setProviders(s.providers);
+      return s.providers;
     } finally {
       setLoading(false);
     }

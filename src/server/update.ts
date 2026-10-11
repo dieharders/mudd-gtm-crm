@@ -18,7 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
 import { version as CURRENT_VERSION } from "../../package.json";
-import type { UpdateInfo } from "../shared/types";
+import type { ReleaseNotes, UpdateInfo } from "../shared/types";
 import { compareVersions } from "./ai/discovery";
 
 export const RELEASES_REPO = "dieharders/mudd-gtm-crm";
@@ -78,6 +78,39 @@ export function describe(release: Release | null, current = CURRENT_VERSION, tar
   // A release without this platform's download is not an update for it.
   const newer = release && version && compareVersions(version, current) > 0 && assetFor(release, target);
   return { current, latest: newer ? { version: version!, url: release.html_url } : null, installed: null, blocked };
+}
+
+/**
+ * The changes in a release's notes: the items under GitHub's generated "What's Changed", each a
+ * pull request title ("Enhancement/remove build dmg by @x in https://…"). The author, the link
+ * and the branch-style prefix are dropped, leaving "Remove build dmg". Only the usual branch
+ * kinds count as a prefix, so "I/O errors…" keeps its "I/". The rest of the notes is download
+ * instructions, for someone who doesn't have Mudd yet.
+ */
+const BRANCH_PREFIX = /^(?:feat|feature|enhancement|improvement|fix|bugfix|hotfix|chore|refactor|docs?|perf|style|tests?|ci|build|release|update)s?\/(?=\S)/i;
+
+export function parseChanges(body: string): string[] {
+  const section = /^##\s*What's Changed\s*$([\s\S]*?)(?=^##\s|^\*\*Full Changelog|(?![\s\S]))/im.exec(body)?.[1] ?? "";
+  return section
+    .split(/\r?\n/)
+    .map((l) => /^\s*[*-]\s+(.+)$/.exec(l)?.[1] ?? "")
+    .map((l) => l.replace(/\s+by @\S+(\s+in\s+\S+)?\s*$/, "").replace(BRANCH_PREFIX, "").trim())
+    .filter(Boolean)
+    .map((l) => l[0]!.toUpperCase() + l.slice(1));
+}
+
+/** The running version's release notes. Throws a message fit to show. */
+export async function releaseNotes(current = CURRENT_VERSION): Promise<ReleaseNotes> {
+  let res: Response;
+  try {
+    res = await fetch(`https://api.github.com/repos/${RELEASES_REPO}/releases/tags/v${current}`, { headers: HEADERS, signal: AbortSignal.timeout(10_000) });
+  } catch {
+    throw new Error("Mudd couldn't reach GitHub for the release notes. Check your connection and try again.");
+  }
+  if (res.status === 404) throw new Error(`Mudd ${current} has no published release notes.`);
+  if (!res.ok) throw new Error(`GitHub didn't answer about the release notes (${res.status}). Try again later.`);
+  const release = (await res.json()) as { name?: string | null; body?: string | null };
+  return { version: current, title: release.name?.trim() || `Mudd v${current}`, changes: parseChanges(release.body ?? "") };
 }
 
 /** The latest published release, or null when there is none. Throws when GitHub can't be asked. */
@@ -147,7 +180,7 @@ export async function applyUpdate(zip: Uint8Array, target: string, platform = pr
     }
     // Say so, rather than "EPERM: operation not permitted, open '…\Mudd.exe.new'".
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === "EPERM" || code === "EACCES" || code === "EBUSY") throw new Error("Mudd can't replace itself where it's installed. Download the update instead.");
+    if (code === "EPERM" || code === "EACCES" || code === "EBUSY") throw new Error("Mudd can't replace itself where it's installed. Download the update instead.", { cause: err });
     throw err;
   } finally {
     staged.discard();

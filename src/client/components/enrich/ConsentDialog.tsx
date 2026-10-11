@@ -7,7 +7,9 @@ import { Modal } from "../ui/Modal";
 
 export function ConsentDialog({ open, onConfirm, onCancel }: { open: boolean; onConfirm: () => void; onCancel: () => void }) {
   const { settings } = useAi();
-  const p = PROVIDERS[settings?.provider ?? "claude"];
+  // A run can't start without a provider; the server says so if one is tried.
+  if (!settings?.provider) return null;
+  const p = PROVIDERS[settings.provider];
   return (
     <Modal
       open={open}

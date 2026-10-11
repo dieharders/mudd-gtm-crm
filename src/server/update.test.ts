@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
-import { applyUpdate, blockedReason, cleanUpAfterUpdate, describe as describeUpdate, installTarget, verifyDownload, waitForExit, type Release } from "./update";
+import { applyUpdate, blockedReason, cleanUpAfterUpdate, describe as describeUpdate, installTarget, parseChanges, verifyDownload, waitForExit, type Release } from "./update";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-update-"));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -17,6 +17,20 @@ const release = (tag: string, assets: string[]): Release => ({
   tag_name: tag,
   html_url: `https://github.com/x/y/releases/tag/${tag}`,
   assets: assets.map((name) => ({ name, browser_download_url: `https://example.invalid/${name}`, size: 1 })),
+});
+
+describe("release notes", () => {
+  test("the What's Changed items, without author, link or branch prefix", () => {
+    const body = "Download the file for your platform.\r\n\r\n- **Windows**: unzip and run `Mudd.exe`.\r\n\r\n## What's Changed\r\n* Enhancement/remove build dmg by @dieharders in https://github.com/dieharders/mudd-gtm-crm/pull/7\r\n* fix the sidebar by @a in https://x.io/pull/8\r\n\r\n\r\n**Full Changelog**: https://github.com/dieharders/mudd-gtm-crm/compare/v0.1.7...v0.1.8";
+    expect(parseChanges(body)).toEqual(["Remove build dmg", "Fix the sidebar"]);
+  });
+  test("a slash in the title itself stays", () => {
+    const body = "## What's Changed\n* I/O errors no longer crash export by @a in https://x.io/pull/9\n* A/B test the intros by @a in https://x.io/pull/10\n* bugfix/missing cli by @a in https://x.io/pull/11";
+    expect(parseChanges(body)).toEqual(["I/O errors no longer crash export", "A/B test the intros", "Missing cli"]);
+  });
+  test("none listed", () => {
+    expect(parseChanges("Download the file for your platform.\n- **Windows**: unzip")).toEqual([]);
+  });
 });
 
 describe("installTarget", () => {

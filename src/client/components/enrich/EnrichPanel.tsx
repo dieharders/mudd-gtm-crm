@@ -186,7 +186,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
             <p className="text-xs text-ink-soft">Research every prospect and fill columns, with a source for each finding.</p>
           </div>
           <button onClick={() => ai.setOpen(true)} className={cn("tag", ready ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-800")}>
-            {ready ? "●" : <TriangleAlert size={11} />} {ai.settings ? PROVIDERS[ai.settings.provider].label : "AI"}{status?.auth.plan ? ` · ${status.auth.plan}` : ""}
+            {ready ? "●" : <TriangleAlert size={11} />} {ai.settings?.provider ? PROVIDERS[ai.settings.provider].label : "No AI provider chosen"}{status?.auth.plan ? ` · ${status.auth.plan}` : ""}
           </button>
           <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close enrich"><X size={16} /></Button>
         </div>
