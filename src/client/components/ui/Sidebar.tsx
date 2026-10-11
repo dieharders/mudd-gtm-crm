@@ -64,81 +64,81 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
   // Icon-only and centred in the rail; label, count and a left-aligned row when wide.
   const item = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "group relative flex h-9 items-center justify-center gap-2.5 rounded-xl border-2 text-[13px] font-bold transition wide:justify-start wide:px-2.5",
-      isActive ? "border-mud bg-paper text-mud shadow-hard-sm" : "border-transparent text-mud-soft hover:bg-paper-deep hover:text-mud",
+      "group relative flex h-11 items-center justify-center gap-3 rounded-xl border-2 text-[15px] transition wide:justify-start wide:px-3",
+      isActive ? "border-rim bg-paper font-extrabold text-mud shadow-hard-sm" : "border-transparent font-semibold text-mud-soft hover:bg-paper-deep hover:text-mud",
     );
 
   return (
-    <aside className="paper flex w-14 shrink-0 flex-col border-r-2 border-mud bg-paper wide:w-60">
-      <div className="flex h-14 items-center justify-center gap-2 px-2 wide:justify-start wide:px-4">
-        <Logo size={28} />
-        <span className="hidden font-display text-[19px] font-bold tracking-tight wide:inline">mudd</span>
+    <aside className="paper flex w-16 shrink-0 flex-col border-r-2 border-rim bg-paper wide:w-64">
+      <div className="flex h-16 items-center justify-center gap-2.5 px-2 wide:justify-start wide:px-4">
+        <Logo size={32} />
+        <span className="hidden font-display text-[23px] font-bold tracking-tight wide:inline">mudd</span>
       </div>
 
-      <div className="flex flex-col gap-2 px-2 pb-3 wide:flex-row wide:px-3">
+      <div className="flex flex-col gap-2.5 px-2.5 pb-4 wide:flex-row wide:px-3">
         <button onClick={onNewCampaign} className="paper-btn paper-btn-primary paper-btn-icon wide:w-auto wide:flex-1 wide:px-3" title="New campaign" aria-label="New campaign">
-          <Plus size={16} /> <span className="hidden wide:inline">New campaign</span>
+          <Plus size={18} /> <span className="hidden wide:inline">New campaign</span>
         </button>
         <button onClick={startImport} disabled={busy} title="Import a spreadsheet" aria-label="Import a spreadsheet" className="paper-btn paper-btn-icon">
-          <FolderOpen size={16} />
+          <FolderOpen size={18} />
         </button>
       </div>
 
-      <nav className="space-y-1 px-2 wide:px-3">
+      <nav className="space-y-1.5 px-2.5 wide:px-3">
         <NavLink to="/" end className={item} title="Home">
-          <Home size={16} /> <span className="hidden wide:inline">Home</span>
+          <Home size={18} /> <span className="hidden wide:inline">Home</span>
         </NavLink>
         <NavLink to="/meetings" className={item} title="Meetings">
-          <CalendarClock size={16} /> <span className="hidden wide:inline">Meetings</span>
+          <CalendarClock size={18} /> <span className="hidden wide:inline">Meetings</span>
           {upcoming > 0 && (
-            <span className="absolute -top-1 -right-1 rounded-full border border-mud bg-clay px-1 font-label text-[10px] leading-4 text-paper tabular-nums wide:static wide:ml-auto wide:px-1.5">
+            <span className="absolute -top-1 -right-1 rounded-full border border-rim bg-clay px-1.5 font-label text-[11px] leading-5 font-bold text-paper tabular-nums wide:static wide:ml-auto wide:px-2 wide:text-[12px]">
               {upcoming}
             </span>
           )}
         </NavLink>
       </nav>
 
-      <div className="mt-5 hidden px-5 pb-1.5 wide:block">
-        <span className="font-label text-xs text-mud-faint">Campaigns</span>
+      <div className="mt-7 hidden px-6 pb-2 wide:block">
+        <span className="font-label text-[13px] font-bold text-mud-faint">Campaigns</span>
       </div>
-      <nav className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3 scroll-thin wide:mt-0 wide:px-3">
+      <nav className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-y-auto px-2.5 pb-3 scroll-thin wide:mt-0 wide:px-3">
         {campaigns?.map((c) => (
           <NavLink key={c.id} to={`/c/${c.id}`} className={item} title={c.name}>
-            <Tile size="sm" className={paperTileFor(c.id)}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
+            <Tile size="md" className={cn("text-[13px]", paperTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
             <span className="hidden min-w-0 flex-1 truncate wide:inline">{c.name}</span>
-            <span className="hidden font-label text-[11px] text-mud-faint tabular-nums wide:inline">{c.prospects}</span>
+            <span className="hidden font-label text-[13px] text-mud-faint tabular-nums wide:inline">{c.prospects}</span>
           </NavLink>
         ))}
-        {campaigns && campaigns.length === 0 && <p className="hidden px-2 py-1 font-label text-xs text-mud-faint wide:block">No campaigns yet</p>}
+        {campaigns && campaigns.length === 0 && <p className="hidden px-3 py-1 font-label text-[13px] text-mud-faint wide:block">No campaigns yet</p>}
       </nav>
 
       <div className="hidden wide:block">
         <UpdateNotice info={update} />
       </div>
 
-      <div className="px-2 pb-2 wide:px-3">
+      <div className="px-2.5 pb-3 wide:px-3">
         <button
           onClick={() => ai.setOpen(true)}
           title={`${aiLabel} · ${aiState}`}
-          className="relative flex w-full items-center justify-center gap-2.5 rounded-xl border-2 border-mud bg-paper p-1 text-left shadow-hard-sm transition hover:bg-paper-deep wide:justify-start wide:px-2.5 wide:py-2"
+          className="relative flex w-full items-center justify-center gap-3 rounded-xl border-2 border-rim bg-paper p-1.5 text-left shadow-hard-sm transition hover:bg-paper-deep wide:justify-start wide:px-3 wide:py-2.5"
         >
           {ai.settings?.provider ? (
-            <ProviderMark id={ai.settings.provider} className="h-7 w-7" />
+            <ProviderMark id={ai.settings.provider} className="h-8 w-8" />
           ) : (
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-clay-soft text-clay-deep"><Sparkles size={14} /></span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-clay-soft text-clay-deep"><Sparkles size={16} /></span>
           )}
           <span className="hidden min-w-0 flex-1 wide:block">
-            <span className="block truncate text-[12.5px] font-bold">{aiLabel}</span>
+            <span className="block truncate text-[15px] font-extrabold">{aiLabel}</span>
             <span className="block truncate font-label text-[11px] text-mud-faint">{aiState}</span>
           </span>
-          <span className={cn("absolute top-0.5 right-0.5 h-2.5 w-2.5 shrink-0 rounded-full border border-mud wide:static", aiReady ? "bg-emerald-400" : "bg-note")} />
+          <span className={cn("absolute top-1 right-1 h-3 w-3 shrink-0 rounded-full border-2 border-rim wide:static", aiReady ? "bg-emerald-400" : "bg-note")} />
         </button>
       </div>
 
-      <div className="hidden border-t-2 border-mud px-4 py-3 font-label text-[12px] text-mud-faint wide:block">
+      <div className="hidden border-t-2 border-rim px-4 py-3.5 font-label text-[13px] text-mud-faint wide:block">
         {update && (
           <button onClick={() => void showReleaseNotes()} className="flex items-center gap-2 transition hover:text-mud">
-            <Gift size={12} /> What's new in <span className="tabular-nums">v{update.current}</span>
+            <Gift size={14} /> What's new in <span className="tabular-nums">v{update.current}</span>
           </button>
         )}
       </div>

@@ -82,6 +82,8 @@
   --color-mud: #2b1e16;
   --color-mud-soft: #6a594b;
   --color-mud-faint: #9a8a79;
+  /* Outlines and ledges: a softer brown than the ink. */
+  --color-rim: #7b5c48;
   --color-clay: #d97757;
   --color-clay-deep: #b85c3c;
   --color-clay-soft: #f7dacb;
@@ -92,9 +94,10 @@
   --color-note-pink: #ffcbd5;
   --color-note-mint: #cdefd9;
 
-  --shadow-hard-sm: 2px 2px 0 0 var(--color-mud);
-  --shadow-hard: 3px 3px 0 0 var(--color-mud);
-  --shadow-hard-lg: 5px 5px 0 0 var(--color-mud);
+  /* A ledge straight below the element, plus a soft drop shadow for depth. */
+  --shadow-hard-sm: 0 2px 0 0 var(--color-rim), 0 4px 10px -4px rgba(43, 30, 22, 0.22);
+  --shadow-hard: 0 3px 0 0 var(--color-rim), 0 10px 22px -10px rgba(43, 30, 22, 0.3);
+  --shadow-hard-lg: 0 5px 0 0 var(--color-rim), 0 18px 30px -12px rgba(43, 30, 22, 0.35);
 
   /* The sidebar folds to an icon rail below this. */
   --breakpoint-wide: 56.25rem;
@@ -165,34 +168,35 @@
   }
   .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
 
-  /* Paper look: 2px mud outlines and hard offset shadows, like cards pinned to a board. */
+  /* Paper look: brown rims, a ledge under each piece and a soft shadow, like cards on a board. Toy-sized type. */
   .paper {
     font-family: var(--font-ui);
+    font-size: 15px;
     color: var(--color-mud);
   }
   .paper-card {
-    @apply rounded-2xl border-2 border-mud bg-paper shadow-hard;
+    @apply rounded-2xl border-2 border-rim bg-paper shadow-hard;
   }
   .paper-btn {
-    @apply inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-mud bg-paper px-4 text-sm font-bold
-      whitespace-nowrap text-mud shadow-hard-sm transition select-none hover:bg-paper-deep active:translate-x-0.5 active:translate-y-0.5
+    @apply inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl border-2 border-rim bg-paper px-5 text-[15px]
+      font-extrabold whitespace-nowrap text-mud shadow-hard-sm transition select-none hover:bg-paper-deep active:translate-y-0.5
       active:shadow-none disabled:pointer-events-none disabled:opacity-50;
   }
   .paper-btn-primary {
     @apply bg-clay text-paper hover:bg-clay-deep;
   }
   .paper-btn-icon {
-    @apply w-10 px-0;
+    @apply w-11 px-0;
   }
   /* A sticky note: paper square with a push-pin through the top edge. */
   .note {
-    @apply relative rounded-lg border-2 border-mud bg-note p-4 shadow-hard;
+    @apply relative rounded-xl border-2 border-rim bg-note p-5 shadow-hard;
   }
   .pin {
-    @apply absolute -top-2.5 left-1/2 h-5 w-5 -translate-x-1/2 rounded-full border-2 border-mud bg-clay
-      shadow-[inset_-2px_-2px_0_0_rgba(0,0,0,0.25),inset_2px_2px_0_0_rgba(255,255,255,0.35)];
+    @apply absolute -top-3 left-1/2 h-6 w-6 -translate-x-1/2 rounded-full border-2 border-rim bg-clay
+      shadow-[inset_-2px_-2px_0_0_rgba(0,0,0,0.25),inset_2px_2px_0_0_rgba(255,255,255,0.35),0_3px_5px_rgba(43,30,22,0.35)];
   }
   .paper-tag {
-    @apply inline-flex items-center gap-1 rounded-md border border-mud/60 px-1.5 py-0.5 font-label text-xs leading-tight;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-rim/70 px-2 py-0.5 font-label text-[13px] leading-tight;
   }
 }
