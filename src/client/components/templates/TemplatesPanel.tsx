@@ -3,16 +3,19 @@
  * and a live preview against any prospect. Placeholders name the prospect's columns or its
  * primary contact's; {{First name}} is the primary contact's.
  */
-import { Braces, Plus, Trash2, X } from "lucide-react";
+import { Braces, Plus, Trash2, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { mergeTemplate, placeholdersFor, tokenize } from "../../../shared/merge";
 import { prospectSchema } from "../../../shared/schema";
-import { isScreened, type CampaignSchema, type Row, type Template } from "../../../shared/types";
+import { isScreened, type CampaignSchema, type Row, type Template, type Thesis } from "../../../shared/types";
 import { primaryOf, prospectCells, prospectTitle } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
+import type { ConsentGate } from "../../hooks/useConsentGate";
+import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
 import { fire } from "../../lib/fire";
+import { GenerateTemplateDialog } from "./GenerateTemplateDialog";
 
 const STARTER = `Hi {{First name}},
 
@@ -25,17 +28,25 @@ Would a 15-minute call next week be useful?
 Best,
 [Your name]`;
 
-export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onClose, previewRowId }: {
+export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, consent, state, onClose, previewRowId }: {
   schema: CampaignSchema;
   rows: Row[];
   contactsOf: (orgId: string) => Row[];
   templates: Template[];
+  /** The ICP thesis, which prefills "Generate with AI"; null for a campaign without one. */
+  thesis: Thesis | null;
+  consent: ConsentGate;
   state: CampaignState;
   onClose: () => void;
   previewRowId?: string | null;
 }) {
   const [selected, setSelected] = useState<string | null>(templates[0]?.id ?? null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const ai = useAi();
+  const { ready: aiReady } = useActiveProvider();
+  // Without a provider signed in, the button opens the AI settings instead.
+  const openGenerate = () => (aiReady ? setGenerating(true) : ai.setOpen(true));
   // Preview against prospects still in play: nobody writes an intro to a screened-out one.
   const prospects = useMemo(() => rows.filter((r) => !isScreened(r, schema)), [rows, schema]);
   const [previewId, setPreviewId] = useState<string>(previewRowId ?? prospects[0]?.id ?? "");
@@ -63,6 +74,10 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onC
     const t = await state.addTemplate(`Template ${templates.length + 1}`, STARTER);
     setSelected(t.id);
   };
+  const keepGenerated = async (name: string, body: string) => {
+    const t = await state.addTemplate(name, body);
+    setSelected(t.id);
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-zinc-900/20 animate-fade-in" onMouseDown={onClose}>
@@ -72,6 +87,7 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onC
             <h2 className="text-base font-semibold">Intro message templates</h2>
             <p className="text-xs text-ink-soft">Write it once; each prospect's panel fills in the placeholders from that row.</p>
           </div>
+          <Button size="sm" onClick={openGenerate} title={aiReady ? "Draft a template with AI" : "Set up AI first"}><Wand2 size={14} /> Generate with AI</Button>
           <Button variant="primary" size="sm" onClick={() => fire(create())}><Plus size={14} /> New template</Button>
           <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close templates"><X size={16} /></Button>
         </div>
@@ -93,6 +109,7 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onC
               <li className="px-2 py-6 text-center text-xs text-ink-faint">
                 No templates yet.
                 <button className="mt-2 block w-full text-brand-700 hover:underline" onClick={() => fire(create())}>Create your first</button>
+                <button className="mt-1 block w-full text-brand-700 hover:underline" onClick={openGenerate}>Generate one with AI</button>
               </li>
             )}
           </ul>
@@ -121,6 +138,9 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onC
           )}
         </div>
       </div>
+      {generating && state.campaign && (
+        <GenerateTemplateDialog open campaignId={state.campaign.id} thesis={thesis} consent={consent} onKeep={keepGenerated} onClose={() => setGenerating(false)} />
+      )}
     </div>
   );
 }

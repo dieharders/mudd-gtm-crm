@@ -1,11 +1,12 @@
 /** API routes for AI settings, recipes, enrichment runs, suggestions and the event stream. */
 import type { AiSettings, CampaignEvent, IntroOptions, ProviderId, RecipeDraft, RunKind, SuggestionStatus } from "../shared/ai";
 import { PROVIDER_IDS, PROVIDERS } from "../shared/ai";
-import { providerStatus } from "./ai";
+import { AiError, generateStructured, providerStatus } from "./ai";
 import { getAiSettings, updateAiSettings } from "./ai/settings";
 import { installStream, openSignInPage, signInStream, signOut } from "./ai/setup";
 import * as db from "./db";
 import { eventStream, publishRecipes } from "./enrich/hub";
+import { outreachRequest, unknownPlaceholders } from "./enrich/outreach";
 import { createRecipe, resolveOutputs, type OutputInput } from "./enrich/recipes";
 import { liveRuns, liveRunsOn, pauseRun, recentRuns, resumeRun, startRun, stopRun } from "./enrich/runner";
 import * as store from "./enrich/store";
@@ -80,6 +81,24 @@ export function registerAiRoutes(on: On, { json, body, fail }: { json: Json; bod
   on("POST", "/api/runs/:id/pause", (_req, [rid]) => json(pauseRun(rid!)));
   on("POST", "/api/runs/:id/resume", (_req, [rid]) => json(resumeRun(rid!)));
   on("POST", "/api/runs/:id/stop", (_req, [rid]) => json(stopRun(rid!)));
+
+  // ----- templates -----
+  // Draft an intro template from the user's words about the problem (one turn, no web). Not saved:
+  // the page shows it first, and Keep creates it through the ordinary templates route.
+  on("POST", "/api/campaigns/:id/templates/generate", async (req, [id]) => {
+    const campaign = mustCampaign(id!);
+    const b = await body<{ problem?: string }>(req);
+    const problem = b.problem?.trim() ?? "";
+    if (!problem) fail(400, "Say what problem you're working on first.");
+    if (!getAiSettings().consented) fail(403, "Confirm that Mudd may send these rows to your AI provider first.");
+    const r = outreachRequest({ problem, thesis: db.getThesis(id!), schema: campaign.schema, existing: db.listTemplates(id!) });
+    try {
+      const { data } = await generateStructured({ ...r, webSearch: false, signal: req.signal });
+      return json({ name: data.name, body: data.body, unknown: unknownPlaceholders(data.body, campaign.schema) });
+    } catch (err) {
+      return fail(err instanceof AiError ? 502 : 500, (err as Error).message);
+    }
+  });
 
   // ----- suggestions -----
   on("GET", "/api/campaigns/:id/suggestions", (req, [id]) => {
