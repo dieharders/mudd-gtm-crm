@@ -1,24 +1,20 @@
 /**
  * Import → edit → Save file → re-import, against workbooks built here with the features real
  * trackers have (formulas on another tab, column formats, notes, merges, dropdowns, tables,
- * SharePoint parts), and optionally against a real one:
- *
- *   MUDD_FIXTURE="/path/to/base-tracker.xlsx" bun test
- *
- * The fixture is read from wherever it lives rather than copied into the repo, because a tracker
- * is full of real people's contact details.
+ * SharePoint parts), and against a whole made-up tracker, fixtures/base-tracker.generated.xlsx,
+ * which `bun run fixture` rebuilds from scripts/make-fixture.ts.
  */
 import { describe, expect, test } from "bun:test";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import fs from "node:fs";
+import path from "node:path";
 import { allColumns, discoverySchema, genericSchema } from "../shared/schema";
 import { CHECKED, isScreened, type Campaign, type Template, type Thesis, type ThesisId } from "../shared/types";
 import { exportCampaign, type ExportRow } from "./export";
 import { importWorkbook, inspectWorkbook, loadWorkbook } from "./import";
 
-const FIXTURE = process.env.MUDD_FIXTURE;
-const hasFixture = !!FIXTURE && fs.existsSync(FIXTURE);
+const FIXTURE = path.join(import.meta.dir, "fixtures", "base-tracker.generated.xlsx");
 
 // ---------- helpers (independent of the code under test) ----------
 
@@ -824,8 +820,8 @@ describe("the Contacts tab", () => {
 
 // ---------- a real tracker ----------
 
-describe.skipIf(!hasFixture)("round trip with MUDD_FIXTURE", () => {
-  const original = hasFixture ? new Uint8Array(fs.readFileSync(FIXTURE!)) : new Uint8Array();
+describe("round trip with the whole tracker fixture", () => {
+  const original = new Uint8Array(fs.readFileSync(FIXTURE));
 
   test("an unedited save keeps every other part and every original cell", async () => {
     const { campaign, rows, contacts } = await importFrom(original);
