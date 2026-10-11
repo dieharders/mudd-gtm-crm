@@ -87,13 +87,16 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, co
             <h2 className="text-base font-semibold">Intro message templates</h2>
             <p className="text-xs text-ink-soft">Write it once; each prospect's panel fills in the placeholders from that row.</p>
           </div>
-          <Button size="sm" onClick={openGenerate} title={aiReady ? "Draft a template with AI" : "Set up AI first"}><Wand2 size={14} /> Generate with AI</Button>
-          <Button variant="primary" size="sm" onClick={() => fire(create())}><Plus size={14} /> New template</Button>
           <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close templates"><X size={16} /></Button>
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <ul className="w-56 shrink-0 space-y-0.5 overflow-y-auto border-r border-line p-2 scroll-thin">
+          <div className="flex w-56 shrink-0 flex-col border-r border-line">
+            <div className="flex flex-col gap-1.5 border-b border-line p-2">
+              <Button variant="primary" size="sm" onClick={() => fire(create())}><Plus size={14} /> New template</Button>
+              <Button size="sm" onClick={openGenerate} title={aiReady ? "Draft a template with AI" : "Set up AI first"}><Wand2 size={14} /> Generate with AI</Button>
+            </div>
+          <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2 scroll-thin">
             {templates.map((t) => (
               <li key={t.id}>
                 <button
@@ -105,14 +108,9 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, co
                 </button>
               </li>
             ))}
-            {!templates.length && (
-              <li className="px-2 py-6 text-center text-xs text-ink-faint">
-                No templates yet.
-                <button className="mt-2 block w-full text-brand-700 hover:underline" onClick={() => fire(create())}>Create your first</button>
-                <button className="mt-1 block w-full text-brand-700 hover:underline" onClick={openGenerate}>Generate one with AI</button>
-              </li>
-            )}
+            {!templates.length && <li className="px-2 py-6 text-center text-xs text-ink-faint">No templates yet.</li>}
           </ul>
+          </div>
 
           {tpl ? (
             <Editor
