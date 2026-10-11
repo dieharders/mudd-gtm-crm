@@ -7,6 +7,7 @@ import { cn } from "../../lib/cn";
 import { useCampaignList } from "../../lib/campaignList";
 import { todayString } from "../../lib/format";
 import { tileFor } from "../../lib/stages";
+import { ProviderMark } from "../ai/BrandMarks";
 import { useImport } from "../campaigns/ImportFlow";
 import { Logo, Tile } from "./Logo";
 import { UpdateNotice, useUpdateCheck } from "./UpdateNotice";
@@ -80,7 +81,11 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
           onClick={() => ai.setOpen(true)}
           className="flex w-full items-center gap-2.5 rounded-xl border border-line bg-white px-2.5 py-2 text-left shadow-[0_1px_0_rgba(23,22,29,0.05)] transition hover:border-brand-200"
         >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700"><Sparkles size={14} /></span>
+          {ai.settings?.provider ? (
+            <ProviderMark id={ai.settings.provider} className="h-7 w-7" />
+          ) : (
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700"><Sparkles size={14} /></span>
+          )}
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[12.5px] font-medium">{ai.settings?.provider ? PROVIDERS[ai.settings.provider].label : "AI"}</span>
             <span className="block truncate text-[11px] text-ink-faint">

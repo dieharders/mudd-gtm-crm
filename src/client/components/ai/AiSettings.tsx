@@ -10,12 +10,9 @@ import { api } from "../../lib/api";
 import { useAi } from "../../lib/aiStatus";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
-import { Tile } from "../ui/Logo";
 import { Modal } from "../ui/Modal";
 import { fire } from "../../lib/fire";
-
-const TILES: Record<ProviderId, string> = { claude: "bg-orange-100 text-orange-700", codex: "bg-zinc-800 text-white" };
-const GLYPH: Record<ProviderId, string> = { claude: "✳", codex: "◎" };
+import { ProviderMark } from "./BrandMarks";
 
 export function AiSettingsDialog() {
   const ai = useAi();
@@ -188,7 +185,7 @@ function ProviderCard({ id, status, active, onPick, onRefresh }: { id: ProviderI
   return (
     <div className={cn("rounded-2xl border p-4 transition", active ? "border-brand-300 bg-brand-50/50 shadow-[0_0_0_3px_var(--color-brand-100)]" : "border-line bg-white")}>
       <div className="flex items-start gap-3">
-        <Tile size="lg" className={TILES[id]}>{GLYPH[id]}</Tile>
+        <ProviderMark id={id} className="h-10 w-10 rounded-xl" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold">{info.label}</h3>
