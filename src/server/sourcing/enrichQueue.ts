@@ -30,12 +30,25 @@ export function enqueueEnrichment(campaignId: string, rowIds: string[], recipeId
   const batch = (q.pending ??= { rowIds: new Set(), recipes: new Map() });
   for (const id of rowIds) batch.rowIds.add(id);
   for (const id of recipeIds) batch.recipes.set(id, batch.recipes.get(id) || autoFill);
-  if (!q.running) q.running = drain(campaignId, q).finally(() => (q!.running = null));
+  kick(campaignId, q);
+}
+
+/**
+ * Start a drain unless one is running. A batch queued between the drain's last loop and its
+ * promise settling would see `running` still set, so settling re-kicks for whatever waits.
+ */
+function kick(campaignId: string, q: Queue): void {
+  if (q.running || !q.pending) return;
+  q.running = drain(campaignId, q).finally(() => {
+    q.running = null;
+    kick(campaignId, q);
+  });
 }
 
 /** Resolves once nothing is queued or running for the campaign (for tests). */
-export function enrichQueueIdle(campaignId: string): Promise<void> {
-  return queues.get(campaignId)?.running ?? Promise.resolve();
+export async function enrichQueueIdle(campaignId: string): Promise<void> {
+  let running: Promise<void> | null | undefined;
+  while ((running = queues.get(campaignId)?.running)) await running;
 }
 
 async function drain(campaignId: string, q: Queue): Promise<void> {

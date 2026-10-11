@@ -12,6 +12,7 @@ import type { ThesisId } from "../../shared/types";
 import * as ai from "../ai";
 import { updateAiSettings } from "../ai/settings";
 import * as db from "../db";
+import { dismissCandidates } from "./accept";
 import { liveDiscovery, pauseDiscovery, resumeDiscovery, startDiscovery, stopDiscovery } from "./runner";
 import * as store from "./store";
 
@@ -203,6 +204,29 @@ describe("a Find run", () => {
     const a = store.listCandidates(id, "ready").find((c) => c.company === "A Co")!;
     expect(a.contacts.map((p) => p.type)).toEqual(["Champion", "Economic Buyer", null]);
     expect(a.firstContact).toBe(a.contacts[2]!.id);
+  });
+
+  test("a candidate dismissed while its map turn runs stays dismissed, with its reason", async () => {
+    const id = campaign();
+    agent({
+      plan: () => angles(1),
+      find: () => ({ companies: [found("A Co"), found("B Co")] }),
+      map: (req) => {
+        const c = store.listCandidates(id, "mapping").find((x) => x.company === companyOf(req))!;
+        if (c.company === "A Co") dismissCandidates(id, [c.id], "Not for us");
+        return mapped([person("Ann Lee", "Champion")], 0, c.company === "B Co" ? { disqualify: "Too small" } : {});
+      },
+    });
+    const run = startDiscovery({ campaignId: id, kind: "find", target: 5, perCompany: 3, concurrency: 1 });
+    await until(() => finished(run));
+    expect(run.status).toBe("done");
+    const a = store.listCandidates(id, "dismissed").find((c) => c.company === "A Co")!;
+    expect(a.dismissReason).toBe("Not for us");
+    // The map's result is still kept on it.
+    expect(a.contacts.map((p) => p.name)).toEqual(["Ann Lee"]);
+    expect(store.listCandidates(id, "ready")).toHaveLength(0);
+    expect(run.ready).toBe(0);
+    expect(run.disqualified).toBe(1);
   });
 
   test("pause holds both workers and resume wakes both; pause then stop ends the run", async () => {

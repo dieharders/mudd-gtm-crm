@@ -504,11 +504,13 @@ async function doMap(ctrl: Controller, candidateId: string): Promise<void> {
     return;
   }
   const latest = store.getCandidate(run.campaignId, candidateId) ?? c;
+  // The user may have dismissed or accepted it while the turn ran: that decision stands.
+  const settled = latest.status === "dismissed" || latest.status === "accepted";
   if ("error" in result) {
     job.state = "error";
     job.error = result.error;
     run.failed++;
-    emitCandidates(ctrl, [{ ...latest, status: "error", error: result.error }]);
+    if (!settled) emitCandidates(ctrl, [{ ...latest, status: "error", error: result.error }]);
     emit(ctrl, true);
     return;
   }
@@ -540,9 +542,9 @@ async function doMap(ctrl: Controller, candidateId: string): Promise<void> {
   const disqualify = data.disqualify?.trim() || null;
   const next: Candidate = {
     ...latest,
-    status: disqualify ? "dismissed" : "ready",
+    status: settled ? latest.status : disqualify ? "dismissed" : "ready",
     error: null,
-    dismissReason: disqualify ? `Disqualified: ${disqualify}` : latest.dismissReason,
+    dismissReason: disqualify && !settled ? `Disqualified: ${disqualify}` : latest.dismissReason,
     contacts,
     firstContact: contacts.find((p) => p.name === first)?.id ?? null,
     fit: normaliseFit(data.company.fit) ?? latest.fit,
@@ -552,8 +554,10 @@ async function doMap(ctrl: Controller, candidateId: string): Promise<void> {
     employees: data.company.employees ?? latest.employees,
     sources,
   };
-  if (disqualify) run.disqualified++;
-  else run.ready++;
+  if (!settled) {
+    if (disqualify) run.disqualified++;
+    else run.ready++;
+  }
   job.state = "done";
   emitCandidates(ctrl, [next]);
   emit(ctrl, true);
