@@ -98,7 +98,17 @@ Open **AI settings** from the bottom of the sidebar to pick the provider, model 
   - It fills the placeholders, researches 1–2 verifiable hooks and shows a draft with those sources. Use it, try again, or discard it.
   - **Draft intros** in the bulk bar does the same for every selected row.
 
-Code: `src/server/ai/` (providers, discovery, environment, structured turns), `src/server/enrich/` (runner, prompts, storage, event stream), and `src/client/components/{ai,enrich}/`.
+### Discover
+
+Start a campaign with **Discover prospects** and Mudd finds companies that fit your ideal customer, with who to talk to at each. You review every one before it joins the list.
+
+![Discover: a Find run in progress, searching several angles at once](docs/screenshots/discover.webp)
+
+- **Thesis**: sixteen questions about who you sell to. The first two are required; **Fill blanks with AI** drafts the rest.
+- **Find**: pick how many companies and contacts per company, add a focus for this run, and choose which enrichments run on each company you accept. The run plans a few search angles, searches them two at a time, then maps each company's buying committee.
+- **Inbox**: each candidate shows why it fits, why now, and the page it was found on. Accept adds it (and its contacts) as prospects; dismiss with a reason, and later runs avoid that kind.
+
+Code: `src/server/ai/` (providers, discovery, environment, structured turns), `src/server/enrich/` (runner, prompts, storage, event stream), `src/server/sourcing/` (Discovery), and `src/client/components/{ai,enrich,discover}/`.
 
 ## License
 
