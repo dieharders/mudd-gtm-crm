@@ -131,40 +131,40 @@
     @apply bg-canvas text-ink font-sans antialiased;
     font-size: 14px;
   }
-  ::selection { background: var(--color-brand-200); }
+  ::selection { background: var(--color-clay-soft); }
   button { cursor: pointer; }
   button:disabled { cursor: not-allowed; }
   input, textarea, select { font: inherit; color: inherit; }
-  :focus-visible { outline: 2px solid var(--color-brand-400); outline-offset: 1px; }
+  :focus-visible { outline: 2px solid var(--color-clay); outline-offset: 2px; }
 }
 
 @layer components {
   .field {
-    @apply w-full rounded-lg border border-line-strong bg-white px-3 py-2 text-sm text-ink outline-none transition
-      placeholder:text-ink-faint focus:border-brand-400 focus:ring-3 focus:ring-brand-100;
+    @apply w-full rounded-xl border-2 border-rim bg-paper px-4 py-2.5 font-ui text-[15px] text-mud outline-none transition
+      placeholder:text-mud-faint focus:border-clay focus:ring-3 focus:ring-clay-soft;
   }
   /* A dropdown in the app's own look, not WebKit's glossy macOS control: flat, with a chevron. */
   select.field {
     -webkit-appearance: none;
     appearance: none;
-    padding-right: 2rem;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8ca3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    padding-right: 2.5rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237b5c48' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 0.6rem center;
-    background-size: 14px 14px;
+    background-position: right 0.8rem center;
+    background-size: 16px 16px;
   }
   .label {
-    @apply mb-1 block text-xs font-medium text-ink-soft;
+    @apply mb-1.5 block font-label text-[13px] font-bold text-mud-soft;
   }
   .eyebrow {
-    @apply text-[11px] font-semibold tracking-wider text-ink-faint uppercase;
+    @apply font-label text-[13px] font-bold tracking-wide text-mud-faint uppercase;
   }
-  /* Clay-style tag: pastel fill, darker text. */
+  /* A pastel tag with a thin rim; the fill and text colour come from the caller. */
   .tag {
-    @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-rim/70 px-2 py-0.5 font-label text-[13px] leading-tight;
   }
   .card {
-    @apply rounded-2xl border border-line bg-panel shadow-[0_1px_2px_rgba(23,22,29,0.04),0_4px_16px_-8px_rgba(23,22,29,0.08)];
+    @apply rounded-2xl border-2 border-rim bg-paper shadow-hard;
   }
   .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
 
@@ -178,7 +178,7 @@
     @apply rounded-2xl border-2 border-rim bg-paper shadow-hard;
   }
   .paper-btn {
-    @apply inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl border-2 border-rim bg-paper px-5 text-[15px]
+    @apply inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl border-2 border-rim bg-paper px-5 font-ui text-[15px]
       font-extrabold whitespace-nowrap text-mud shadow-hard-sm transition select-none hover:bg-paper-deep active:translate-y-0.5
       active:shadow-none disabled:pointer-events-none disabled:opacity-50;
   }

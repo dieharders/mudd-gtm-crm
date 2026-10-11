@@ -119,11 +119,11 @@ export function ImportProvider({ children }: { children: ReactNode }) {
         }}
       />
       {dragging && (
-        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-brand-900/20 p-8 animate-fade-in">
-          <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-brand-400 bg-white/95 px-14 py-10 text-center shadow-2xl">
-            <Upload className="text-brand-500" size={32} />
-            <p className="text-lg font-semibold">Drop to import</p>
-            <p className="text-sm text-ink-soft">.xlsx or .csv · read on this computer, never uploaded</p>
+        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-mud/30 p-8 animate-fade-in">
+          <div className="paper flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-rim bg-paper px-14 py-10 text-center shadow-hard-lg">
+            <Upload className="text-clay" size={36} strokeWidth={2.5} />
+            <p className="font-display text-2xl font-bold">Drop to import</p>
+            <p className="text-[15px] text-mud-soft">.xlsx or .csv · read on this computer, never uploaded</p>
           </div>
         </div>
       )}
@@ -185,7 +185,7 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
       width="max-w-2xl"
       title={
         <span className="flex items-center gap-2">
-          <FileSpreadsheet size={18} className="text-emerald-600" /> Import {result.fileName}
+          <FileSpreadsheet size={20} className="text-emerald-600" /> Import {result.fileName}
         </span>
       }
       subtitle={candidates.length > 1 ? "Choose the tab that holds your prospects." : undefined}
@@ -198,7 +198,7 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
         </>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
         <div>
           <label className="label" htmlFor="imp-name">Campaign name</label>
           <input id="imp-name" className="field" value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true); }} />
@@ -217,33 +217,33 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
           </div>
         )}
         {!usable.length && (
-          <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">
+          <p className="rounded-xl border-2 border-rim/60 bg-note-pink p-4 text-[15px] text-mud">
             Every tab in this file has formulas, and Mudd can't write into a tab with formulas without breaking them. Save a copy of the prospects tab without formulas and import that.
           </p>
         )}
 
         {p && (
-          <div className="rounded-xl border border-line bg-zinc-50 p-3">
-            <p className="mb-2 text-xs font-medium text-ink-soft">
+          <div className="rounded-xl border-2 border-rim/50 bg-paper-deep/50 p-4">
+            <p className="mb-2.5 font-label text-[13px] font-bold text-mud-soft">
               {p.name}: {p.rows} prospects · {p.cols} columns{p.hasStatus ? " · Status column found" : " · no Status column (Mudd will add one)"}
             </p>
             {p.footnotes > 0 && (
-              <p className="mb-2 text-xs text-ink-faint">
+              <p className="mb-2.5 text-[13px] text-mud-faint">
                 {p.footnotes === 1 ? "1 note row" : `${p.footnotes} note rows`} under the data (after a blank row) stay in the file but aren't imported as prospects.
               </p>
             )}
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {p.headers.map((h) => (
-                <span key={h} className="rounded-md border border-line bg-white px-1.5 py-0.5 text-xs text-ink-soft">{h}</span>
+                <span key={h} className="rounded-md border border-rim/60 bg-paper px-2 py-0.5 font-label text-[13px] text-mud-soft">{h}</span>
               ))}
-              {p.cols > p.headers.length && <span className="px-1 text-xs text-ink-faint">+{p.cols - p.headers.length} more</span>}
+              {p.cols > p.headers.length && <span className="px-1 font-label text-[13px] text-mud-faint">+{p.cols - p.headers.length} more</span>}
             </div>
           </div>
         )}
 
-        <div className="flex gap-2.5 rounded-xl bg-brand-50 p-3 text-sm text-brand-900">
-          <Info size={16} className="mt-0.5 shrink-0 text-brand-500" />
-          <div className="space-y-1">
+        <div className="flex gap-3 rounded-xl border-2 border-rim/50 bg-lake-soft p-4 text-[15px] text-mud">
+          <Info size={18} className="mt-0.5 shrink-0 text-lake-deep" />
+          <div className="space-y-1.5">
             {contactsTab && (
               <p>
                 {contactsTab.rows} contact{contactsTab.rows === 1 ? "" : "s"} in <strong>{contactsTab.name}</strong> will be linked to their prospects by Prospect ID.
@@ -258,7 +258,7 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
             {result.templates > 0 && <p>{result.templates} intro template{result.templates === 1 ? "" : "s"} found and will be restored.</p>}
             {result.thesis > 0 && <p>An ICP thesis with {result.thesis} answer{result.thesis === 1 ? "" : "s"} was found: this comes back as a Discovery campaign.</p>}
             {!result.path && (
-              <p className="text-brand-700">
+              <p className="font-semibold text-lake-deep">
                 This file was dropped in, so Mudd doesn't know where it lives: <em>Save file</em> will put a copy in Downloads and keep saving there. To save straight back to this file, import it with the Import button instead.
               </p>
             )}

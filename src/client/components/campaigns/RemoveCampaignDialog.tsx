@@ -67,13 +67,13 @@ export function RemoveCampaignDialog({ campaign, onClose, beforeRemove, onRemove
         </>
       }
     >
-      <div className="space-y-2 text-sm text-ink-soft">
+      <div className="space-y-2.5 text-[15px] text-mud-soft">
         {file ? (
-          <p><strong className="text-ink">{file}</strong> stays where it is. Import it again any time to bring the campaign back as it was last saved.</p>
+          <p><strong className="text-mud">{file}</strong> stays where it is. Import it again any time to bring the campaign back as it was last saved.</p>
         ) : campaign?.sourceName ? (
-          <p>The file it came from, <strong className="text-ink">{campaign.sourceName}</strong>, isn't touched.</p>
+          <p>The file it came from, <strong className="text-mud">{campaign.sourceName}</strong>, isn't touched.</p>
         ) : (
-          <p className="text-rose-700">It has never been saved to a file, so this removes it for good.</p>
+          <p className="font-semibold text-rose-700">It has never been saved to a file, so this removes it for good.</p>
         )}
         <p>Edits not yet saved with Save file go with it, as do its AI recipes and suggestions.</p>
       </div>

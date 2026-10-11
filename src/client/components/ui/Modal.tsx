@@ -29,24 +29,29 @@ export function Modal({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-zinc-900/30 p-6 pt-[10vh] animate-fade-in" onMouseDown={locked ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-mud/35 p-6 pt-[8vh] animate-fade-in" onMouseDown={locked ? undefined : onClose}>
       <div
         role="dialog"
         aria-modal="true"
-        className={cn("w-full rounded-2xl border border-line bg-panel shadow-2xl shadow-zinc-900/10 animate-pop", width)}
+        className={cn("paper w-full rounded-2xl border-2 border-rim bg-paper shadow-hard-lg animate-pop", width)}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b-2 border-rim/40 px-6 py-5">
           <div>
-            <h2 className="text-base font-semibold text-ink">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-sm text-ink-soft">{subtitle}</p>}
+            <h2 className="font-display text-[22px] leading-tight font-bold text-mud">{title}</h2>
+            {subtitle && <p className="mt-1 text-[15px] text-mud-soft">{subtitle}</p>}
           </div>
-          <button className="-mr-1 rounded-md p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink disabled:pointer-events-none disabled:opacity-40" onClick={onClose} disabled={locked} aria-label="Close">
-            <X size={18} />
+          <button
+            className="-mr-1 rounded-lg border-2 border-transparent p-1.5 text-mud-faint transition hover:border-rim hover:bg-paper-deep hover:text-mud disabled:pointer-events-none disabled:opacity-40"
+            onClick={onClose}
+            disabled={locked}
+            aria-label="Close"
+          >
+            <X size={20} />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-line bg-zinc-50/60 px-5 py-3 rounded-b-2xl">{footer}</div>}
+        <div className="px-6 py-5 text-[15px]">{children}</div>
+        {footer && <div className="flex justify-end gap-3 rounded-b-2xl border-t-2 border-rim/40 bg-paper-deep/40 px-6 py-4">{footer}</div>}
       </div>
     </div>
   );

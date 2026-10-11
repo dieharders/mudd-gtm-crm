@@ -11,6 +11,7 @@ import { todayString } from "../../lib/format";
 import { paperTileFor } from "../../lib/paper";
 import { ProviderMark } from "../ai/BrandMarks";
 import { useImport } from "../campaigns/ImportFlow";
+import { Button } from "./Button";
 import { Logo, Tile } from "./Logo";
 import { UpdateNotice, useUpdateCheck } from "./UpdateNotice";
 
@@ -23,19 +24,19 @@ async function showReleaseNotes() {
   try {
     const notes = await api.releaseNotes();
     toast(
-      <div className="text-[13px]">
+      <div className="text-[14px]">
         <div className="flex items-start gap-3">
-          <p className="flex-1 font-semibold">What's new in {notes.title}</p>
-          <button onClick={() => toast.dismiss(id)} className="-mt-0.5 -mr-1 rounded-md p-0.5 text-ink-faint hover:bg-zinc-900/5 hover:text-ink" aria-label="Dismiss">
+          <p className="flex-1 font-bold">What's new in {notes.title}</p>
+          <button onClick={() => toast.dismiss(id)} className="-mt-0.5 -mr-1 rounded-md p-0.5 text-paper/60 hover:bg-paper/15 hover:text-paper" aria-label="Dismiss">
             <X size={14} />
           </button>
         </div>
         {notes.changes.length ? (
-          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-ink-soft">
+          <ul className="mt-1.5 list-disc space-y-1 pl-4 text-paper/85">
             {notes.changes.map((c, i) => <li key={i}>{c}</li>)}
           </ul>
         ) : (
-          <p className="mt-1 text-ink-soft">No changes are listed for this version.</p>
+          <p className="mt-1.5 text-paper/85">No changes are listed for this version.</p>
         )}
       </div>,
       { id, duration: 30_000 },
@@ -76,12 +77,12 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
       </div>
 
       <div className="flex flex-col gap-2.5 px-2.5 pb-4 wide:flex-row wide:px-3">
-        <button onClick={onNewCampaign} className="paper-btn paper-btn-primary paper-btn-icon wide:w-auto wide:flex-1 wide:px-3" title="New campaign" aria-label="New campaign">
+        <Button variant="primary" size="icon" onClick={onNewCampaign} className="wide:w-auto wide:flex-1 wide:px-3" title="New campaign" aria-label="New campaign">
           <Plus size={18} /> <span className="hidden wide:inline">New campaign</span>
-        </button>
-        <button onClick={startImport} disabled={busy} title="Import a spreadsheet" aria-label="Import a spreadsheet" className="paper-btn paper-btn-icon">
+        </Button>
+        <Button size="icon" onClick={startImport} disabled={busy} title="Import a spreadsheet" aria-label="Import a spreadsheet">
           <FolderOpen size={18} />
-        </button>
+        </Button>
       </div>
 
       <nav className="space-y-1.5 px-2.5 wide:px-3">

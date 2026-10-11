@@ -44,7 +44,7 @@ export function Popover({
       {open && (
         <div
           className={cn(
-            "absolute top-full z-40 mt-1.5 min-w-52 rounded-xl border border-line bg-panel p-1 shadow-xl shadow-zinc-900/10 animate-pop",
+            "paper absolute top-full z-40 mt-2 min-w-56 rounded-xl border-2 border-rim bg-paper p-1.5 shadow-hard animate-pop",
             align === "right" ? "right-0" : "left-0",
             className,
           )}
@@ -72,18 +72,18 @@ export function MenuItem({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm",
-        danger ? "text-rose-700 hover:bg-rose-50" : "text-ink hover:bg-zinc-100",
+        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[15px] font-semibold",
+        danger ? "text-rose-700 hover:bg-note-pink" : "text-mud hover:bg-paper-deep",
         disabled && "pointer-events-none opacity-45",
       )}
     >
-      {icon && <span className={cn("shrink-0", danger ? "text-rose-500" : "text-ink-faint")}>{icon}</span>}
+      {icon && <span className={cn("shrink-0", danger ? "text-rose-500" : "text-mud-faint")}>{icon}</span>}
       <span className="min-w-0 flex-1">
         {children}
-        {hint && <span className="block truncate text-xs text-ink-faint">{hint}</span>}
+        {hint && <span className="block truncate font-label text-[12px] font-normal text-mud-faint">{hint}</span>}
       </span>
     </button>
   );
 }
 
-export const MenuSeparator = () => <div className="my-1 h-px bg-line" />;
+export const MenuSeparator = () => <div className="my-1.5 h-0.5 bg-rim/30" />;

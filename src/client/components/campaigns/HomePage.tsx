@@ -10,6 +10,7 @@ import { cn } from "../../lib/cn";
 import { formatDateTime, isSameDay, parseLocal, relative, timeAgo } from "../../lib/format";
 import { paperTileFor } from "../../lib/paper";
 import { toneFor } from "../../lib/stages";
+import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
 import { useImport } from "./ImportFlow";
@@ -43,12 +44,12 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
             </span>
             <h1 className="font-display text-[40px] leading-none font-bold tracking-tight">Your campaigns</h1>
           </div>
-          <button className="paper-btn" onClick={startImport} disabled={busy}>
+          <Button onClick={startImport} disabled={busy}>
             <FolderOpen size={18} /> {busy ? "Opening…" : "Import sheet"}
-          </button>
-          <button className="paper-btn paper-btn-primary" onClick={onNewCampaign}>
+          </Button>
+          <Button variant="primary" onClick={onNewCampaign}>
             <Plus size={18} /> New campaign
-          </button>
+          </Button>
         </div>
 
         {campaigns === null ? (
@@ -70,7 +71,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
               </div>
             </div>
             <aside>
-              <MeetingsCard meetings={meetings} limit={6} paper />
+              <MeetingsCard meetings={meetings} limit={6} />
             </aside>
           </div>
         )}
@@ -84,10 +85,10 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
 export function MeetingsPage() {
   const { meetings } = useCampaignList();
   return (
-    <div className="h-full overflow-y-auto scroll-thin">
-      <div className="mx-auto max-w-3xl px-8 py-8">
-        <p className="eyebrow mb-1">Calendar</p>
-        <h1 className="mb-6 text-[26px] font-bold tracking-tight">Meetings</h1>
+    <div className="paper h-full overflow-y-auto bg-board scroll-thin">
+      <div className="mx-auto max-w-3xl px-6 py-8 md:px-10 md:py-10">
+        <p className="eyebrow mb-2">Calendar</p>
+        <h1 className="mb-8 font-display text-[40px] leading-none font-bold tracking-tight">Meetings</h1>
         <MeetingsCard meetings={meetings} />
       </div>
     </div>
@@ -193,8 +194,8 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
   );
 }
 
-/** Shared with the Meetings page, which keeps the old look: `paper` switches this one to the home screen's. */
-function MeetingsCard({ meetings, limit, paper }: { meetings: Meeting[]; limit?: number; paper?: boolean }) {
+/** Upcoming meetings across every campaign, and those still marked booked after their time. */
+function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number }) {
   const now = new Date();
   const soon = meetings.filter((m) => {
     const d = parseLocal(m.at);
@@ -205,24 +206,24 @@ function MeetingsCard({ meetings, limit, paper }: { meetings: Meeting[]; limit?:
     return d && d < now && !isSameDay(d, now) && m.status === MEETING_STAGE;
   });
   return (
-    <div className={paper ? "paper-card p-5" : "card p-4"}>
-      <h2 className={cn("flex items-center gap-2.5 text-sm font-semibold", paper && "gap-3 font-display text-lg font-bold")}>
-        <Tile size={paper ? "md" : "sm"} className={paper ? "border-2 border-rim bg-note text-mud" : "bg-yellow-100 text-yellow-700"}><CalendarClock size={paper ? 16 : 13} /></Tile> Upcoming meetings
+    <div className="paper-card p-5">
+      <h2 className="flex items-center gap-3 font-display text-lg font-bold">
+        <Tile className="border-2 border-rim bg-note text-mud"><CalendarClock size={16} /></Tile> Upcoming meetings
       </h2>
       {soon.length === 0 ? (
-        <div className={paper ? "mt-4 rounded-xl border-2 border-dashed border-rim/50 px-4 py-5 text-center font-label text-[13px] leading-relaxed text-mud-soft" : "mt-3 rounded-xl bg-zinc-50 px-3 py-4 text-center text-xs text-ink-faint"}>
-          Nothing booked yet. Set a prospect to <span className={paper ? "paper-tag bg-note" : "tag bg-yellow-100 text-yellow-800"}>Meeting booked</span> and add the link and time.
+        <div className="mt-4 rounded-xl border-2 border-dashed border-rim/50 px-4 py-5 text-center font-label text-[13px] leading-relaxed text-mud-soft">
+          Nothing booked yet. Set a prospect to <span className="paper-tag bg-note">Meeting booked</span> and add the link and time.
         </div>
       ) : (
-        <ul className={paper ? "mt-4 space-y-3" : "mt-3 space-y-2"}>
-          {soon.slice(0, limit ?? 100).map((m) => <MeetingItem key={m.rowId} m={m} paper={paper} />)}
+        <ul className="mt-6 space-y-5 px-1">
+          {soon.slice(0, limit ?? 100).map((m, i) => <MeetingItem key={m.rowId} m={m} tilt={i} />)}
         </ul>
       )}
       {stale.length > 0 && (
         <>
-          <h3 className={paper ? "mt-6 font-label text-[13px] text-mud-faint" : "eyebrow mt-5"}>Past · still “Meeting booked”</h3>
-          <ul className={paper ? "mt-3 space-y-3" : "mt-2 space-y-2"}>
-            {stale.slice(-(limit ?? 100)).reverse().map((m) => <MeetingItem key={m.rowId} m={m} past paper={paper} />)}
+          <h3 className="mt-6 font-label text-[13px] text-mud-faint">Past · still “Meeting booked”</h3>
+          <ul className="mt-5 space-y-5 px-1">
+            {stale.slice(-(limit ?? 100)).reverse().map((m, i) => <MeetingItem key={m.rowId} m={m} past tilt={i} />)}
           </ul>
         </>
       )}
@@ -230,36 +231,25 @@ function MeetingsCard({ meetings, limit, paper }: { meetings: Meeting[]; limit?:
   );
 }
 
-function MeetingItem({ m, past, paper }: { m: Meeting; past?: boolean; paper?: boolean }) {
+/** One meeting, pinned to the card like a note; `tilt` alternates the lean down the list. */
+function MeetingItem({ m, past, tilt = 0 }: { m: Meeting; past?: boolean; tilt?: number }) {
   const d = parseLocal(m.at);
   const today = d && isSameDay(d, new Date());
   return (
-    <li
-      className={
-        paper
-          ? cn("rounded-xl border-2 border-rim p-3.5 shadow-hard-sm transition", today ? "bg-lake-soft" : "bg-paper")
-          : cn("rounded-xl border p-2.5 transition hover:border-brand-200", today ? "border-yellow-300 bg-yellow-50" : "border-line bg-white")
-      }
-    >
+    <li className={cn("relative rounded-xl border-2 border-rim p-3.5 pt-4 shadow-hard transition", today ? "bg-lake-soft" : "bg-paper", tilt % 2 ? "rotate-[0.8deg]" : "-rotate-[0.8deg]")}>
+      <span className="pin scale-75" />
       <Link to={`/c/${m.campaignId}?row=${m.rowId}`} className="block">
-        <div className={cn("truncate text-sm font-medium", paper && "text-[15px] font-extrabold")}>{m.title}</div>
-        <div className={cn("truncate text-xs", paper ? "text-[13px] text-mud-faint" : "text-ink-faint")}>{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
+        <div className="truncate text-[15px] font-extrabold">{m.title}</div>
+        <div className="truncate text-[13px] text-mud-faint">{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
       </Link>
-      <div className={cn("mt-1.5 flex items-center gap-2", paper && "mt-2.5")}>
-        <span className={cn("text-xs", paper && "text-[13px]", paper ? (past ? "text-mud-faint" : "text-mud-soft") : (past ? "text-ink-faint" : "text-ink-soft"))}>
-          {formatDateTime(m.at)} · <span className={today ? (paper ? "font-bold text-lake-deep" : "font-semibold text-yellow-800") : ""}>{relative(m.at)}</span>
+      <div className="mt-2.5 flex items-center gap-2">
+        <span className={cn("text-[13px]", past ? "text-mud-faint" : "text-mud-soft")}>
+          {formatDateTime(m.at)} · <span className={today ? "font-bold text-lake-deep" : ""}>{relative(m.at)}</span>
         </span>
         {m.url && !past && (
-          <button
-            className={
-              paper
-                ? "paper-btn paper-btn-primary ml-auto h-8 gap-1.5 rounded-lg px-3 text-[13px]"
-                : "ml-auto inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-0.5 text-xs font-medium text-white shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)] hover:bg-brand-600"
-            }
-            onClick={() => fire(api.openUrl(m.url!))}
-          >
-            <Video size={paper ? 14 : 12} /> Join
-          </button>
+          <Button size="sm" variant="primary" className="ml-auto h-8 px-3" onClick={() => fire(api.openUrl(m.url!))}>
+            <Video size={14} /> Join
+          </Button>
         )}
       </div>
     </li>

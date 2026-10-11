@@ -45,21 +45,21 @@ export function UpdateNotice({ info }: { info: UpdateInfo | null }) {
   };
 
   return (
-    <div className="mx-3 mb-2 rounded-xl border border-brand-200 bg-brand-50 px-2.5 py-2">
-      <p className="flex items-center gap-2 text-[12.5px] font-medium">
-        <ArrowUpCircle size={14} className="shrink-0 text-brand-600" /> Mudd {version} is {done ? "installed" : "available"}
+    <div className="mx-3 mb-3 rounded-xl border-2 border-rim bg-note px-3 py-2.5 shadow-hard-sm">
+      <p className="flex items-center gap-2 text-[14px] font-bold">
+        <ArrowUpCircle size={16} className="shrink-0 text-clay-deep" /> Mudd {version} is {done ? "installed" : "available"}
       </p>
       {done ? (
-        <p className="mt-1 text-[11px] text-ink-soft">{installed && nativeRestart() ? "Restarting…" : "Restart Mudd to finish."}</p>
+        <p className="mt-1 font-label text-[12px] text-mud-soft">{installed && nativeRestart() ? "Restarting…" : "Restart Mudd to finish."}</p>
       ) : info.blocked ? (
         <>
-          <p className="mt-1 text-[11px] text-ink-soft">{info.blocked}</p>
+          <p className="mt-1 font-label text-[12px] text-mud-soft">{info.blocked}</p>
           <Button size="sm" variant="primary" className="mt-2" onClick={openRelease}>Download</Button>
         </>
       ) : (
         <>
-          <p className="mt-1 text-[11px] text-ink-soft">Mudd restarts to finish, and stops any AI research in progress.</p>
-          <div className="mt-2 flex gap-1.5">
+          <p className="mt-1 font-label text-[12px] text-mud-soft">Mudd restarts to finish, and stops any AI research in progress.</p>
+          <div className="mt-2.5 flex gap-2">
             <Button size="sm" variant="primary" disabled={installing} onClick={() => void install()}>
               {installing ? "Updating…" : "Update & restart"}
             </Button>
