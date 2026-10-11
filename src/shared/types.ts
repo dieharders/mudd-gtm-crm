@@ -204,6 +204,8 @@ export interface Meeting {
 /** GET /api/update: whether there's a newer Mudd, and whether this copy can install it itself. */
 export interface UpdateInfo {
   current: string;
+  /** The release notes for the running version. */
+  notesUrl: string;
   /** A newer published release, or null when this is the newest (or GitHub couldn't be reached). */
   latest: { version: string; url: string } | null;
   /** The version already swapped in, waiting for Mudd to restart; null when none is. */

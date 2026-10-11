@@ -1,6 +1,7 @@
 /** The left rail: brand, primary actions, and every campaign one click away. */
-import { CalendarClock, FolderOpen, Home, Lock, Plus, Sparkles } from "lucide-react";
+import { CalendarClock, FolderOpen, Gift, Home, Plus, Sparkles } from "lucide-react";
 import { PROVIDERS } from "../../../shared/ai";
+import { api } from "../../lib/api";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/cn";
@@ -96,9 +97,12 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
         </button>
       </div>
 
-      <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-[11px] text-ink-faint">
-        <Lock size={12} /> Local only · private to this computer
-        {update && <span className="ml-auto tabular-nums">v{update.current}</span>}
+      <div className="border-t border-line px-4 py-3 text-[11px] text-ink-faint">
+        {update && (
+          <button onClick={() => void api.openUrl(update.notesUrl).catch(() => {})} className="flex items-center gap-2 transition hover:text-ink">
+            <Gift size={12} /> What's new in <span className="tabular-nums">v{update.current}</span>
+          </button>
+        )}
       </div>
     </aside>
   );

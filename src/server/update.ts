@@ -77,7 +77,8 @@ export function describe(release: Release | null, current = CURRENT_VERSION, tar
   const version = release && versionOf(release);
   // A release without this platform's download is not an update for it.
   const newer = release && version && compareVersions(version, current) > 0 && assetFor(release, target);
-  return { current, latest: newer ? { version: version!, url: release.html_url } : null, installed: null, blocked };
+  const notesUrl = `https://github.com/${RELEASES_REPO}/releases/tag/v${current}`;
+  return { current, notesUrl, latest: newer ? { version: version!, url: release.html_url } : null, installed: null, blocked };
 }
 
 /** The latest published release, or null when there is none. Throws when GitHub can't be asked. */
