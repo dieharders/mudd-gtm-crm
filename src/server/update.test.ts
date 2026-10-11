@@ -24,6 +24,10 @@ describe("release notes", () => {
     const body = "Download the file for your platform.\r\n\r\n- **Windows**: unzip and run `Mudd.exe`.\r\n\r\n## What's Changed\r\n* Enhancement/remove build dmg by @dieharders in https://github.com/dieharders/mudd-gtm-crm/pull/7\r\n* fix the sidebar by @a in https://x.io/pull/8\r\n\r\n\r\n**Full Changelog**: https://github.com/dieharders/mudd-gtm-crm/compare/v0.1.7...v0.1.8";
     expect(parseChanges(body)).toEqual(["Remove build dmg", "Fix the sidebar"]);
   });
+  test("a slash in the title itself stays", () => {
+    const body = "## What's Changed\n* I/O errors no longer crash export by @a in https://x.io/pull/9\n* A/B test the intros by @a in https://x.io/pull/10\n* bugfix/missing cli by @a in https://x.io/pull/11";
+    expect(parseChanges(body)).toEqual(["I/O errors no longer crash export", "A/B test the intros", "Missing cli"]);
+  });
   test("none listed", () => {
     expect(parseChanges("Download the file for your platform.\n- **Windows**: unzip")).toEqual([]);
   });

@@ -14,48 +14,28 @@ import { ChecksumError, installManaged } from "./install";
 import { authIdentity, LoginSpawnError, loginUrl, runLogin, spawnLogin } from "./login";
 import { resetDiscovery } from "./discovery";
 import { captureCommand } from "./proc";
+import { sseFrame, sseResponse } from "../sse";
 
-const INSTALL_TIMEOUT_MS = 300_000;
 const LOGOUT_TIMEOUT_MS = 15_000;
 
-/**
- * An event stream fed by `run`. The comment heartbeat keeps a sign-in that is quiet for minutes
- * (the user is in their browser) under the server's idle timeout.
- */
+/** An event stream fed by `run`, closed when it returns. */
 function eventResponse(run: (send: (ev: SetupEvent) => void) => Promise<void>, onCancel: () => void): Response {
-  const enc = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const push = (text: string) => {
-        try {
-          controller.enqueue(enc.encode(text));
-        } catch {
-          /* client gone */
-        }
-      };
-      const ping = setInterval(() => push(": ping\n\n"), 25_000);
-      try {
-        await run((ev) => push(`data: ${JSON.stringify(ev)}\n\n`));
-      } finally {
-        clearInterval(ping);
-        try {
-          controller.close();
-        } catch {
-          /* already closed */
-        }
-      }
-    },
-    cancel: onCancel,
-  });
-  return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" } });
+  return sseResponse((push, close) => {
+    run((ev) => push(sseFrame(ev)))
+      .catch((err) => console.error("[setup]", err))
+      .finally(close);
+  }, onCancel);
 }
 
-/** Download the vendor's CLI into Mudd's folder, streaming progress. */
+/**
+ * Download the vendor's CLI into Mudd's folder, streaming progress. There is no overall time
+ * limit, since a 200 MB download on a slow line takes as long as it takes: the download gives
+ * up by itself once it stalls (install.ts), so only the user ever cancels one.
+ */
 export function installStream(id: ProviderId, signal: AbortSignal): Response {
   const ac = new AbortController();
   signal.addEventListener("abort", () => ac.abort(), { once: true });
   return eventResponse(async (send) => {
-    const timer = setTimeout(() => ac.abort(), INSTALL_TIMEOUT_MS);
     try {
       await installManaged(id, ac.signal, (line) => send({ type: "log", line }));
       // Discovery cached a miss for where the binary now is.
@@ -75,8 +55,6 @@ export function installStream(id: ProviderId, signal: AbortSignal): Response {
             ? "Install cancelled."
             : `Install failed: ${err instanceof Error ? err.message : "unknown error"}`,
       });
-    } finally {
-      clearTimeout(timer);
     }
   }, () => ac.abort());
 }

@@ -220,8 +220,7 @@ export type CampaignEvent =
   | { type: "suggestions"; suggestions: Suggestion[] }
   | { type: "cells"; edits: { rowId: string; key: string; value: CellValue }[] }
   /** Rows the server added (a run's first contact for a prospect that had none). */
-  | { type: "rows"; rows: Row[] }
-  | { type: "ping" };
+  | { type: "rows"; rows: Row[] };
 
 /** The runs with one row update applied. The same array when the run isn't among them. */
 export function applyRunRow(runs: EnrichRun[], ev: RunRowEvent): EnrichRun[] {

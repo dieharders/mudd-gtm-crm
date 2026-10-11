@@ -83,15 +83,18 @@ export function describe(release: Release | null, current = CURRENT_VERSION, tar
 /**
  * The changes in a release's notes: the items under GitHub's generated "What's Changed", each a
  * pull request title ("Enhancement/remove build dmg by @x in https://…"). The author, the link
- * and the branch-style prefix are dropped, leaving "Remove build dmg". The rest of the notes is
- * download instructions, for someone who doesn't have Mudd yet.
+ * and the branch-style prefix are dropped, leaving "Remove build dmg". Only the usual branch
+ * kinds count as a prefix, so "I/O errors…" keeps its "I/". The rest of the notes is download
+ * instructions, for someone who doesn't have Mudd yet.
  */
+const BRANCH_PREFIX = /^(?:feat|feature|enhancement|improvement|fix|bugfix|hotfix|chore|refactor|docs?|perf|style|tests?|ci|build|release|update)s?\/(?=\S)/i;
+
 export function parseChanges(body: string): string[] {
   const section = /^##\s*What's Changed\s*$([\s\S]*?)(?=^##\s|^\*\*Full Changelog|(?![\s\S]))/im.exec(body)?.[1] ?? "";
   return section
     .split(/\r?\n/)
     .map((l) => /^\s*[*-]\s+(.+)$/.exec(l)?.[1] ?? "")
-    .map((l) => l.replace(/\s+by @\S+(\s+in\s+\S+)?\s*$/, "").replace(/^[\w-]+\/(?=\S)/, "").trim())
+    .map((l) => l.replace(/\s+by @\S+(\s+in\s+\S+)?\s*$/, "").replace(BRANCH_PREFIX, "").trim())
     .filter(Boolean)
     .map((l) => l[0]!.toUpperCase() + l.slice(1));
 }
@@ -177,7 +180,7 @@ export async function applyUpdate(zip: Uint8Array, target: string, platform = pr
     }
     // Say so, rather than "EPERM: operation not permitted, open '…\Mudd.exe.new'".
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === "EPERM" || code === "EACCES" || code === "EBUSY") throw new Error("Mudd can't replace itself where it's installed. Download the update instead.");
+    if (code === "EPERM" || code === "EACCES" || code === "EBUSY") throw new Error("Mudd can't replace itself where it's installed. Download the update instead.", { cause: err });
     throw err;
   } finally {
     staged.discard();

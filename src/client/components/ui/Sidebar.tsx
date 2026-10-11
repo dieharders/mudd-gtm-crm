@@ -14,9 +14,12 @@ import { useImport } from "../campaigns/ImportFlow";
 import { Logo, Tile } from "./Logo";
 import { UpdateNotice, useUpdateCheck } from "./UpdateNotice";
 
-/** What changed in this version, from its GitHub release, in a toast rather than a browser tab. */
+/**
+ * What changed in this version, from its GitHub release, in a toast rather than a browser tab.
+ * One toast id, so clicking again replaces it rather than stacking another.
+ */
 async function showReleaseNotes() {
-  const id = toast.loading("Loading what's new…");
+  const id = toast.loading("Loading what's new…", { id: "release-notes" });
   try {
     const notes = await api.releaseNotes();
     toast(
@@ -29,7 +32,7 @@ async function showReleaseNotes() {
         </div>
         {notes.changes.length ? (
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-ink-soft">
-            {notes.changes.map((c) => <li key={c}>{c}</li>)}
+            {notes.changes.map((c, i) => <li key={i}>{c}</li>)}
           </ul>
         ) : (
           <p className="mt-1 text-ink-soft">No changes are listed for this version.</p>

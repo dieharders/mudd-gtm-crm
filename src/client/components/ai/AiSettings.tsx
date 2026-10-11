@@ -17,8 +17,15 @@ import { ProviderMark } from "./BrandMarks";
 export function AiSettingsDialog() {
   const ai = useAi();
   const [checking, setChecking] = useState(false);
+  // Closing the dialog would end an install or sign-in in flight, so it stays open until each
+  // finishes or the user cancels it on its card.
+  const [working, setWorking] = useState<ProviderId[]>([]);
+  const onWorking = useCallback((id: ProviderId, on: boolean) => {
+    setWorking((w) => (on === w.includes(id) ? w : on ? [...w, id] : w.filter((x) => x !== id)));
+  }, []);
   const s = ai.settings;
   if (!s) return null;
+  const locked = working.length > 0;
 
   const check = async () => {
     setChecking(true);
@@ -31,21 +38,23 @@ export function AiSettingsDialog() {
       open={ai.open}
       onClose={() => ai.setOpen(false)}
       width="max-w-2xl"
+      locked={locked}
       title="AI settings"
       subtitle="Mudd runs research on your own Claude Code or Codex sign-in, so it bills your plan. No API keys are stored here."
       footer={
         <>
+          {locked && <p className="mr-auto self-center text-xs text-ink-faint">Finish or cancel the {working.map((id) => PROVIDERS[id].label).join(" and ")} setup to close this.</p>}
           <Button variant="ghost" onClick={() => fire(check())} disabled={checking}>
             {checking ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Check again
           </Button>
-          <Button variant="primary" onClick={() => ai.setOpen(false)}>Done</Button>
+          <Button variant="primary" onClick={() => ai.setOpen(false)} disabled={locked}>Done</Button>
         </>
       }
     >
       {!s.provider && <p className="mb-3 text-sm text-ink-soft">No AI provider chosen yet. Pick the one whose plan you already pay for.</p>}
       <div className="space-y-3">
         {PROVIDER_IDS.map((id) => (
-          <ProviderCard key={id} id={id} status={ai.providers.find((p) => p.id === id)} active={s.provider === id} onPick={() => fire(ai.update({ provider: id }))} onRefresh={() => ai.refresh(true)} />
+          <ProviderCard key={id} id={id} status={ai.providers.find((p) => p.id === id)} active={s.provider === id} onPick={() => fire(ai.update({ provider: id }))} onRefresh={() => ai.refresh(true)} onWorking={onWorking} />
         ))}
       </div>
 
@@ -87,7 +96,14 @@ function ModelSettings({ provider }: { provider: ProviderId }) {
  * signed out. Sign-in runs the CLI's own command hidden and the vendor's page opens in the
  * browser; the card moves on by itself once the user is signed in.
  */
-function ProviderCard({ id, status, active, onPick, onRefresh }: { id: ProviderId; status?: ProviderStatus; active: boolean; onPick: () => void; onRefresh: () => Promise<ProviderStatus[]> }) {
+function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
+  id: ProviderId;
+  status?: ProviderStatus;
+  active: boolean;
+  onPick: () => void;
+  onRefresh: () => Promise<ProviderStatus[]>;
+  onWorking: (id: ProviderId, on: boolean) => void;
+}) {
   const info = PROVIDERS[id];
   const auth = status?.auth;
   const ready = !!status?.installed && auth?.state === "ok";
@@ -99,7 +115,9 @@ function ProviderCard({ id, status, active, onPick, onRefresh }: { id: ProviderI
   const [offerTerminal, setOfferTerminal] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Closing the dialog cancels an install or sign-in in flight: the server sees the stream close.
+  // The dialog stays open while this runs. Should the card go anyway (the app's window reloads),
+  // the install or sign-in is cancelled: the server sees the stream close.
+  useEffect(() => onWorking(id, busy === "install" || busy === "signin"), [id, busy, onWorking]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const signIn = useCallback((terminal = false) => {

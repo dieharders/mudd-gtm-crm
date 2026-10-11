@@ -32,6 +32,16 @@ export function dataDir(): string {
   return path.join(os.homedir(), ".mudd");
 }
 
+/**
+ * Where large per-machine files go (the AI CLIs, 100 MB+ and per-architecture): %LOCALAPPDATA%\Mudd
+ * on Windows, so they don't roam with the profile. The same folder as `dataDir` elsewhere.
+ */
+export function localDataDir(): string {
+  if (process.env.MUDD_DATA_DIR) return process.env.MUDD_DATA_DIR;
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) return path.join(process.env.LOCALAPPDATA, "Mudd");
+  return dataDir();
+}
+
 let db: Database | null = null;
 
 export function getDb(): Database {

@@ -8,14 +8,19 @@
  * restart, and a user's own `claude` stays theirs. Uninstalling is deleting the folder. Sign-in
  * is still shared: the CLIs keep credentials in `~/.claude` and `~/.codex`, not here.
  */
+import type { FileSink } from "bun";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { ProviderId } from "../../shared/ai";
+import { localDataDir } from "../db";
 
 const CLAUDE_RELEASES = "https://downloads.claude.ai/claude-code-releases";
 const CODEX_CHANNEL = "https://releases.openai.com/codex/channels/latest";
 const IS_WIN = process.platform === "win32";
+/** The release lists are small: past this, the vendor isn't answering. */
+const LIST_TIMEOUT_MS = 30_000;
+/** A download that receives nothing for this long has stalled. */
+const STALL_MS = 60_000;
 
 export type InstallLog = (line: string) => void;
 
@@ -25,16 +30,7 @@ export class ChecksumError extends Error {
   }
 }
 
-/** Machine-local (not roaming on Windows): the builds are 100 MB+ and per-architecture. */
-export function managedRoot(): string {
-  if (process.env.MUDD_DATA_DIR) return process.env.MUDD_DATA_DIR;
-  const home = os.homedir();
-  if (IS_WIN) return path.join(process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"), "Mudd");
-  if (process.platform === "darwin") return path.join(home, "Library", "Application Support", "Mudd");
-  return path.join(process.env.XDG_DATA_HOME ?? path.join(home, ".local", "share"), "Mudd");
-}
-
-const binDir = (id: ProviderId) => path.join(managedRoot(), "bin", id);
+const binDir = (id: ProviderId) => path.join(localDataDir(), "bin", id);
 const exe = (name: string) => (IS_WIN ? `${name}.exe` : name);
 
 const isFile = (p: string) => {
@@ -100,6 +96,10 @@ export function managedBinary(id: ProviderId): string | null {
     const p = path.join(dir, exe("claude"));
     return isFile(p) ? p : null;
   }
+  return codexLauncher(dir);
+}
+
+function codexLauncher(dir: string): string | null {
   for (const sub of ["bin", ""]) {
     for (const name of [exe("codex"), exe(`codex-${codexTargetTriple()}`)]) {
       const p = path.join(dir, sub, name);
@@ -134,49 +134,79 @@ async function downloadVerified(
 ): Promise<void> {
   fs.mkdirSync(path.dirname(spec.dest), { recursive: true });
   const staging = `${spec.dest}.partial`;
+  // No overall limit (a slow line is fine), only on receiving nothing at all.
+  const stall = new AbortController();
+  let stallTimer = setTimeout(() => stall.abort(), STALL_MS);
+  let sink: FileSink | null = null;
   try {
-    const res = await fetch(spec.url, { signal });
+    const res = await fetch(spec.url, { signal: AbortSignal.any([signal, stall.signal]) });
     if (!res.ok || !res.body) throw new Error(`download failed: HTTP ${res.status}`);
     const total = Number(res.headers.get("content-length")) || spec.size;
     const hasher = new Bun.CryptoHasher("sha256");
-    const sink = Bun.file(staging).writer();
+    sink = Bun.file(staging).writer();
     let received = 0;
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => stall.abort(), STALL_MS);
       hasher.update(chunk);
       await sink.write(chunk);
       received += chunk.byteLength;
       onProgress(received, total);
     }
-    await sink.end();
+    const open = sink;
+    sink = null;
+    await open.end();
     const actual = hasher.digest("hex");
     if (actual.toLowerCase() !== spec.sha256.toLowerCase()) throw new ChecksumError(spec.sha256, actual);
     // Remove first: on Windows a rename onto an existing file fails.
     fs.rmSync(spec.dest, { force: true });
     fs.renameSync(staging, spec.dest);
     if (spec.executable && !IS_WIN) fs.chmodSync(spec.dest, 0o755);
+  } catch (err) {
+    if (stall.signal.aborted && !signal.aborted) throw new Error("the download stopped receiving data. Check your connection and try again.", { cause: err });
+    throw err;
   } finally {
-    fs.rmSync(staging, { force: true });
+    clearTimeout(stallTimer);
+    // Closed before the staging file is removed: Windows won't delete a file that is still open.
+    await Promise.resolve(sink?.end()).catch(() => {});
+    removeQuietly(staging);
   }
 }
 
-/** The system `tar` (bsdtar ships with Windows 10 1803+, and with macOS and Linux). */
-async function extractTarGz(archive: string, into: string): Promise<void> {
-  const tar = Bun.which("tar") ?? (IS_WIN && process.env.SystemRoot ? path.join(process.env.SystemRoot, "System32", "tar.exe") : null);
-  if (!tar || !isFile(tar)) throw new Error("`tar` was not found, so the package cannot be unpacked.");
-  const proc = Bun.spawn([tar, "-xzf", archive, "-C", into], { stdin: "ignore", stdout: "ignore", stderr: "pipe", windowsHide: true });
+/** Clean-up that must never replace the error that made it necessary. */
+function removeQuietly(p: string): void {
+  try {
+    fs.rmSync(p, { recursive: true, force: true });
+  } catch (err) {
+    console.error(`[install] could not remove ${p}:`, err);
+  }
+}
+
+/**
+ * Windows' own bsdtar (Windows 10 1803+) before any `tar` on PATH: GNU tar from Git or MSYS2
+ * reads `C:\…` as a remote host. Run in the archive's folder with a bare file name, so no tar
+ * ever sees a drive letter.
+ */
+async function extractTarGz(archive: string): Promise<void> {
+  const system = IS_WIN && process.env.SystemRoot ? path.join(process.env.SystemRoot, "System32", "tar.exe") : null;
+  const tar = system && isFile(system) ? system : Bun.which("tar");
+  if (!tar) throw new Error("`tar` was not found, so the package cannot be unpacked.");
+  const proc = Bun.spawn([tar, "-xzf", path.basename(archive)], { cwd: path.dirname(archive), stdin: "ignore", stdout: "ignore", stderr: "pipe", windowsHide: true });
   const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
   if (code !== 0) throw new Error(`tar exited with ${code}: ${stderr.slice(0, 400)}`);
 }
 
+const listSignal = (signal: AbortSignal) => AbortSignal.any([signal, AbortSignal.timeout(LIST_TIMEOUT_MS)]);
+
 async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T> {
-  const res = await fetch(url, { signal });
+  const res = await fetch(url, { signal: listSignal(signal) });
   if (!res.ok) throw new Error(`could not read the release list (HTTP ${res.status})`);
   return (await res.json()) as T;
 }
 
 async function installClaude(signal: AbortSignal, log: InstallLog): Promise<string> {
   // `stable`, the build Anthropic has promoted, rather than the newest one published.
-  const res = await fetch(`${CLAUDE_RELEASES}/stable`, { signal });
+  const res = await fetch(`${CLAUDE_RELEASES}/stable`, { signal: listSignal(signal) });
   if (!res.ok) throw new Error(`could not read the release list (HTTP ${res.status})`);
   const version = (await res.text()).trim();
   log(`Claude Code ${version}`);
@@ -199,15 +229,39 @@ async function installCodex(signal: AbortSignal, log: InstallLog): Promise<strin
   const asset = feed.assets?.find((a) => a.name === wanted);
   if (!asset) throw new Error(`OpenAI does not publish a build for ${triple}.`);
   if (!asset.digest) throw new Error("The download carries no checksum, so it was not installed.");
+  // Unpacked beside the live copy and swapped in whole, so a failed or changed package never
+  // leaves old and new files mixed where discovery looks.
   const dir = binDir("codex");
-  const archive = path.join(dir, wanted);
-  log("Downloading…");
-  await downloadVerified({ url: asset.browser_download_url, sha256: asset.digest.replace(/^sha256:/, ""), size: 0, dest: archive }, signal, tenPercent(log));
-  log("Checksum verified. Unpacking…");
+  const staging = `${dir}.partial`;
+  const old = `${dir}.old`;
+  removeQuietly(staging);
+  removeQuietly(old);
+  fs.mkdirSync(staging, { recursive: true });
   try {
-    await extractTarGz(archive, dir);
-  } finally {
+    const archive = path.join(staging, wanted);
+    log("Downloading…");
+    await downloadVerified({ url: asset.browser_download_url, sha256: asset.digest.replace(/^sha256:/, ""), size: 0, dest: archive }, signal, tenPercent(log));
+    log("Checksum verified. Unpacking…");
+    await extractTarGz(archive);
     fs.rmSync(archive, { force: true });
+    if (!codexLauncher(staging)) throw new Error("the package did not contain the Codex program.");
+    if (fs.existsSync(dir)) {
+      try {
+        fs.renameSync(dir, old);
+      } catch (err) {
+        // Windows won't move a folder while a program in it runs.
+        throw new Error("the current copy of Codex is in use. Wait for research to finish, then try again.", { cause: err });
+      }
+    }
+    try {
+      fs.renameSync(staging, dir);
+    } catch (err) {
+      if (fs.existsSync(old)) fs.renameSync(old, dir);
+      throw err;
+    }
+  } finally {
+    removeQuietly(staging);
+    removeQuietly(old);
   }
   const found = managedBinary("codex");
   if (!found) throw new Error("the package did not contain the Codex program.");

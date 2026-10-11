@@ -2,8 +2,9 @@ import { X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 
+/** `locked` holds the dialog open (Escape, the backdrop and × do nothing) while work in it must not be cut short. */
 export function Modal({
-  open, onClose, title, subtitle, children, footer, width = "max-w-lg",
+  open, onClose, title, subtitle, children, footer, width = "max-w-lg", locked = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -12,22 +13,23 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   width?: string;
+  locked?: boolean;
 }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        if (!locked) onClose();
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, onClose]);
+  }, [open, onClose, locked]);
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-zinc-900/30 p-6 pt-[10vh] animate-fade-in" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-zinc-900/30 p-6 pt-[10vh] animate-fade-in" onMouseDown={locked ? undefined : onClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -39,7 +41,7 @@ export function Modal({
             <h2 className="text-base font-semibold text-ink">{title}</h2>
             {subtitle && <p className="mt-0.5 text-sm text-ink-soft">{subtitle}</p>}
           </div>
-          <button className="-mr-1 rounded-md p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink" onClick={onClose} aria-label="Close">
+          <button className="-mr-1 rounded-md p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink disabled:pointer-events-none disabled:opacity-40" onClick={onClose} disabled={locked} aria-label="Close">
             <X size={18} />
           </button>
         </div>
