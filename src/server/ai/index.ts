@@ -1,11 +1,12 @@
 /**
- * The provider registry, status reporting, sign-in, and the one call the rest of Mudd makes:
- * `generateStructured` — a research turn whose answer is validated JSON.
+ * The provider registry, status reporting, and the one call the rest of Mudd makes:
+ * `generateStructured` — a research turn whose answer is validated JSON. Install, sign-in and
+ * sign-out are in setup.ts.
  */
 import fs from "node:fs";
 import path from "node:path";
 import type { z } from "zod";
-import { PROVIDERS, type ProviderId, type ProviderStatus } from "../../shared/ai";
+import type { ProviderId, ProviderStatus } from "../../shared/ai";
 import { dataDir } from "../db";
 import { claudeProvider } from "./claude";
 import { codexProvider } from "./codex";
@@ -29,29 +30,6 @@ export function agentWorkDir(): string {
   const dir = path.join(dataDir(), "agent-work");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
-}
-
-/**
- * Open a terminal running the CLI's own sign-in (`claude auth login` / `codex login`). The
- * vendor's flow opens the browser; Mudd never sees the credentials. User-initiated only.
- */
-export async function openSignIn(id: ProviderId): Promise<{ ok: boolean; message?: string }> {
-  const found = await getProvider(id).detect();
-  if (!found.argv.length) return { ok: false, message: errorCopy("cli_missing", PROVIDERS[id].label) };
-  const args = [...found.argv.slice(1), ...(id === "claude" ? ["auth", "login"] : ["login"])];
-  if (process.platform === "win32") {
-    // PowerShell also reads the curly single quotes (U+2018–U+201B) as quotes: double those too.
-    const q = (s: string) => `'${s.replace(/['‘’‚‛]/g, "$&$&")}'`;
-    const list = args.length ? ` -ArgumentList ${args.map(q).join(",")}` : "";
-    Bun.spawn(["powershell.exe", "-NoProfile", "-Command", `Start-Process -FilePath ${q(found.argv[0]!)}${list}`], { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true });
-    return { ok: true };
-  }
-  if (process.platform === "darwin") {
-    const cmd = [found.argv[0]!, ...args].map((s) => `'${s.replace(/'/g, "'\\''")}'`).join(" ");
-    Bun.spawn(["osascript", "-e", `tell application "Terminal" to do script "${cmd.replace(/"/g, '\\"')}"`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
-    return { ok: true };
-  }
-  return { ok: false, message: `Run \`${PROVIDERS[id].loginHint}\` in a terminal, then press Check again.` };
 }
 
 // ---------- structured turns ----------
@@ -94,14 +72,16 @@ export interface StructuredRequest<T> {
 
 export async function generateStructured<T>(req: StructuredRequest<T>): Promise<{ data: T; costUsd: number | null }> {
   const settings = getAiSettings();
-  const provider = getProvider(settings.provider);
+  const id = settings.provider;
+  if (!id) throw new AiError("no_provider", errorCopy("no_provider", ""));
+  const provider = getProvider(id);
   let prompt = req.prompt;
   let lastError = "";
   // One repair attempt: the reply is shown back with what was wrong with it.
   for (let attempt = 0; attempt < 2; attempt++) {
     let result: { text: string; structured: unknown; costUsd: number | null } | null = null;
     for await (const ev of provider.turn(
-      { prompt, system: req.system, model: settings.model[settings.provider]!, effort: settings.effort[settings.provider]!, webSearch: req.webSearch, schema: req.jsonSchema, cwd: agentWorkDir() },
+      { prompt, system: req.system, model: settings.model[id]!, effort: settings.effort[id]!, webSearch: req.webSearch, schema: req.jsonSchema, cwd: agentWorkDir() },
       req.signal,
     )) {
       if (ev.type === "step") req.onStep?.(ev.label);

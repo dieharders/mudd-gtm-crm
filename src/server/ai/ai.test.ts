@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mergeSources, SOURCES_HEADER } from "../../shared/ai";
+import { mergeSources, SOURCES_HEADER, type SetupEvent } from "../../shared/ai";
 import { allColumns, genericSchema } from "../../shared/schema";
 import { enrichRequest, introRequest } from "../enrich/prompts";
 import { parseAuthStatus } from "./claude";
 import { buildArgs } from "./codex";
 import { compareVersions, parseVersion } from "./discovery";
 import { extractJson } from "./index";
+import { extractUrl, runLogin } from "./login";
 
 describe("extractJson", () => {
   test("reads a bare object, a fenced one, and one wrapped in prose", () => {
@@ -42,6 +43,41 @@ describe("codex args", () => {
     expect(args).toContain("tools.web_search=true");
     expect(args).toContain("--model");
     expect(args.at(-1)!.startsWith("S\n\n---\n\nP")).toBe(true);
+  });
+});
+
+describe("sign-in", () => {
+  test("the sign-in address wins over other links, and only once printed in full", () => {
+    const out = "Update available: https://github.com/openai/codex/releases \nStarting server on http://localhost:1455\nOpen https://auth.openai.com/oauth/authorize?state=abc \n";
+    expect(extractUrl(out)).toBe("https://auth.openai.com/oauth/authorize?state=abc");
+    expect(extractUrl("visit: https://claude.com/cai/oauth/authorize?sta")).toBeNull();
+  });
+
+  const child = (lines: string[], exit: Promise<number>) => {
+    const enc = new TextEncoder();
+    const stream = (chunks: string[]) => new ReadableStream<Uint8Array>({ start(c) { for (const l of chunks) c.enqueue(enc.encode(l)); c.close(); } });
+    return { stdout: stream(lines), stderr: stream([]), write: () => {}, kill: () => {}, exited: exit };
+  };
+
+  test("finishes when somebody new is signed in, and reports the page and the code prompt", async () => {
+    const events: SetupEvent[] = [];
+    let who: string | null = null;
+    setTimeout(() => (who = "a@b.co"), 20);
+    await runLogin({
+      provider: "codex", argv: ["codex", "login"], signal: new AbortController().signal, send: (e) => events.push(e),
+      deps: { spawn: () => child(["Open https://auth.openai.com/oauth/authorize?x=1 \n", "Paste code here if prompted > "], new Promise(() => {})), identity: async () => who, pollMs: 10 },
+    });
+    expect(events.map((e) => e.type)).toEqual(["url", "code_prompt", "done"]);
+    expect(events.at(-1)).toMatchObject({ ok: true });
+  });
+
+  test("an exit with nobody signed in is a failure, whatever the code", async () => {
+    const events: SetupEvent[] = [];
+    await runLogin({
+      provider: "claude", argv: ["claude", "auth", "login"], signal: new AbortController().signal, send: (e) => events.push(e),
+      deps: { spawn: () => child([], Promise.resolve(0)), identity: async () => null, pollMs: 1_000 },
+    });
+    expect(events.at(-1)).toMatchObject({ type: "done", ok: false });
   });
 });
 

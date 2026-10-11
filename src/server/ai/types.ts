@@ -6,7 +6,7 @@
 import type { ProviderAuth, ProviderId } from "../../shared/ai";
 import type { Resolution } from "./discovery";
 
-export type AiErrorCode = "cli_missing" | "not_authenticated" | "cli_failed" | "aborted" | "timeout" | "bad_output";
+export type AiErrorCode = "no_provider" | "cli_missing" | "not_authenticated" | "cli_failed" | "aborted" | "timeout" | "bad_output";
 
 export type AiEvent =
   /** Something the agent is doing, for the progress line: "Searching: CORAS FedRAMP". */
@@ -37,6 +37,8 @@ export interface Provider {
 
 export function errorCopy(code: AiErrorCode, label: string): string {
   switch (code) {
+    case "no_provider":
+      return "No AI provider chosen. Open AI settings to pick one.";
     case "cli_missing":
       return `${label} isn't installed, or Mudd can't find it. Open AI settings to set it up.`;
     case "not_authenticated":

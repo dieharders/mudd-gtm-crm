@@ -12,9 +12,8 @@
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import type { ProviderAuth } from "../../shared/ai";
 import { CLAUDE_SPEC, discoverCli } from "./discovery";
-import { childEnv, hadApiKeyOverride } from "./env";
+import { childEnv } from "./env";
 import { captureCommand, track, untrack } from "./proc";
-import { getAiSettings, updateAiSettings } from "./settings";
 import { errorCopy, type AiEvent, type Provider, type TurnOptions } from "./types";
 
 const copy = (code: Parameters<typeof errorCopy>[0]) => errorCopy(code, "Claude Code");
@@ -61,17 +60,11 @@ async function probe(argv: string[], env: Record<string, string | undefined>): P
   return parseAuthStatus(r.stdout);
 }
 
+/** Under the same key-free environment as a turn: an exported API key never counts as signed in. */
 async function authStatus(): Promise<ProviderAuth> {
   const found = await discoverCli(CLAUDE_SPEC);
   if (!found.argv.length) return { state: "cli_missing", plan: null, account: null, subscription: false };
-  const stripped = await probe(found.argv, childEnv());
-  // Never let the key strip take the user's ONLY credential: if they are "signed out" only
-  // because we hid their API key, fall back to `auto` and say so in the UI (billing badge).
-  if (stripped.state !== "logged_out" || getAiSettings().credentialMode !== "subscription" || !hadApiKeyOverride()) return stripped;
-  const withKey = await probe(found.argv, { ...process.env });
-  if (withKey.state !== "ok") return stripped;
-  updateAiSettings({ credentialMode: "auto" });
-  return withKey;
+  return probe(found.argv, childEnv());
 }
 
 const STEP_LABELS: Record<string, (input: Record<string, unknown>) => string> = {

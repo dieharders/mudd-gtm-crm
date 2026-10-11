@@ -82,9 +82,9 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700"><Sparkles size={14} /></span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-medium">{ai.settings ? PROVIDERS[ai.settings.provider].label : "AI"}</span>
+            <span className="block truncate text-[12.5px] font-medium">{ai.settings?.provider ? PROVIDERS[ai.settings.provider].label : "AI"}</span>
             <span className="block truncate text-[11px] text-ink-faint">
-              {ai.loading && !aiStatus ? "Checking…" : aiReady ? `${aiStatus?.auth.plan ? `${aiStatus.auth.plan[0]!.toUpperCase()}${aiStatus.auth.plan.slice(1)} · ` : ""}ready` : !aiStatus?.installed ? "Not set up" : "Sign in needed"}
+              {ai.settings && !ai.settings.provider ? "No AI provider chosen" : ai.loading && !aiStatus ? "Checking…" : aiReady ? `${aiStatus?.auth.plan ? `${aiStatus.auth.plan[0]!.toUpperCase()}${aiStatus.auth.plan.slice(1)} · ` : ""}ready` : !aiStatus?.installed ? "Not set up" : "Sign in needed"}
             </span>
           </span>
           <span className={cn("h-2 w-2 shrink-0 rounded-full", aiReady ? "bg-emerald-500" : "bg-yellow-400")} />

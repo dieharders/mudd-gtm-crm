@@ -2,8 +2,8 @@
  * AI settings: which CLI Mudd drives, whether it is installed and signed in, which plan it
  * bills, and the model and effort used for research.
  */
-import { Check, ClipboardCopy, ExternalLink, Loader2, LogIn, RefreshCw, ShieldCheck, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { Check, Download, Loader2, LogIn, LogOut, RefreshCw, ShieldCheck, TriangleAlert, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { PROVIDERS, PROVIDER_IDS, type ProviderId, type ProviderStatus } from "../../../shared/ai";
 import { api } from "../../lib/api";
@@ -45,63 +45,150 @@ export function AiSettingsDialog() {
         </>
       }
     >
+      {!s.provider && <p className="mb-3 text-sm text-ink-soft">No AI provider chosen yet. Pick the one whose plan you already pay for.</p>}
       <div className="space-y-3">
         {PROVIDER_IDS.map((id) => (
-          <ProviderCard key={id} id={id} status={ai.providers.find((p) => p.id === id)} active={s.provider === id} onPick={() => fire(ai.update({ provider: id }))} onRefresh={() => fire(check())} />
+          <ProviderCard key={id} id={id} status={ai.providers.find((p) => p.id === id)} active={s.provider === id} onPick={() => fire(ai.update({ provider: id }))} onRefresh={() => ai.refresh(true)} />
         ))}
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor="ai-model">Model for {PROVIDERS[s.provider].label}</label>
-          {s.provider === "codex" ? (
-            <input id="ai-model" className="field" defaultValue={s.model.codex} placeholder="default"
-              onBlur={(e) => fire(ai.update({ model: { ...s.model, codex: e.target.value.trim() || "default" } }))} />
-          ) : (
-            <select id="ai-model" className="field" value={s.model.claude} onChange={(e) => fire(ai.update({ model: { ...s.model, claude: e.target.value } }))}>
-              {PROVIDERS.claude.models.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-            </select>
-          )}
-        </div>
-        <div>
-          <label className="label" htmlFor="ai-effort">Effort</label>
-          <select id="ai-effort" className="field" value={s.effort[s.provider]} onChange={(e) => fire(ai.update({ effort: { ...s.effort, [s.provider]: e.target.value } }))}>
-            {PROVIDERS[s.provider].efforts.map((e) => <option key={e} value={e}>{e === "low" ? "Low (fast, recommended)" : e === "medium" ? "Medium" : "High (thorough, slower)"}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {s.provider === "claude" && (
-        <label className="mt-4 flex items-start gap-2.5 rounded-xl bg-zinc-50 p-3 text-sm">
-          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-brand-500" checked={s.credentialMode === "subscription"}
-            onChange={(e) => fire(ai.update({ credentialMode: e.target.checked ? "subscription" : "auto" }).then(() => ai.refresh()))} />
-          <span>
-            <span className="font-medium">Bill my Claude subscription only</span>
-            <span className="block text-xs text-ink-soft">Ignores an ANTHROPIC_API_KEY in your environment so research never switches to per-token billing. Turned off automatically if that key is your only sign-in.</span>
-          </span>
-        </label>
-      )}
+      {s.provider && <ModelSettings provider={s.provider} />}
 
       <p className="mt-4 flex items-start gap-2 text-xs text-ink-soft">
         <ShieldCheck size={14} className="mt-0.5 shrink-0 text-emerald-600" />
-        Nothing is sent anywhere until you press Run. Then the columns you choose, for the rows you choose, go to {PROVIDERS[s.provider].vendor} through your CLI, which may search the web. Research turns can't run commands or touch your files.
+        Nothing is sent anywhere until you press Run. Then the columns you choose, for the rows you choose, go to {s.provider ? PROVIDERS[s.provider].vendor : "your AI provider"} through its app, which may search the web. Research turns can't run commands or touch your files.
       </p>
     </Modal>
   );
 }
 
-function ProviderCard({ id, status, active, onPick, onRefresh }: { id: ProviderId; status?: ProviderStatus; active: boolean; onPick: () => void; onRefresh: () => void }) {
+/** Model and effort for the chosen provider. */
+function ModelSettings({ provider }: { provider: ProviderId }) {
+  const ai = useAi();
+  const s = ai.settings!;
+  return (
+    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+      <div>
+        <label className="label" htmlFor="ai-model">Model for {PROVIDERS[provider].label}</label>
+        {provider === "codex" ? (
+          <input id="ai-model" className="field" defaultValue={s.model.codex} placeholder="default"
+            onBlur={(e) => fire(ai.update({ model: { ...s.model, codex: e.target.value.trim() || "default" } }))} />
+        ) : (
+          <select id="ai-model" className="field" value={s.model.claude} onChange={(e) => fire(ai.update({ model: { ...s.model, claude: e.target.value } }))}>
+            {PROVIDERS.claude.models.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+        )}
+      </div>
+      <div>
+        <label className="label" htmlFor="ai-effort">Effort</label>
+        <select id="ai-effort" className="field" value={s.effort[provider]} onChange={(e) => fire(ai.update({ effort: { ...s.effort, [provider]: e.target.value } }))}>
+          {PROVIDERS[provider].efforts.map((e) => <option key={e} value={e}>{e === "low" ? "Low (fast, recommended)" : e === "medium" ? "Medium" : "High (thorough, slower)"}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One provider: install it, sign in, sign out. Install downloads the vendor's own build into
+ * Mudd's folder (no npm, no terminal) and goes straight on to sign-in when the new copy is
+ * signed out. Sign-in runs the CLI's own command hidden and the vendor's page opens in the
+ * browser; the card moves on by itself once the user is signed in.
+ */
+function ProviderCard({ id, status, active, onPick, onRefresh }: { id: ProviderId; status?: ProviderStatus; active: boolean; onPick: () => void; onRefresh: () => Promise<ProviderStatus[]> }) {
   const info = PROVIDERS[id];
-  const [signingIn, setSigningIn] = useState(false);
   const auth = status?.auth;
-  const signIn = async () => {
-    setSigningIn(true);
-    const r = await api.aiSignIn(id).catch((e) => ({ ok: false, message: (e as Error).message }));
-    setSigningIn(false);
-    if (r.ok) toast.success("A terminal opened with the sign-in. Finish it there, then press Check again.", { duration: 7000 });
-    else toast.error(r.message ?? "Couldn't start the sign-in.");
+  const ready = !!status?.installed && auth?.state === "ok";
+  const [busy, setBusy] = useState<"install" | "signin" | "signout" | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [offers, setOffers] = useState({ page: false, code: false });
+  const [code, setCode] = useState("");
+  const [offerTerminal, setOfferTerminal] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Closing the dialog cancels an install or sign-in in flight: the server sees the stream close.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const signIn = useCallback((terminal = false) => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setBusy("signin");
+    setNote(null);
+    setOffers({ page: false, code: false });
+    setCode("");
+    fire((async () => {
+      let signedIn = false;
+      try {
+        for await (const ev of api.aiSignIn(id, ac.signal, terminal)) {
+          if (ev.type === "url") setOffers((o) => ({ ...o, page: true }));
+          else if (ev.type === "code_prompt") setOffers((o) => ({ ...o, code: true }));
+          else if (ev.type === "handoff") setNote(ev.message);
+          else if (ev.type === "done") {
+            signedIn = ev.ok;
+            if (!ev.ok) {
+              setNote(ev.message);
+              if (!terminal) setOfferTerminal(true);
+            }
+          }
+        }
+      } catch {
+        if (!ac.signal.aborted) setNote("Couldn't reach Mudd to start the sign-in. Try again.");
+      } finally {
+        if (abortRef.current === ac) {
+          abortRef.current = null;
+          setBusy(null);
+          // Cancelled: usually a browser that never opened, so offer the other way in.
+          if (ac.signal.aborted && !terminal) setOfferTerminal(true);
+          if (signedIn) await onRefresh().catch(() => []);
+        }
+      }
+    })());
+  }, [id, onRefresh]);
+
+  const install = () => {
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setBusy("install");
+    setNote(null);
+    setProgress(null);
+    fire((async () => {
+      let installed = false;
+      try {
+        for await (const ev of api.aiInstall(id, ac.signal)) {
+          if (ev.type === "log") setProgress(ev.line);
+          else if (ev.type === "done") {
+            installed = ev.ok;
+            if (!ev.ok) setNote(ev.message);
+          }
+        }
+      } catch {
+        if (!ac.signal.aborted) setNote("Couldn't reach Mudd to start the install. Try again.");
+      }
+      if (abortRef.current !== ac) return;
+      abortRef.current = null;
+      setProgress(null);
+      const next = installed ? (await onRefresh().catch(() => [])).find((p) => p.id === id) : null;
+      // One click for a new user: having asked for it, they want to use it. Sign-in is shared
+      // with their other apps, so a fresh copy is often signed in already.
+      if (next?.installed && next.auth.state === "logged_out") return signIn();
+      setBusy(null);
+    })());
   };
-  const copyInstall = () => navigator.clipboard.writeText(info.install).then(() => toast.success("Install command copied"), () => toast.error("Couldn't copy"));
+
+  const signOut = async () => {
+    setBusy("signout");
+    setNote(null);
+    const r = await api.aiSignOut(id).catch((e) => ({ ok: false, message: (e as Error).message }));
+    await onRefresh().catch(() => []);
+    setBusy(null);
+    if (r.ok) toast.success(r.message);
+    else setNote(r.message);
+  };
+
+  const sendCode = () =>
+    fire(api.aiSignInCode(id, code).then((r) => (r.ok ? setCode("") : setNote("That code couldn't be sent. Start the sign-in again.")), () => setNote("That code couldn't be sent.")));
 
   return (
     <div className={cn("rounded-2xl border p-4 transition", active ? "border-brand-300 bg-brand-50/50 shadow-[0_0_0_3px_var(--color-brand-100)]" : "border-line bg-white")}>
@@ -114,13 +201,38 @@ function ProviderCard({ id, status, active, onPick, onRefresh }: { id: ProviderI
           </div>
           {!status ? (
             <p className="mt-1 text-xs text-ink-faint"><Loader2 size={12} className="inline animate-spin" /> Checking…</p>
-          ) : !status.installed ? (
-            <div className="mt-1.5 text-xs">
-              <p className="text-ink-soft">{status.outdated ? `Version ${status.outdated} is too old. Update it:` : "Not installed. Install it, then sign in:"}</p>
-              <button onClick={() => fire(copyInstall())} className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-2.5 py-1 font-mono text-[11.5px] text-zinc-100 hover:bg-zinc-800" title="Copy">
-                {info.install} <ClipboardCopy size={11} />
-              </button>
+          ) : busy === "install" ? (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-soft" role="status">
+              <Loader2 size={12} className="animate-spin" /> Installing {info.label}{progress ? ` · ${progress}` : "…"}
+            </p>
+          ) : busy === "signin" ? (
+            <div className="mt-1.5 text-xs text-ink-soft">
+              <p className="flex items-center gap-1.5" role="status"><Loader2 size={12} className="animate-spin" /> Finish signing in in your browser…</p>
+              <details className="mt-1.5">
+                <summary className="cursor-pointer text-ink-faint hover:text-ink">Browser didn't open?</summary>
+                <div className="mt-1.5 space-y-2">
+                  {offers.page && (
+                    <p>
+                      <LinkButton onClick={() => fire(api.aiSignInOpen(id))}>Open the sign-in page</LinkButton>
+                      {offers.code && " If it shows you a code when you finish, paste it here."}
+                    </p>
+                  )}
+                  {offers.code && (
+                    <form className="flex gap-1.5" onSubmit={(e) => { e.preventDefault(); sendCode(); }}>
+                      <input className="field h-7 min-w-0 flex-1 font-mono text-xs" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code from the sign-in page" aria-label="Sign-in code" autoComplete="off" spellCheck={false} />
+                      <Button size="sm" type="submit" disabled={!code.trim()}>Send</Button>
+                    </form>
+                  )}
+                  <p><LinkButton onClick={() => signIn(true)}>Sign in another way</LinkButton> (opens a terminal window).</p>
+                </div>
+              </details>
             </div>
+          ) : !status.installed ? (
+            <p className="mt-1.5 text-xs text-ink-soft">
+              {status.outdated
+                ? `Version ${status.outdated} is too old for Mudd. Mudd can download a current copy from ${info.vendor} for you.`
+                : `Not installed yet. Mudd can download it from ${info.vendor} for you, then you sign in with your ${info.plan} account.`}
+            </p>
           ) : (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
               <span className="tag bg-zinc-100 text-zinc-600">v{status.version ?? "?"}</span>
@@ -141,23 +253,38 @@ function ProviderCard({ id, status, active, onPick, onRefresh }: { id: ProviderI
               )}
             </div>
           )}
+          {note && <p className="mt-1.5 text-xs text-yellow-800">{note}</p>}
+          {offerTerminal && !busy && status?.installed && auth?.state !== "ok" && (
+            <p className="mt-1 text-xs text-ink-soft"><LinkButton onClick={() => signIn(true)}>Sign in another way</LinkButton> (opens a terminal window).</p>
+          )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
-          {active ? (
+          {!active ? (
+            <Button size="sm" onClick={onPick}>Use {info.label}</Button>
+          ) : ready ? (
             <span className="tag bg-brand-500 text-white"><Check size={11} /> In use</span>
           ) : (
-            <Button size="sm" onClick={onPick}>Use {info.label}</Button>
+            // Picked, but it can't run yet: the step to take is the button below.
+            <span className="tag bg-zinc-100 text-zinc-600">Selected</span>
           )}
-          {status?.installed && auth?.state !== "ok" && (
-            <Button size="sm" variant="primary" onClick={() => fire(signIn())} disabled={signingIn}><LogIn size={13} /> Sign in</Button>
-          )}
-          {status && !status.installed && (
-            <button className="inline-flex items-center gap-1 text-[11px] text-ink-faint hover:text-ink" onClick={onRefresh}>
-              <ExternalLink size={11} /> I installed it
-            </button>
-          )}
+          {busy === "install" || busy === "signin" ? (
+            <Button size="sm" variant="ghost" onClick={() => abortRef.current?.abort()}><X size={13} /> Cancel</Button>
+          ) : status && !status.installed ? (
+            <Button size="sm" variant="primary" onClick={install} disabled={busy !== null}><Download size={13} /> {status.outdated ? "Update" : "Install"}</Button>
+          ) : status?.installed && auth?.state !== "ok" ? (
+            <Button size="sm" variant="primary" onClick={() => signIn()} disabled={busy !== null}><LogIn size={13} /> Sign in</Button>
+          ) : ready ? (
+            <Button size="sm" variant="ghost" onClick={() => fire(signOut())} disabled={busy !== null}>
+              {busy === "signout" ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />} Sign out
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>
   );
+}
+
+/** A secondary action that reads as a link, for the paths most people never need. */
+function LinkButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return <button type="button" onClick={onClick} className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800">{children}</button>;
 }

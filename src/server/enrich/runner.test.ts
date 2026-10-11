@@ -10,6 +10,7 @@ import type { CampaignEvent, Suggestion } from "../../shared/ai";
 import { allColumns, genericSchema } from "../../shared/schema";
 import { CHECKED, type CellValue } from "../../shared/types";
 import * as ai from "../ai";
+import { updateAiSettings } from "../ai/settings";
 import * as db from "../db";
 import { eventStream } from "./hub";
 import { ensureSourcesColumn, liveRuns, normaliseValue, recentRuns, startRun, stopCampaignRuns } from "./runner";
@@ -29,6 +30,8 @@ beforeAll(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-runner-"));
   db.closeDb();
   process.env.MUDD_DATA_DIR = dir;
+  // A run needs a provider chosen; the turns themselves are faked.
+  updateAiSettings({ provider: "claude" });
 });
 afterAll(() => {
   fakeTurn = null;
