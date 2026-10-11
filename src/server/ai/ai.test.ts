@@ -56,10 +56,10 @@ describe("sign-in", () => {
   const child = (lines: string[], exit: Promise<number>) => {
     const enc = new TextEncoder();
     const stream = (chunks: string[]) => new ReadableStream<Uint8Array>({ start(c) { for (const l of chunks) c.enqueue(enc.encode(l)); c.close(); } });
-    return { stdout: stream(lines), stderr: stream([]), write: () => {}, kill: () => {}, exited: exit };
+    return { stdout: stream(lines), stderr: stream([]), kill: () => {}, exited: exit };
   };
 
-  test("finishes when somebody new is signed in, and reports the page and the code prompt", async () => {
+  test("finishes when somebody new is signed in, and reports the page", async () => {
     const events: SetupEvent[] = [];
     let who: string | null = null;
     setTimeout(() => (who = "a@b.co"), 20);
@@ -67,7 +67,7 @@ describe("sign-in", () => {
       provider: "codex", argv: ["codex", "login"], signal: new AbortController().signal, send: (e) => events.push(e),
       deps: { spawn: () => child(["Open https://auth.openai.com/oauth/authorize?x=1 \n", "Paste code here if prompted > "], new Promise(() => {})), identity: async () => who, pollMs: 10 },
     });
-    expect(events.map((e) => e.type)).toEqual(["url", "code_prompt", "done"]);
+    expect(events.map((e) => e.type)).toEqual(["url", "done"]);
     expect(events.at(-1)).toMatchObject({ ok: true });
   });
 

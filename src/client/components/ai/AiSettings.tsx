@@ -110,9 +110,7 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
   const [busy, setBusy] = useState<"install" | "signin" | "signout" | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [offers, setOffers] = useState({ page: false, code: false });
-  const [code, setCode] = useState("");
-  const [offerTerminal, setOfferTerminal] = useState(false);
+  const [canReopen, setCanReopen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   // The dialog stays open while this runs. Should the card go anyway (the app's window reloads),
@@ -120,27 +118,21 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
   useEffect(() => onWorking(id, busy === "install" || busy === "signin"), [id, busy, onWorking]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const signIn = useCallback((terminal = false) => {
+  const signIn = useCallback(() => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
     setBusy("signin");
     setNote(null);
-    setOffers({ page: false, code: false });
-    setCode("");
+    setCanReopen(false);
     fire((async () => {
       let signedIn = false;
       try {
-        for await (const ev of api.aiSignIn(id, ac.signal, terminal)) {
-          if (ev.type === "url") setOffers((o) => ({ ...o, page: true }));
-          else if (ev.type === "code_prompt") setOffers((o) => ({ ...o, code: true }));
-          else if (ev.type === "handoff") setNote(ev.message);
+        for await (const ev of api.aiSignIn(id, ac.signal)) {
+          if (ev.type === "url") setCanReopen(true);
           else if (ev.type === "done") {
             signedIn = ev.ok;
-            if (!ev.ok) {
-              setNote(ev.message);
-              if (!terminal) setOfferTerminal(true);
-            }
+            if (!ev.ok) setNote(ev.message);
           }
         }
       } catch {
@@ -149,8 +141,6 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
         if (abortRef.current === ac) {
           abortRef.current = null;
           setBusy(null);
-          // Cancelled: usually a browser that never opened, so offer the other way in.
-          if (ac.signal.aborted && !terminal) setOfferTerminal(true);
           if (signedIn) await onRefresh().catch(() => []);
         }
       }
@@ -197,9 +187,6 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
     else setNote(r.message);
   };
 
-  const sendCode = () =>
-    fire(api.aiSignInCode(id, code).then((r) => (r.ok ? setCode("") : setNote("That code couldn't be sent. Start the sign-in again.")), () => setNote("That code couldn't be sent.")));
-
   return (
     <div className={cn("rounded-2xl border p-4 transition", active ? "border-brand-300 bg-brand-50/50 shadow-[0_0_0_3px_var(--color-brand-100)]" : "border-line bg-white")}>
       <div className="flex items-start gap-3">
@@ -218,24 +205,11 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
           ) : busy === "signin" ? (
             <div className="mt-1.5 text-xs text-ink-soft">
               <p className="flex items-center gap-1.5" role="status"><Loader2 size={12} className="animate-spin" /> Finish signing in in your browser…</p>
-              <details className="mt-1.5">
-                <summary className="cursor-pointer text-ink-faint hover:text-ink">Browser didn't open?</summary>
-                <div className="mt-1.5 space-y-2">
-                  {offers.page && (
-                    <p>
-                      <LinkButton onClick={() => fire(api.aiSignInOpen(id))}>Open the sign-in page</LinkButton>
-                      {offers.code && " If it shows you a code when you finish, paste it here."}
-                    </p>
-                  )}
-                  {offers.code && (
-                    <form className="flex gap-1.5" onSubmit={(e) => { e.preventDefault(); sendCode(); }}>
-                      <input className="field h-7 min-w-0 flex-1 font-mono text-xs" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code from the sign-in page" aria-label="Sign-in code" autoComplete="off" spellCheck={false} />
-                      <Button size="sm" type="submit" disabled={!code.trim()}>Send</Button>
-                    </form>
-                  )}
-                  <p><LinkButton onClick={() => signIn(true)}>Sign in another way</LinkButton> (opens a terminal window).</p>
-                </div>
-              </details>
+              {canReopen && (
+                <p className="mt-1.5 text-ink-faint">
+                  Closed the page? <LinkButton onClick={() => fire(api.aiSignInOpen(id))}>Open it again</LinkButton>
+                </p>
+              )}
             </div>
           ) : !status.installed ? (
             <p className="mt-1.5 text-xs text-ink-soft">
@@ -264,9 +238,6 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
             </div>
           )}
           {note && <p className="mt-1.5 text-xs text-yellow-800">{note}</p>}
-          {offerTerminal && !busy && status?.installed && auth?.state !== "ok" && (
-            <p className="mt-1 text-xs text-ink-soft"><LinkButton onClick={() => signIn(true)}>Sign in another way</LinkButton> (opens a terminal window).</p>
-          )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           {!active ? (

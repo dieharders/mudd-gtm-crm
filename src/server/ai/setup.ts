@@ -11,7 +11,7 @@ import { openExternal } from "../dialogs";
 import { childEnv } from "./env";
 import { agentWorkDir, getProvider } from "./index";
 import { ChecksumError, installManaged } from "./install";
-import { authIdentity, LoginSpawnError, loginUrl, runLogin, spawnLogin } from "./login";
+import { authIdentity, loginUrl, runLogin, spawnLogin } from "./login";
 import { resetDiscovery } from "./discovery";
 import { captureCommand } from "./proc";
 import { sseFrame, sseResponse } from "../sse";
@@ -59,41 +59,11 @@ export function installStream(id: ProviderId, signal: AbortSignal): Response {
   }, () => ac.abort());
 }
 
-/** A command as the user would type it, for when they must run it themselves. */
-const displayCommand = (argv: string[]) => argv.map((a) => (/[\s'"]/.test(a) ? `"${a}"` : a)).join(" ");
-
-/**
- * Open a terminal running the CLI's sign-in: the fallback when the hidden one can't run or the
- * user asks for another way. Mudd can't see it finish, so it ends in a `handoff`.
- */
-async function signInInTerminal(argv: string[]): Promise<SetupEvent> {
-  const handoff: SetupEvent = { type: "handoff", message: "Finish signing in in the terminal window, then press Check again." };
-  const [exe, ...args] = argv;
-  try {
-    if (process.platform === "win32") {
-      // PowerShell also reads the curly single quotes (U+2018–U+201B) as quotes: double those too.
-      const q = (s: string) => `'${s.replace(/['‘’‚‛]/g, "$&$&")}'`;
-      const list = args.length ? ` -ArgumentList ${args.map(q).join(",")}` : "";
-      Bun.spawn(["powershell.exe", "-NoProfile", "-Command", `Start-Process -FilePath ${q(exe!)}${list}`], { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true });
-      return handoff;
-    }
-    if (process.platform === "darwin") {
-      const cmd = argv.map((s) => `'${s.replace(/'/g, "'\\''")}'`).join(" ");
-      Bun.spawn(["osascript", "-e", `tell application "Terminal" to do script "${cmd.replace(/"/g, '\\"')}"`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
-      return handoff;
-    }
-  } catch (err) {
-    console.error("[setup] could not open a terminal:", err);
-  }
-  return { type: "done", ok: false, message: `Couldn't open a terminal. Run ${displayCommand(argv)} yourself, then press Check again.` };
-}
-
 /**
  * Sign in with the CLI's own command, hidden, the vendor's page opening in the browser. Streams
- * `url` and `code_prompt` as the CLI offers them and one `done` once the user is signed in.
- * `terminal` asks for a terminal window instead (answered with one JSON event, not a stream).
+ * `url` once the CLI prints the page's address and one `done` once the user is signed in.
  */
-export async function signInStream(id: ProviderId, terminal: boolean, signal: AbortSignal): Promise<Response> {
+export async function signInStream(id: ProviderId, signal: AbortSignal): Promise<Response> {
   const ac = new AbortController();
   // Listened for before discovery, which can take seconds: a sign-in cancelled meanwhile must
   // not open a browser tab (or hold Codex's fixed callback port) for nobody.
@@ -102,8 +72,6 @@ export async function signInStream(id: ProviderId, terminal: boolean, signal: Ab
   if (!found.argv.length) return Response.json({ type: "done", ok: false, message: `${PROVIDERS[id].label} isn't installed yet.` } satisfies SetupEvent);
   if (ac.signal.aborted) return new Response(null, { status: 499 });
   const argv = [...found.argv, ...PROVIDERS[id].loginArgs];
-  if (terminal) return Response.json(await signInInTerminal(argv));
-
   const cwd = agentWorkDir();
   return eventResponse(async (send) => {
     try {
@@ -116,7 +84,7 @@ export async function signInStream(id: ProviderId, terminal: boolean, signal: Ab
       });
     } catch (err) {
       console.error(`[setup] ${id} sign-in failed:`, err);
-      send(err instanceof LoginSpawnError ? await signInInTerminal(argv) : { type: "done", ok: false, message: "Couldn't start the sign-in. Try again." });
+      send({ type: "done", ok: false, message: "Couldn't start the sign-in. Try again." });
     }
   }, () => ac.abort());
 }

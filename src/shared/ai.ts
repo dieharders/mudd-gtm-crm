@@ -70,14 +70,11 @@ export interface ProviderStatus {
 
 /**
  * Server → page while installing a CLI or signing in, over the request's own event stream.
- * `url` and `code_prompt` say the sign-in page can be reopened and will take a pasted code;
- * `handoff` is a sign-in passed to a terminal window, which Mudd cannot see finish.
+ * `url` says the sign-in page can be reopened.
  */
 export type SetupEvent =
   | { type: "log"; line: string }
   | { type: "url" }
-  | { type: "code_prompt" }
-  | { type: "handoff"; message: string }
   | { type: "done"; ok: boolean; message: string };
 
 export interface AiSettings {

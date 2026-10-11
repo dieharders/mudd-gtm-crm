@@ -4,7 +4,6 @@ import { PROVIDER_IDS, PROVIDERS } from "../shared/ai";
 import { allColumns, columnOf, EMPLOYEES_HEADER, isEmployeesHeader, makeKey, typeFromHeader } from "../shared/schema";
 import type { CampaignSchema, ColumnType } from "../shared/types";
 import { providerStatus } from "./ai";
-import { submitLoginCode } from "./ai/login";
 import { getAiSettings, updateAiSettings } from "./ai/settings";
 import { installStream, openSignInPage, signInStream, signOut } from "./ai/setup";
 import * as db from "./db";
@@ -71,14 +70,7 @@ export function registerAiRoutes(on: On, { json, body, fail }: { json: Json; bod
   const providerOf = (b: { provider?: unknown }) => (PROVIDER_IDS.includes(b.provider as ProviderId) ? (b.provider as ProviderId) : fail(400, "Unknown provider."));
   // Install and sign-in answer with an event stream; closing it cancels them.
   on("POST", "/api/ai/install", async (req) => installStream(providerOf(await body<{ provider?: unknown }>(req)), req.signal));
-  on("POST", "/api/ai/signin", async (req) => {
-    const b = await body<{ provider: ProviderId; terminal?: boolean }>(req);
-    return signInStream(providerOf(b), b.terminal === true, req.signal);
-  });
-  on("POST", "/api/ai/signin/code", async (req) => {
-    const b = await body<{ provider: ProviderId; code?: unknown }>(req);
-    return json({ ok: typeof b.code === "string" && submitLoginCode(providerOf(b), b.code) });
-  });
+  on("POST", "/api/ai/signin", async (req) => signInStream(providerOf(await body<{ provider?: unknown }>(req)), req.signal));
   on("POST", "/api/ai/signin/open", async (req) => json({ ok: openSignInPage(providerOf(await body<{ provider?: unknown }>(req))) }));
   on("POST", "/api/ai/signout", async (req) => {
     const provider = providerOf(await body<{ provider?: unknown }>(req));

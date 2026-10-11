@@ -36,7 +36,7 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
 
 /**
  * POST, then read the answer as setup events: a stream while the work runs, or one JSON event
- * when the server answered at once (not installed yet, a terminal opened). Frames split on the
+ * when the server answered at once (not installed yet). Frames split on the
  * blank line, with one decoder for the whole stream, so a chunk boundary never splits an event.
  */
 async function* setupStream(url: string, body: unknown, signal: AbortSignal): AsyncGenerator<SetupEvent> {
@@ -138,9 +138,8 @@ export const api = {
   aiSettings: (patch: Partial<AiSettings>) => call<AiSettings>("PATCH", "/api/ai/settings", patch),
   /** Download the provider's CLI into Mudd's folder. Abort `signal` to cancel. */
   aiInstall: (provider: ProviderId, signal: AbortSignal) => setupStream("/api/ai/install", { provider }, signal),
-  /** Sign in through the browser, to the end; `terminal` opens a terminal window instead. */
-  aiSignIn: (provider: ProviderId, signal: AbortSignal, terminal = false) => setupStream("/api/ai/signin", { provider, terminal }, signal),
-  aiSignInCode: (provider: ProviderId, code: string) => call<{ ok: boolean }>("POST", "/api/ai/signin/code", { provider, code }),
+  /** Sign in through the browser, to the end. */
+  aiSignIn: (provider: ProviderId, signal: AbortSignal) => setupStream("/api/ai/signin", { provider }, signal),
   aiSignInOpen: (provider: ProviderId) => call<{ ok: boolean }>("POST", "/api/ai/signin/open", { provider }),
   aiSignOut: (provider: ProviderId) => call<{ ok: boolean; message: string }>("POST", "/api/ai/signout", { provider }),
 

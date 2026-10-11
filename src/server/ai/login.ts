@@ -3,9 +3,9 @@
  *
  * The CLI's own login command (`claude auth login`, `codex login`) runs as a hidden child. Over
  * plain pipes it opens the default browser by itself, waits on a localhost callback and prints
- * the sign-in address as a fallback. Mudd reads three things off that output: the address (for
- * "Browser didn't open?"), whether it will take a pasted code, and the end. The vendor's command
- * still does the OAuth exchange and stores the credential; Mudd never sees it.
+ * the sign-in address. Mudd reads that address off its output (to reopen the page if the user
+ * closed it) and waits for the end. The vendor's command still does the OAuth exchange and
+ * stores the credential; Mudd never sees it.
  *
  * THE END is a change in who is signed in (polled), or the child exiting, whichever is first.
  * A change and not a state: someone signing in as a different account was already "signed in"
@@ -24,12 +24,10 @@ const LOGIN_TIMEOUT_MS = 600_000;
 /** Each read spawns the CLI's status command. */
 const POLL_MS = 3_000;
 const OUTPUT_TAIL = 16_384;
-const MAX_CODE_LENGTH = 2_048;
 
 export interface LoginChild {
   stdout: ReadableStream<Uint8Array>;
   stderr: ReadableStream<Uint8Array>;
-  write(text: string): void;
   kill(): void;
   exited: Promise<number>;
 }
@@ -47,9 +45,6 @@ export function authIdentity(auth: ProviderAuth): string | null {
   if (auth.state !== "ok") return null;
   return `${auth.account ?? ""}\u0000${auth.keySource ?? ""}`;
 }
-
-/** The login command could not be started; the caller falls back to a terminal. */
-export class LoginSpawnError extends Error {}
 
 const SIGN_IN_URL = /oauth|authori[sz]e|login|signin|sign-in|\/auth\b|^auth\./i;
 const looksLikeSignIn = (url: string) => {
@@ -72,17 +67,14 @@ export function extractUrl(output: string): string | null {
   return urls.filter(looksLikeSignIn).at(-1) ?? urls.at(-1) ?? null;
 }
 
-export const asksForCode = (output: string) => /paste (the )?code|enter (the )?code/i.test(output);
-
 interface Session {
   provider: ProviderId;
   abort: AbortController;
   url: string | null;
-  write: ((text: string) => void) | null;
 }
 let current: Session | null = null;
 
-/** Run one sign-in to its end. Throws `LoginSpawnError` (having sent nothing) if it can't start. */
+/** Run one sign-in to its end. Throws (having sent nothing) if the command can't start. */
 export async function runLogin(opts: { provider: ProviderId; argv: string[]; signal: AbortSignal; send: (ev: SetupEvent) => void; deps: LoginDeps }): Promise<void> {
   const { provider, send, deps } = opts;
   const label = PROVIDERS[provider].label;
@@ -91,7 +83,7 @@ export async function runLogin(opts: { provider: ProviderId; argv: string[]; sig
 
   current?.abort.abort();
   const abort = new AbortController();
-  const session: Session = { provider, abort, url: null, write: null };
+  const session: Session = { provider, abort, url: null };
   current = session;
 
   let child: LoginChild;
@@ -99,9 +91,8 @@ export async function runLogin(opts: { provider: ProviderId; argv: string[]; sig
     child = deps.spawn(opts.argv);
   } catch (err) {
     if (current === session) current = null;
-    throw new LoginSpawnError(String(err));
+    throw err;
   }
-  session.write = (text) => child.write(text);
   // Tracked so quitting Mudd kills it.
   track(abort);
   abort.signal.addEventListener("abort", () => child.kill(), { once: true });
@@ -119,7 +110,6 @@ export async function runLogin(opts: { provider: ProviderId; argv: string[]; sig
   // Raw per stream, escapes stripped on read: stripped per chunk, an escape split across two
   // reads survives and fuses into the URL.
   const raw = { stdout: "", stderr: "" };
-  let prompted = false;
   const onText = (from: keyof typeof raw, text: string) => {
     raw[from] = (raw[from] + text).slice(-OUTPUT_TAIL);
     const out = stripAnsi(raw.stdout);
@@ -129,10 +119,6 @@ export async function runLogin(opts: { provider: ProviderId; argv: string[]; sig
     if (url && url !== session.url) {
       session.url = url;
       send({ type: "url" });
-    }
-    if (!prompted && (asksForCode(out) || asksForCode(err))) {
-      prompted = true;
-      send({ type: "code_prompt" });
     }
   };
   const drain = async (from: keyof typeof raw, stream: ReadableStream<Uint8Array>) => {
@@ -171,7 +157,6 @@ export async function runLogin(opts: { provider: ProviderId; argv: string[]; sig
 
   for (const t of timers) clearTimeout(t);
   opts.signal.removeEventListener("abort", onClientGone);
-  session.write = null;
   if (outcome.kind !== "exit") child.kill();
   await Promise.race([drained, Bun.sleep(1_000)]);
   untrack(abort);
@@ -192,38 +177,19 @@ export async function runLogin(opts: { provider: ProviderId; argv: string[]; sig
   failed("Couldn't finish signing in. Try again.");
 }
 
-/** The real child: piped, windowless, in an empty directory, with the same environment as a turn. */
+/**
+ * The real child: piped, windowless, in an empty directory, with the same environment as a turn.
+ * Its input is a pipe left open, never written: at end-of-input the CLI's "paste code" prompt
+ * could give up on the sign-in still waiting in the browser.
+ */
 export function spawnLogin(argv: string[], cwd: string): LoginChild {
   const proc = Bun.spawn(argv, { stdin: "pipe", stdout: "pipe", stderr: "pipe", cwd, env: childEnv(), windowsHide: true });
-  // A write to a child that just exited rejects asynchronously (EPIPE); that is not a crash.
-  const settle = (r: unknown) => {
-    if (r instanceof Promise) r.catch((err) => console.warn("[login] stdin write failed:", err));
-  };
   return {
     stdout: proc.stdout,
     stderr: proc.stderr,
-    write: (text) => {
-      if (proc.exitCode !== null || proc.signalCode !== null) throw new Error("login command has exited");
-      settle(proc.stdin.write(text));
-      settle(proc.stdin.flush());
-    },
     kill: () => killTree(proc),
     exited: proc.exited,
   };
-}
-
-/** Hand a pasted code to the running sign-in: one line, control characters removed. */
-export function submitLoginCode(provider: ProviderId, code: string): boolean {
-  if (current?.provider !== provider || !current.write) return false;
-  // eslint-disable-next-line no-control-regex
-  const line = code.replace(/[\x00-\x1f\x7f]/g, "").trim();
-  if (!line || line.length > MAX_CODE_LENGTH) return false;
-  try {
-    current.write(`${line}\n`);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** The running sign-in's page, as read from the CLI. The page never supplies an address. */
