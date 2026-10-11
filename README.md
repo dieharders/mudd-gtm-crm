@@ -108,11 +108,9 @@ Start a campaign with **Discover prospects** and Mudd finds companies that fit y
 - **Find**: pick how many companies and contacts per company, add a focus for this run, and choose which enrichments run on each company you accept. The run plans a few search angles, searches them two at a time, then maps each company's buying committee.
 - **Inbox**: each candidate shows why it fits, why now, and the page it was found on. Accept adds it (and its contacts) as prospects; dismiss with a reason, and later runs avoid that kind.
 
-Code: `src/server/ai/` (providers, discovery, environment, structured turns), `src/server/enrich/` (runner, prompts, storage, event stream), `src/server/sourcing/` (Discovery), and `src/client/components/{ai,enrich,discover}/`.
-
 ## License
 
-Copyright (C) 2026 dieharders
+Copyright (C) 2026 OpenBrew.ai
 
 Mudd is licensed under the [GNU Affero General Public License v3.0](LICENSE) only (`AGPL-3.0-only`). Use it for anything, including at work, and change and share it. Anything you share that's built from Mudd, in whole or in part, must be under the same license with its complete source, and so must a changed Mudd that you run as a service for others. Provided as is, without warranty.
 
