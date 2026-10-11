@@ -201,11 +201,18 @@ export interface Meeting {
   status: string | null;
 }
 
+/** GET /api/update/notes: what changed in the running version, from its GitHub release. */
+export interface ReleaseNotes {
+  version: string;
+  /** The release's title, e.g. "Mudd v0.1.8". */
+  title: string;
+  /** One line per change; empty when the release lists none. */
+  changes: string[];
+}
+
 /** GET /api/update: whether there's a newer Mudd, and whether this copy can install it itself. */
 export interface UpdateInfo {
   current: string;
-  /** The release notes for the running version. */
-  notesUrl: string;
   /** A newer published release, or null when this is the newest (or GitHub couldn't be reached). */
   latest: { version: string; url: string } | null;
   /** The version already swapped in, waiting for Mudd to restart; null when none is. */

@@ -1,8 +1,9 @@
 /** The left rail: brand, primary actions, and every campaign one click away. */
-import { CalendarClock, FolderOpen, Gift, Home, Plus, Sparkles } from "lucide-react";
+import { CalendarClock, FolderOpen, Gift, Home, Plus, Sparkles, X } from "lucide-react";
 import { PROVIDERS } from "../../../shared/ai";
 import { api } from "../../lib/api";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
+import toast from "react-hot-toast";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/cn";
 import { useCampaignList } from "../../lib/campaignList";
@@ -12,6 +13,34 @@ import { ProviderMark } from "../ai/BrandMarks";
 import { useImport } from "../campaigns/ImportFlow";
 import { Logo, Tile } from "./Logo";
 import { UpdateNotice, useUpdateCheck } from "./UpdateNotice";
+
+/** What changed in this version, from its GitHub release, in a toast rather than a browser tab. */
+async function showReleaseNotes() {
+  const id = toast.loading("Loading what's new…");
+  try {
+    const notes = await api.releaseNotes();
+    toast(
+      <div className="text-[13px]">
+        <div className="flex items-start gap-3">
+          <p className="flex-1 font-semibold">What's new in {notes.title}</p>
+          <button onClick={() => toast.dismiss(id)} className="-mt-0.5 -mr-1 rounded-md p-0.5 text-ink-faint hover:bg-zinc-900/5 hover:text-ink" aria-label="Dismiss">
+            <X size={14} />
+          </button>
+        </div>
+        {notes.changes.length ? (
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-ink-soft">
+            {notes.changes.map((c) => <li key={c}>{c}</li>)}
+          </ul>
+        ) : (
+          <p className="mt-1 text-ink-soft">No changes are listed for this version.</p>
+        )}
+      </div>,
+      { id, duration: 30_000 },
+    );
+  } catch (err) {
+    toast.error((err as Error).message, { id });
+  }
+}
 
 export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
   const { campaigns, meetings } = useCampaignList();
@@ -99,7 +128,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
 
       <div className="border-t border-line px-4 py-3 text-[11px] text-ink-faint">
         {update && (
-          <button onClick={() => void api.openUrl(update.notesUrl).catch(() => {})} className="flex items-center gap-2 transition hover:text-ink">
+          <button onClick={() => void showReleaseNotes()} className="flex items-center gap-2 transition hover:text-ink">
             <Gift size={12} /> What's new in <span className="tabular-nums">v{update.current}</span>
           </button>
         )}

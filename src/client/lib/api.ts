@@ -2,7 +2,7 @@
 import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeOutput, RunKind, SetupEvent, Suggestion, SuggestionStatus } from "../../shared/ai";
 import type { ColumnType } from "../../shared/types";
 import type {
-  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, Row, Template, UpdateInfo,
+  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, ReleaseNotes, Row, Template, UpdateInfo,
 } from "../../shared/types";
 
 export class ApiError extends Error {
@@ -130,6 +130,8 @@ export const api = {
   /** The server asks GitHub for the latest release. */
   update: () => call<UpdateInfo>("GET", "/api/update"),
   installUpdate: () => call<{ version: string }>("POST", "/api/update/install"),
+  /** What changed in the running version, read from its GitHub release by the server. */
+  releaseNotes: () => call<ReleaseNotes>("GET", "/api/update/notes"),
 
   // ----- AI -----
   aiStatus: (fresh = false) => call<{ settings: AiSettings; providers: ProviderStatus[] }>("GET", `/api/ai/status${fresh ? "?fresh=1" : ""}`),
