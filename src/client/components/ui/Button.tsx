@@ -11,7 +11,8 @@ const VARIANTS: Record<Variant, string> = {
   secondary:
     "border border-line-strong bg-white text-ink shadow-[0_1px_0_rgba(23,22,29,0.06)] hover:border-zinc-400/60 hover:bg-zinc-50 active:translate-y-px active:shadow-none disabled:text-ink-faint",
   ghost: "text-ink-soft hover:bg-zinc-900/5 hover:text-ink disabled:text-ink-faint",
-  subtle: "bg-brand-100 text-brand-800 hover:bg-brand-200",
+  subtle:
+    "border border-brand-200 bg-brand-100 text-brand-800 shadow-[0_1px_0_rgba(23,22,29,0.06)] hover:border-brand-300 hover:bg-brand-200 active:translate-y-px active:shadow-none disabled:text-brand-400",
   danger: "border border-rose-200 bg-white text-rose-700 shadow-[0_1px_0_rgba(23,22,29,0.06)] hover:bg-rose-50",
 };
 const SIZES: Record<Size, string> = {
