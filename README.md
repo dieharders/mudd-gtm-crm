@@ -81,9 +81,9 @@ Mudd drives **your own signed-in agent CLI**. It never stores an API key, and re
 
 Open **AI settings** from the bottom of the sidebar to pick the provider, model and effort. It shows the signed-in account.
 
-### Enrichment and Outbound
-
 **What a research turn can do.** Claude Code gets `WebSearch` and `WebFetch` and nothing else: no shell, no file access. It runs in an empty scratch folder, with your CLAUDE.md, hooks and MCP servers ignored, and with no saved session. Codex runs `exec` with a read-only sandbox. Nothing leaves the machine until you press Run, and the first run asks for consent.
+
+### Enrichment
 
 - **Enrich** (campaign toolbar): pick a preset or write a recipe.
   - A recipe is what to find, which columns to send, and which columns to fill. It targets existing columns when the headers match, otherwise it appends new ones.
@@ -94,6 +94,11 @@ Open **AI settings** from the bottom of the sidebar to pick the provider, model 
   - Accepting writes the cell (with undo) and adds the link to an `Enrichment sources` column.
   - "Fill empty cells automatically" skips review only for cells that are empty.
   - A violet dot on a cell means it has a suggestion waiting.
+
+### Outbound templates
+
+![Intro message templates: a template with placeholders and its preview filled in for one prospect](docs/screenshots/outbound-templates.webp)
+
 - **Write with AI** (prospect panel → Intro message): let the AI pick the best-fitting template, or choose one.
   - It fills the placeholders, researches 1–2 verifiable hooks and shows a draft with those sources. Use it, try again, or discard it.
   - **Draft intros** in the bulk bar does the same for every selected row.
