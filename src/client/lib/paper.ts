@@ -1,4 +1,4 @@
-/** Flat paper-coloured tiles for campaigns in the paper look: the same hash as tileFor, outlined in mud. */
+/** Outlined paper tiles for campaigns: the same hash as tileFor, with a rim. */
 const TILES = ["bg-clay-soft", "bg-lake-soft", "bg-note", "bg-note-pink", "bg-note-mint", "bg-paper-deep"];
 
 export function paperTileFor(id: string): string {

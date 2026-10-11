@@ -5,7 +5,7 @@ export function AppToaster() {
     <Toaster
       position="bottom-center"
       toastOptions={{
-        className: "bg-mud! text-paper! font-ui! text-[15px]! leading-snug! rounded-xl! border-2! border-rim! px-4! py-3! max-w-md! shadow-hard!",
+        className: "bg-mud! text-paper! font-sans! text-[15px]! leading-snug! rounded-xl! border-2! border-rim! px-4! py-3! max-w-md! shadow-hard!",
         success: { iconTheme: { primary: "#6fd392", secondary: "#2b1e16" } },
         error: { iconTheme: { primary: "#ff8a8a", secondary: "#2b1e16" }, duration: 6000 },
       }}

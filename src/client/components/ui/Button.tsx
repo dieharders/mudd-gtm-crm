@@ -6,12 +6,12 @@ type Size = "sm" | "md" | "icon";
 
 // Paper buttons (styles.css): a rimmed card on a ledge that presses down. Ghost has no card at all.
 const VARIANTS: Record<Variant, string> = {
-  primary: "paper-btn paper-btn-primary",
-  secondary: "paper-btn",
-  subtle: "paper-btn bg-clay-soft text-clay-deep hover:bg-clay-soft/60",
-  danger: "paper-btn text-rose-700 hover:bg-note-pink",
+  primary: "btn btn-primary",
+  secondary: "btn",
+  subtle: "btn bg-clay-soft text-clay-deep hover:bg-clay-soft/60",
+  danger: "btn text-rose-700 hover:bg-note-pink",
   ghost:
-    "inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl px-4 font-ui text-[15px] font-bold whitespace-nowrap text-mud-soft transition select-none hover:bg-paper-deep hover:text-mud disabled:pointer-events-none disabled:opacity-50",
+    "inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl px-4 font-sans text-[15px] font-bold whitespace-nowrap text-mud-soft transition select-none hover:bg-paper-deep hover:text-mud disabled:pointer-events-none disabled:opacity-50",
 };
 const SIZES: Record<Size, string> = {
   sm: "h-9 gap-2 rounded-lg px-3.5 text-[13px]",

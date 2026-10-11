@@ -79,7 +79,7 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
   }, [inContact, onOpenContact, onClose, onNext, onPrev]);
 
   return (
-    <aside className="paper absolute inset-y-0 right-0 z-30 flex w-[min(480px,100%)] flex-col border-l-2 border-rim bg-paper shadow-[-8px_0_24px_-12px_rgba(43,30,22,0.35)] animate-slide-in">
+    <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(480px,100%)] flex-col border-l-2 border-rim bg-paper shadow-[-8px_0_24px_-12px_rgba(43,30,22,0.35)] animate-slide-in">
       <div className="flex items-start gap-2 border-b-2 border-rim/40 px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-base font-semibold">{title}</h2>

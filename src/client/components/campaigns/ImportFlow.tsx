@@ -120,7 +120,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       />
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-mud/30 p-8 animate-fade-in">
-          <div className="paper flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-rim bg-paper px-14 py-10 text-center shadow-hard-lg">
+          <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-rim bg-paper px-14 py-10 text-center shadow-hard-lg">
             <Upload className="text-clay" size={36} strokeWidth={2.5} />
             <p className="font-display text-2xl font-bold">Drop to import</p>
             <p className="text-[15px] text-mud-soft">.xlsx or .csv · read on this computer, never uploaded</p>

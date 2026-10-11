@@ -73,7 +73,7 @@ export default defineConfig([
     },
     rules: {
       // The app's own classes from `@layer components` in styles.css are not Tailwind utilities.
-      "better-tailwindcss/no-unknown-classes": ["error", { ignore: ["^(?:field|label|eyebrow|tag|card|scroll-thin|paper|paper-card|paper-btn|paper-btn-primary|paper-btn-icon|note|pin|paper-tag)$"] }],
+      "better-tailwindcss/no-unknown-classes": ["error", { ignore: ["^(?:field|label|eyebrow|tag|card|scroll-thin|btn|btn-primary|btn-icon|note|pin)$"] }],
       "better-tailwindcss/no-conflicting-classes": "error",
       "better-tailwindcss/no-duplicate-classes": "error",
       "better-tailwindcss/no-deprecated-classes": "error",

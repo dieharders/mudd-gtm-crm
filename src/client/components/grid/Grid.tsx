@@ -301,7 +301,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                 style={{ width: widthOf(col), ...pinnedStyle(i) }}
                 className={cn(
                   "group relative flex shrink-0 items-center border-r border-rim/25 bg-paper px-2.5",
-                  i === p.pinned - 1 && "shadow-[1px_0_0_var(--color-line-strong)]",
+                  i === p.pinned - 1 && "shadow-[1px_0_0_var(--color-rim)]",
                 )}
               >
                 <button
@@ -372,7 +372,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                       className={cn(
                         "group/cell relative flex shrink-0 items-center border-r border-rim/50 px-2.5 text-[13px]",
                         rowBg,
-                        ci === p.pinned - 1 && "shadow-[1px_0_0_var(--color-line-strong)]",
+                        ci === p.pinned - 1 && "shadow-[1px_0_0_var(--color-rim)]",
                         ci === 0 && "font-medium",
                         isActive && !isEditing && "ring-2 ring-clay ring-inset",
                         isEditing && "z-[4] overflow-visible p-0",

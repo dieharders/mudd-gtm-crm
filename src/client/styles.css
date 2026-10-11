@@ -46,35 +46,13 @@
 }
 
 @theme {
-  --font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  /* Three bundled faces: Nunito for the UI, Libron for titles, Comic Mono for labels and tags. */
+  --font-sans: "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Libron", Georgia, "Times New Roman", serif;
+  --font-label: "Comic Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  /* Canvas and ink: cool, clean greys. */
-  --color-canvas: #f5f5f8;
-  --color-sidebar: #eeeef3;
-  --color-panel: #ffffff;
-  --color-line: #e4e4eb;
-  --color-line-strong: #d2d2dc;
-  --color-ink: #17161d;
-  --color-ink-soft: #55536a;
-  --color-ink-faint: #8e8ca3;
-
-  /* Brand: electric violet. */
-  --color-brand-50: #f4f1ff;
-  --color-brand-100: #ebe5ff;
-  --color-brand-200: #d8ccff;
-  --color-brand-300: #bba8ff;
-  --color-brand-400: #9c80ff;
-  --color-brand-500: #7c5cff;
-  --color-brand-600: #6744f5;
-  --color-brand-700: #5633d8;
-  --color-brand-800: #4528ad;
-  --color-brand-900: #36218a;
-
-  /* Paper look (home screen, pass 1): warm board, cream paper, mud ink, clay and lake accents. */
-  --font-display: "Libron", Georgia, "Times New Roman", serif;
-  --font-ui: "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-label: "Comic Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  /* The paper look: a warm board, cream paper, mud ink, a brown rim, clay and lake accents. */
 
   --color-board: #efe3cf;
   --color-paper: #fbf5e8;
@@ -128,8 +106,8 @@
 @layer base {
   html, body, #root { height: 100%; }
   body {
-    @apply bg-canvas text-ink font-sans antialiased;
-    font-size: 14px;
+    @apply bg-board font-sans text-mud antialiased;
+    font-size: 15px;
   }
   ::selection { background: var(--color-clay-soft); }
   button { cursor: pointer; }
@@ -140,7 +118,7 @@
 
 @layer components {
   .field {
-    @apply w-full rounded-xl border-2 border-rim bg-paper px-4 py-2.5 font-ui text-[15px] text-mud outline-none transition
+    @apply w-full rounded-xl border-2 border-rim bg-paper px-4 py-2.5 font-sans text-[15px] text-mud outline-none transition
       placeholder:text-mud-faint focus:border-clay focus:ring-3 focus:ring-clay-soft;
   }
   /* A dropdown in the app's own look, not WebKit's glossy macOS control: flat, with a chevron. */
@@ -166,26 +144,18 @@
   .card {
     @apply rounded-2xl border-2 border-rim bg-paper shadow-hard;
   }
-  .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
+  .scroll-thin { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--color-rim) 45%, transparent) transparent; }
 
-  /* Paper look: brown rims, a ledge under each piece and a soft shadow, like cards on a board. Toy-sized type. */
-  .paper {
-    font-family: var(--font-ui);
-    font-size: 15px;
-    color: var(--color-mud);
-  }
-  .paper-card {
-    @apply rounded-2xl border-2 border-rim bg-paper shadow-hard;
-  }
-  .paper-btn {
-    @apply inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl border-2 border-rim bg-paper px-5 font-ui text-[15px]
+  /* Buttons: a rimmed card on a ledge that presses down (see ui/Button.tsx for the variants). */
+  .btn {
+    @apply inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl border-2 border-rim bg-paper px-5 font-sans text-[15px]
       font-extrabold whitespace-nowrap text-mud shadow-hard-sm transition select-none hover:bg-paper-deep active:translate-y-0.5
       active:shadow-none disabled:pointer-events-none disabled:opacity-50;
   }
-  .paper-btn-primary {
+  .btn-primary {
     @apply bg-clay text-paper hover:bg-clay-deep;
   }
-  .paper-btn-icon {
+  .btn-icon {
     @apply w-11 px-0;
   }
   /* A sticky note: paper square with a push-pin through the top edge. */
@@ -195,8 +165,5 @@
   .pin {
     @apply absolute -top-3 left-1/2 h-6 w-6 -translate-x-1/2 rounded-full border-2 border-rim bg-clay
       shadow-[inset_-2px_-2px_0_0_rgba(0,0,0,0.25),inset_2px_2px_0_0_rgba(255,255,255,0.35),0_3px_5px_rgba(43,30,22,0.35)];
-  }
-  .paper-tag {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-rim/70 px-2 py-0.5 font-label text-[13px] leading-tight;
   }
 }

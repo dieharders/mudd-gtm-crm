@@ -338,7 +338,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   }, [showColumns, state.rows, state.contacts, schema]);
 
   return (
-    <div className="paper flex h-full flex-col bg-board">
+    <div className="flex h-full flex-col bg-board">
       {/* header */}
       <div className="flex flex-wrap items-center gap-3 px-6 pt-6 pb-3">
         <Link to="/" className="rounded-xl border-2 border-transparent p-2 text-mud-faint transition hover:border-rim hover:bg-paper-deep hover:text-mud" title="All campaigns"><ArrowLeft size={20} /></Link>

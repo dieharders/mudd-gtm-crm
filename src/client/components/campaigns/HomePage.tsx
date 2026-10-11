@@ -22,7 +22,7 @@ function greeting(): string {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
-/** The home screen, in the paper look: a board with pinned cards. */
+/** The home screen: a board with pinned cards. */
 export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
   const { campaigns, meetings } = useCampaignList();
   const [removing, setRemoving] = useState<CampaignSummary | null>(null);
@@ -34,7 +34,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
   );
 
   return (
-    <div className="paper h-full overflow-y-auto bg-board scroll-thin">
+    <div className="h-full overflow-y-auto bg-board scroll-thin">
       <div className="mx-auto max-w-6xl px-6 py-8 md:px-10 md:py-10">
         <div className="mb-10 flex flex-wrap items-end gap-4">
           <div className="mr-auto">
@@ -85,7 +85,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
 export function MeetingsPage() {
   const { meetings } = useCampaignList();
   return (
-    <div className="paper h-full overflow-y-auto bg-board scroll-thin">
+    <div className="h-full overflow-y-auto bg-board scroll-thin">
       <div className="mx-auto max-w-3xl px-6 py-8 md:px-10 md:py-10">
         <p className="eyebrow mb-2">Calendar</p>
         <h1 className="mb-8 font-display text-[40px] leading-none font-bold tracking-tight">Meetings</h1>
@@ -97,7 +97,7 @@ export function MeetingsPage() {
 
 function StatCard({ tile, icon, value, label }: { tile: string; icon: ReactNode; value: number; label: string }) {
   return (
-    <div className="paper-card flex items-center gap-4 px-5 py-4">
+    <div className="card flex items-center gap-4 px-5 py-4">
       <Tile size="lg" className={cn("border-2 border-rim text-mud", tile)}>{icon}</Tile>
       <div>
         <div className="font-display text-[30px] leading-none font-bold tabular-nums">{value}</div>
@@ -115,7 +115,7 @@ function Onboarding() {
     { note: "bg-note-mint -rotate-1", icon: <Download size={18} />, title: "Export it back", tags: ["Same formatting", "Formulas intact"], body: "Your sheet, with every edit, exactly as it looked." },
   ];
   return (
-    <div className="paper-card p-8 md:p-10">
+    <div className="card p-8 md:p-10">
       <h2 className="font-display text-[28px] leading-tight font-bold tracking-tight">Start with a spreadsheet you already have.</h2>
       <p className="mt-2 max-w-xl text-[15px] text-mud-soft">Everything stays on this computer. Drop a file anywhere on this window, or use Import sheet above.</p>
       <div className="mt-10 grid items-stretch gap-8 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:gap-5">
@@ -128,7 +128,7 @@ function Onboarding() {
                 <span className="font-display text-lg font-bold">{s.title}</span>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                {s.tags.map((t) => <span key={t} className="paper-tag bg-paper/70 font-bold">{t}</span>)}
+                {s.tags.map((t) => <span key={t} className="tag bg-paper/70 font-bold">{t}</span>)}
               </div>
               <p className="mt-3 font-label text-sm text-mud-soft">{s.body}</p>
             </div>
@@ -150,7 +150,7 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
       tabIndex={0}
       onClick={() => void navigate(`/c/${c.id}`)}
       onKeyDown={(e) => { if (e.key === "Enter") void navigate(`/c/${c.id}`); }}
-      className="paper-card group cursor-pointer p-6 transition hover:-translate-y-0.5 hover:shadow-hard-lg"
+      className="card group cursor-pointer p-6 transition hover:-translate-y-0.5 hover:shadow-hard-lg"
     >
       <div className="flex items-start gap-4">
         <Tile size="lg" className={cn("text-lg", paperTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
@@ -185,7 +185,7 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         {stages.filter((s) => c.byStatus[s]).map((s) => (
-          <span key={s} className={cn("paper-tag", toneFor(s, c.stages).pill)}>
+          <span key={s} className={cn("tag", toneFor(s, c.stages).pill)}>
             <span className="font-bold">{s}</span> <span className="tabular-nums">{c.byStatus[s]}</span>
           </span>
         ))}
@@ -206,13 +206,13 @@ function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number
     return d && d < now && !isSameDay(d, now) && m.status === MEETING_STAGE;
   });
   return (
-    <div className="paper-card p-5">
+    <div className="card p-5">
       <h2 className="flex items-center gap-3 font-display text-lg font-bold">
         <Tile className="border-2 border-rim bg-note text-mud"><CalendarClock size={16} /></Tile> Upcoming meetings
       </h2>
       {soon.length === 0 ? (
         <div className="mt-4 rounded-xl border-2 border-dashed border-rim/50 px-4 py-5 text-center font-label text-[13px] leading-relaxed text-mud-soft">
-          Nothing booked yet. Set a prospect to <span className="paper-tag bg-note">Meeting booked</span> and add the link and time.
+          Nothing booked yet. Set a prospect to <span className="tag bg-note">Meeting booked</span> and add the link and time.
         </div>
       ) : (
         <ul className="mt-6 space-y-5 px-1">

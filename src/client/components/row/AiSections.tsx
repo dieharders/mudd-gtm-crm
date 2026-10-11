@@ -65,9 +65,9 @@ export function AiIntro({ row, schema, templates, enrich }: { row: Row; schema: 
         <div className="mb-2 flex items-center gap-2">
           <Wand2 size={14} className="text-clay-deep" />
           <span className="text-sm font-semibold text-mud">AI draft</span>
-          {template && <span className="tag bg-paper text-mud-soft ring-1 ring-line">from “{template}”</span>}
+          {template && <span className="tag bg-paper text-mud-soft ring-1 ring-rim/40">from “{template}”</span>}
         </div>
-        <p className="rounded-xl bg-paper p-3 text-[13px] leading-relaxed whitespace-pre-wrap ring-1 ring-line">{String(draft.value ?? "")}</p>
+        <p className="rounded-xl bg-paper p-3 text-[13px] leading-relaxed whitespace-pre-wrap ring-1 ring-rim/40">{String(draft.value ?? "")}</p>
         {hooks.length > 0 && (
           <ul className="mt-2 space-y-1">
             {hooks.map((h) => {

@@ -33,7 +33,7 @@ export function Modal({
       <div
         role="dialog"
         aria-modal="true"
-        className={cn("paper w-full rounded-2xl border-2 border-rim bg-paper shadow-hard-lg animate-pop", width)}
+        className={cn("w-full rounded-2xl border-2 border-rim bg-paper shadow-hard-lg animate-pop", width)}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b-2 border-rim/40 px-6 py-5">

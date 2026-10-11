@@ -70,7 +70,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
     );
 
   return (
-    <aside className="paper flex w-16 shrink-0 flex-col border-r-2 border-rim bg-paper wide:w-64">
+    <aside className="flex w-16 shrink-0 flex-col border-r-2 border-rim bg-paper wide:w-64">
       <div className="flex h-16 items-center justify-center gap-2.5 px-2 wide:justify-start wide:px-4">
         <Logo size={32} />
         <span className="hidden font-display text-[23px] font-bold tracking-tight wide:inline">mudd</span>
