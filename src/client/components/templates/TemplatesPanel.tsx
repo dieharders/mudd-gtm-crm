@@ -3,16 +3,20 @@
  * and a live preview against any prospect. Placeholders name the prospect's columns or its
  * primary contact's; {{First name}} is the primary contact's.
  */
-import { Braces, Plus, Trash2, X } from "lucide-react";
+import { Braces, Plus, Trash2, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { mergeTemplate, placeholdersFor, tokenize } from "../../../shared/merge";
+import { mergeTemplate, placeholdersFor } from "../../../shared/merge";
 import { prospectSchema } from "../../../shared/schema";
-import { isScreened, type CampaignSchema, type Row, type Template } from "../../../shared/types";
+import { isScreened, type CampaignSchema, type Row, type Template, type Thesis } from "../../../shared/types";
 import { primaryOf, prospectCells, prospectTitle } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
+import type { ConsentGate } from "../../hooks/useConsentGate";
+import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
 import { fire } from "../../lib/fire";
+import { GenerateTemplateDialog } from "./GenerateTemplateDialog";
+import { UnknownPlaceholders } from "./UnknownPlaceholders";
 
 const STARTER = `Hi {{First name}},
 
@@ -25,17 +29,27 @@ Would a 15-minute call next week be useful?
 Best,
 [Your name]`;
 
-export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onClose, previewRowId }: {
+export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, consent, state, onClose, previewRowId }: {
   schema: CampaignSchema;
   rows: Row[];
   contactsOf: (orgId: string) => Row[];
   templates: Template[];
+  /** The ICP thesis, which prefills "Generate with AI"; null for a campaign without one. */
+  thesis: Thesis | null;
+  consent: ConsentGate;
   state: CampaignState;
   onClose: () => void;
   previewRowId?: string | null;
 }) {
   const [selected, setSelected] = useState<string | null>(templates[0]?.id ?? null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const ai = useAi();
+  const { ready: aiReady } = useActiveProvider();
+  // Without a provider signed in, the button opens the AI settings instead. While the status is
+  // still loading it waits, so a signed-in provider isn't mistaken for none.
+  const openGenerate = () => (aiReady ? setGenerating(true) : ai.setOpen(true));
+  const generateTitle = ai.loading ? "Checking AI setup…" : aiReady ? "Draft a template with AI" : "Set up AI first";
   // Preview against prospects still in play: nobody writes an intro to a screened-out one.
   const prospects = useMemo(() => rows.filter((r) => !isScreened(r, schema)), [rows, schema]);
   const [previewId, setPreviewId] = useState<string>(previewRowId ?? prospects[0]?.id ?? "");
@@ -63,6 +77,10 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onC
     const t = await state.addTemplate(`Template ${templates.length + 1}`, STARTER);
     setSelected(t.id);
   };
+  const keepGenerated = async (name: string, body: string) => {
+    const t = await state.addTemplate(name, body);
+    setSelected(t.id);
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-zinc-900/20 animate-fade-in" onMouseDown={onClose}>
@@ -72,12 +90,16 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onC
             <h2 className="text-base font-semibold">Intro message templates</h2>
             <p className="text-xs text-ink-soft">Write it once; each prospect's panel fills in the placeholders from that row.</p>
           </div>
-          <Button variant="primary" size="sm" onClick={() => fire(create())}><Plus size={14} /> New template</Button>
           <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close templates"><X size={16} /></Button>
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <ul className="w-56 shrink-0 space-y-0.5 overflow-y-auto border-r border-line p-2 scroll-thin">
+          <div className="flex w-56 shrink-0 flex-col border-r border-line">
+            <div className="flex flex-col gap-1.5 border-b border-line p-2">
+              <Button variant="primary" size="sm" onClick={() => fire(create())}><Plus size={14} /> New template</Button>
+              <Button size="sm" onClick={openGenerate} disabled={ai.loading} title={generateTitle}><Wand2 size={14} /> Generate with AI</Button>
+            </div>
+          <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2 scroll-thin">
             {templates.map((t) => (
               <li key={t.id}>
                 <button
@@ -89,13 +111,9 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onC
                 </button>
               </li>
             ))}
-            {!templates.length && (
-              <li className="px-2 py-6 text-center text-xs text-ink-faint">
-                No templates yet.
-                <button className="mt-2 block w-full text-brand-700 hover:underline" onClick={() => fire(create())}>Create your first</button>
-              </li>
-            )}
+            {!templates.length && <li className="px-2 py-6 text-center text-xs text-ink-faint">No templates yet.</li>}
           </ul>
+          </div>
 
           {tpl ? (
             <Editor
@@ -121,6 +139,12 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, state, onC
           )}
         </div>
       </div>
+      {generating && state.campaign && (
+        // A click on the dialog's own backdrop must not reach the panel's, which would close both.
+        <div onMouseDown={(e) => e.stopPropagation()}>
+          <GenerateTemplateDialog open campaignId={state.campaign.id} thesis={thesis} consent={consent} onKeep={keepGenerated} onClose={() => setGenerating(false)} />
+        </div>
+      )}
     </div>
   );
 }
@@ -141,8 +165,7 @@ function Editor({ tpl, schema, state, preview, previewSelect, onDelete, confirmi
   const latest = useRef({ name, body });
   latest.current = { name, body };
   const chips = useMemo(() => placeholdersFor(schema), [schema]);
-  const tokens = useMemo(() => tokenize(body, schema), [body, schema]);
-  const unknown = tokens.filter((t) => t.placeholder && !t.placeholder.known).map((t) => t.placeholder!.name);
+  const unknown = useMemo(() => mergeTemplate(body, schema, {}).unknown, [body, schema]);
   const merged = preview ? mergeTemplate(body, schema, preview.cells) : null;
 
   // Saved as you type, a moment after you stop.
@@ -196,11 +219,7 @@ function Editor({ tpl, schema, state, preview, previewSelect, onDelete, confirmi
             value={body}
             onChange={(e) => { setBody(e.target.value); queueSave({ name, body: e.target.value }); }}
           />
-          {unknown.length > 0 && (
-            <p className="mt-1.5 text-xs text-amber-700">
-              {[...new Set(unknown)].map((u) => `{{${u}}}`).join(", ")} match no column and will be left as-is.
-            </p>
-          )}
+          <UnknownPlaceholders names={unknown} />
         </div>
         <div>
           <p className="label flex items-center gap-1"><Braces size={12} /> Insert a placeholder</p>

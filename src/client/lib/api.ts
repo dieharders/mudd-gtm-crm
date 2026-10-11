@@ -26,6 +26,12 @@ export interface AcceptCandidatesResult {
   candidates: Candidate[];
 }
 
+export interface GeneratedTemplate {
+  name: string;
+  body: string;
+  unknown: string[];
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string, public code?: string) {
     super(message);
@@ -122,6 +128,9 @@ export const api = {
     call<Template>("POST", `/api/campaigns/${id}/templates`, { name, body }),
   updateTemplate: (tid: string, patch: { name?: string; body?: string }) => call<Template>("PATCH", `/api/templates/${tid}`, patch),
   deleteTemplate: (tid: string) => call<{ ok: true }>("DELETE", `/api/templates/${tid}`),
+  /** An AI-drafted template, not yet saved; `unknown` names placeholders that match no column. */
+  generateTemplate: (id: string, problem: string) =>
+    call<GeneratedTemplate>("POST", `/api/campaigns/${id}/templates/generate`, { problem }),
 
   inspectFile: (file: File) => {
     const fd = new FormData();

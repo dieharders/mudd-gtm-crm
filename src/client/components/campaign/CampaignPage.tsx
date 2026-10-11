@@ -563,7 +563,7 @@ function CampaignView({ state }: { state: CampaignState }) {
       </div>
 
       {showTemplates && (
-        <TemplatesPanel schema={schema} rows={state.rows} contactsOf={contactsOf} templates={state.templates} state={state} previewRowId={openRowId} onClose={() => setShowTemplates(false)} />
+        <TemplatesPanel schema={schema} rows={state.rows} contactsOf={contactsOf} templates={state.templates} thesis={state.thesis} consent={consent} state={state} previewRowId={openRowId} onClose={() => setShowTemplates(false)} />
       )}
       {showEnrich && (
         <EnrichPanel state={state} enrich={enrich} selectedIds={selectedActiveIds} filteredIds={filtered.filter((r) => !isScreened(r, schema)).map((r) => r.id)}
