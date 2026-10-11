@@ -2,7 +2,7 @@
  * AI settings: which CLI Mudd drives, whether it is installed and signed in, which plan it
  * bills, and the model and effort used for research.
  */
-import { Check, Download, Loader2, LogIn, LogOut, RefreshCw, ShieldCheck, TriangleAlert, X } from "lucide-react";
+import { Check, Download, Loader2, LogIn, LogOut, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { PROVIDERS, PROVIDER_IDS, type ProviderId, type ProviderStatus } from "../../../shared/ai";
@@ -53,11 +53,6 @@ export function AiSettingsDialog() {
       </div>
 
       {s.provider && <ModelSettings provider={s.provider} />}
-
-      <p className="mt-4 flex items-start gap-2 text-xs text-ink-soft">
-        <ShieldCheck size={14} className="mt-0.5 shrink-0 text-emerald-600" />
-        Nothing is sent anywhere until you press Run. Then the columns you choose, for the rows you choose, go to {s.provider ? PROVIDERS[s.provider].vendor : "your AI provider"} through its app, which may search the web. Research turns can't run commands or touch your files.
-      </p>
     </Modal>
   );
 }
