@@ -19,7 +19,7 @@
 import { domainAcceptsMail } from "./mx";
 import { enrichRequest, introRequest } from "./prompts";
 import * as store from "./store";
-import { publish } from "./hub";
+import { publish, publishCampaign } from "./hub";
 import { mergeSources, recipeMode, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type ProviderId, type RunKind, type Source, type Suggestion } from "../../shared/ai";
 import { allColumns, columnOf, isContactKey, makeKey } from "../../shared/schema";
 import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../shared/types";
@@ -93,6 +93,7 @@ export function ensureSourcesColumn(campaignId: string): string {
   const key = makeKey("enrichment_sources", taken);
   const schema: CampaignSchema = { ...c.schema, columns: [...c.schema.columns, { key, header: SOURCES_HEADER, type: "longtext", origin: "enrichment", width: 320 }] };
   db.updateCampaign(campaignId, { schema });
+  publishCampaign(campaignId);
   return key;
 }
 

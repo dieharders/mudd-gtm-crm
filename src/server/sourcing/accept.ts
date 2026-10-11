@@ -6,12 +6,12 @@
  */
 import { mergeSources, sourcesColumn, type Source } from "../../shared/ai";
 import { norm } from "../../shared/merge";
-import { allColumns, DISCOVERY_FIELDS, discoveryColumn, EMPLOYEES_HEADER, FIT_OPTIONS, isEmployeesHeader, makeKey, prospectIds, ROLE_HEADERS } from "../../shared/schema";
-import { DEAL_ROLES, discoveryColumns, type Candidate, type CandidateContact } from "../../shared/sourcing";
+import { allColumns, DISCOVERY_FIELDS, discoveryColumn, EMPLOYEES_HEADER, FIT_OPTIONS, isEmployeesHeader, makeKey, prospectIds, ROLE_HEADERS, websiteColumn } from "../../shared/schema";
+import { DEAL_ROLES, discoveryColumns, type Candidate, type CandidateContact, type EnrichChoice } from "../../shared/sourcing";
 import { CHECKED, stagesOf, type Campaign, type CampaignSchema, type CellValue, type Column, type Row } from "../../shared/types";
 import { CompanyIndex } from "../../shared/values";
 import * as db from "../db";
-import { publish } from "../enrich/hub";
+import { publish, publishCampaign } from "../enrich/hub";
 import { recipeForPreset } from "../enrich/recipes";
 import { ensureSourcesColumn, normaliseValue } from "../enrich/runner";
 import * as enrichStore from "../enrich/store";
@@ -55,7 +55,10 @@ export function ensureDiscoveryColumns(campaignId: string): Campaign {
       changed = true;
     }
   }
-  if (changed) db.updateCampaign(campaignId, { schema });
+  if (changed) {
+    db.updateCampaign(campaignId, { schema });
+    publishCampaign(campaignId);
+  }
   ensureSourcesColumn(campaignId);
   return db.getCampaign(campaignId)!;
 }
@@ -98,13 +101,37 @@ export function primaryPick(contacts: CandidateContact[], firstContact: string |
     ?? contacts[0];
 }
 
+/**
+ * The recipes a run's enrichment choice names: a preset's recipe is the campaign's existing one
+ * or a new one, made now. Making one can add columns, and can fail (the campaign gone, or no
+ * column left to fill), so this runs before any prospect is written.
+ */
+function recipesFor(campaignId: string, choice: EnrichChoice): string[] {
+  const ids = [
+    ...choice.presets.map((p) => recipeForPreset(campaignId, p)?.id),
+    ...choice.recipeIds.map((rid) => enrichStore.getRecipe(rid)?.id),
+  ];
+  return [...new Set(ids.filter((rid): rid is string => !!rid))];
+}
+
 export function acceptCandidates(campaignId: string, picks: AcceptPick[]): AcceptResult {
+  // The candidates to accept, and the enrichment their runs chose, resolved first: a throw here
+  // leaves the list as it was, rather than prospects added and the reply lost to an error.
+  const picked = picks
+    .map((pick) => ({ pick, c: store.getCandidate(campaignId, pick.id) }))
+    .filter((x): x is { pick: AcceptPick; c: Candidate } => !!x.c && x.c.status !== "accepted" && x.c.status !== "dismissed" && x.c.status !== "mapping");
+  const enrichment = new Map<string, { recipes: string[]; autoFill: boolean }>();
+  for (const runId of new Set(picked.map((x) => x.c.runId))) {
+    const choice = store.getDiscoveryRun(runId)?.enrich;
+    if (choice) enrichment.set(runId, { recipes: recipesFor(campaignId, choice), autoFill: choice.autoFill });
+  }
+
   const campaign = ensureDiscoveryColumns(campaignId);
   const { schema } = campaign;
   const cs = schema.contacts!;
   const intel = discoveryColumns(schema);
   const stages = stagesOf(schema);
-  const website = byHeader(schema.columns, ["website", "url", "domain", "site"]);
+  const website = websiteColumn(schema);
   const location = byHeader(schema.columns, ["location", "city", "hq", "headquarters"]);
   const employees = schema.columns.find((c) => c.header === EMPLOYEES_HEADER) ?? schema.columns.find((c) => isEmployeesHeader(c.header));
   const sourceCol = byHeader(schema.columns, ["source"]);
@@ -123,9 +150,7 @@ export function acceptCandidates(campaignId: string, picks: AcceptPick[]): Accep
   const rows: Row[] = [];
   const changed: Candidate[] = [];
   const accepted: { rowId: string; runId: string }[] = [];
-  for (const pick of picks) {
-    const c = store.getCandidate(campaignId, pick.id);
-    if (!c || c.status === "accepted" || c.status === "dismissed" || c.status === "mapping") continue;
+  for (const { pick, c } of picked) {
     const now = Date.now();
     const dup = index.find(c.company, c.website);
     if (dup) {
@@ -181,14 +206,8 @@ export function acceptCandidates(campaignId: string, picks: AcceptPick[]): Accep
   const byRun = new Map<string, string[]>();
   for (const a of accepted) byRun.set(a.runId, [...(byRun.get(a.runId) ?? []), a.rowId]);
   for (const [runId, rowIds] of byRun) {
-    const run = store.getDiscoveryRun(runId);
-    const choice = run?.enrich;
-    if (!choice) continue;
-    const recipes = [
-      ...choice.presets.map((p) => recipeForPreset(campaignId, p)?.id),
-      ...choice.recipeIds.map((rid) => enrichStore.getRecipe(rid)?.id),
-    ].filter((rid): rid is string => !!rid);
-    enqueueEnrichment(campaignId, rowIds, [...new Set(recipes)], choice.autoFill);
+    const choice = enrichment.get(runId);
+    if (choice) enqueueEnrichment(campaignId, rowIds, choice.recipes, choice.autoFill);
   }
   return { campaign: db.getCampaign(campaignId)!, rows, candidates: changed };
 }

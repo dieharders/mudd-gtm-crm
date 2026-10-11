@@ -8,6 +8,7 @@ import { PRESETS, presetRecipe } from "../../shared/presets";
 import { allColumns, columnOf, EMPLOYEES_HEADER, isEmployeesHeader, makeKey, typeFromHeader } from "../../shared/schema";
 import type { Campaign, CampaignSchema, ColumnType } from "../../shared/types";
 import * as db from "../db";
+import { publishCampaign, publishRecipes } from "./hub";
 import { ensureSourcesColumn } from "./runner";
 import * as store from "./store";
 
@@ -49,7 +50,10 @@ export function resolveOutputs(campaignId: string, outputs: OutputInput[], recip
     }
     if (!resolved.some((r) => r.key === col!.key)) resolved.push({ key: col.key, header: col.header, hint: o.hint?.trim() || undefined });
   }
-  if (allColumns(schema).length !== before) db.updateCampaign(campaignId, { schema });
+  if (allColumns(schema).length !== before) {
+    db.updateCampaign(campaignId, { schema });
+    publishCampaign(campaignId);
+  }
   return resolved;
 }
 
@@ -70,6 +74,7 @@ export function createRecipe(campaignId: string, draft: RecipeDraft): { recipe: 
     webSearch: draft.webSearch !== false,
     ...(draft.presetId ? { presetId: draft.presetId } : {}),
   });
+  publishRecipes(campaignId);
   return { recipe, campaign: db.getCampaign(campaignId)! };
 }
 

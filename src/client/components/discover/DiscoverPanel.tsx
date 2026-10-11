@@ -5,8 +5,7 @@
  */
 import { ArchiveRestore, Inbox, Radar, ScrollText, TriangleAlert, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { PROVIDERS } from "../../../shared/ai";
-import { isLiveStatus } from "../../../shared/sourcing";
+import { isLiveStatus, PROVIDERS } from "../../../shared/ai";
 import { answeredCount, THESIS_QUESTIONS } from "../../../shared/thesis";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { DiscoveryState } from "../../hooks/useDiscovery";

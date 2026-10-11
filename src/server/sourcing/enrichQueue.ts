@@ -3,8 +3,10 @@
  *
  * Accepting companies one by one would otherwise start a run (two CLIs) per accept, all at once.
  * Here each accept merges its rows into the campaign's waiting batch; a loop takes a batch,
- * runs each chosen recipe on it to the end, then takes the next. A failed run (a CLI gone
- * missing or signed out) drops what is waiting: every run after it would fail the same way.
+ * runs each chosen recipe on it to the end, then takes the next. A recipe that cannot start (one
+ * the user deleted meanwhile) is skipped, and the batch's other recipes still run. A run that
+ * FAILS (a CLI gone missing or signed out) drops what is waiting: every run after it would fail
+ * the same way.
  */
 import { runDone, startRun } from "../enrich/runner";
 import * as db from "../db";
@@ -57,19 +59,16 @@ async function drain(campaignId: string, q: Queue): Promise<void> {
     q.pending = null;
     for (const [recipeId, autoFill] of batch.recipes) {
       if (!db.getCampaign(campaignId)) return;
-      let runId: string;
-      let status: string;
+      let run;
       try {
-        const run = startRun({ campaignId, kind: "enrich", recipeId, rowIds: [...batch.rowIds], test: false, autoFill, concurrency: 2 });
-        runId = run.id;
-        await runDone(runId);
-        status = run.status;
+        run = startRun({ campaignId, kind: "enrich", recipeId, rowIds: [...batch.rowIds], test: false, autoFill, concurrency: 2 });
       } catch (err) {
+        // This recipe alone: gone, or nothing left to run it on. The others still run.
         console.error("[discovery] could not start enrichment of accepted prospects:", err);
-        q.pending = null;
-        return;
+        continue;
       }
-      if (status === "failed") {
+      await runDone(run.id);
+      if (run.status === "failed") {
         q.pending = null;
         return;
       }

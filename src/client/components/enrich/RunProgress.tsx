@@ -1,6 +1,6 @@
 /** A run as it goes: progress, what each row is doing, and pause / resume / stop. */
 import { AlertCircle, Check, CircleDashed, Loader2, Pause, Play, Search, Square } from "lucide-react";
-import { PROVIDERS, type EnrichRun } from "../../../shared/ai";
+import { isLiveStatus, PROVIDERS, type EnrichRun } from "../../../shared/ai";
 import type { CampaignSchema, Row } from "../../../shared/types";
 import { primaryOf, prospectTitle } from "../../../shared/values";
 import { cn } from "../../lib/cn";
@@ -28,7 +28,7 @@ export function RunProgress({ run, rows, schema, contactsOf, onAction, onReview,
 }) {
   const finished = run.completed + run.failed + Object.values(run.rows).filter((r) => r.state === "skipped").length;
   const pct = run.total ? Math.round((finished / run.total) * 100) : 0;
-  const live = run.status === "running" || run.status === "paused" || run.status === "stopping";
+  const live = isLiveStatus(run.status);
   const [label, tone] = STATUS[run.status];
   const byId = new Map(rows.map((r) => [r.id, r]));
 

@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import type { Candidate } from "../../shared/sourcing";
-import { DEAL_ROLES, FIT_OPTIONS } from "../../shared/sourcing";
+import { angleCount, DEAL_ROLES, FIT_OPTIONS } from "../../shared/sourcing";
 import { CONTACT_TYPE_HINTS } from "../../shared/schema";
 import { blankQuestions, THESIS_QUESTIONS, thesisQuestion } from "../../shared/thesis";
 import type { Thesis, ThesisId } from "../../shared/types";
@@ -130,10 +130,7 @@ Answer as JSON: {"answers": {"<key>": string or null}}`;
 
 // ---------- the plan ----------
 
-/** How many angles a run of this size plans: 3 for a handful, 6 for a long list. */
-export const angleCount = (target: number): number => (target <= 5 ? 3 : target <= 10 ? 4 : 6);
-
-/** A few search angles: where to look, built from the thesis's channels and triggers. */
+/** A few search angles: where to look, built from the thesis's channels and triggers. The count is angleCount's, which the page's estimate shares. */
 export function planRequest(thesis: Thesis, target: number, focus: string | null, ex: Examples) {
   const n = angleCount(target);
   const prompt = `Task: plan ${n} distinct web search angles for finding about ${target} companies that fit this thesis. Build them from "${thesisQuestion("channels").label}" and "${thesisQuestion("triggers").label}" where answered (member lists, directories, exhibitor lists, award lists, news of trigger events, job postings…), and from your own knowledge of where such companies are listed. Each angle must be likely to name many companies at once, with a page per company name. No two angles should find the same companies.

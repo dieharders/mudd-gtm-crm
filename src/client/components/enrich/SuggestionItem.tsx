@@ -6,7 +6,8 @@ import { cn } from "../../lib/cn";
 import { formatDate } from "../../lib/format";
 import { display, hrefOf, openLink } from "../grid/cells";
 
-const CONF: Record<string, string> = {
+/** The tag colours for a finding's confidence, wherever one is shown (a suggestion, a person in the Discovery inbox). */
+export const CONFIDENCE_TONE: Record<string, string> = {
   high: "bg-emerald-100 text-emerald-800",
   medium: "bg-yellow-100 text-yellow-800",
   low: "bg-zinc-100 text-zinc-600",
@@ -44,7 +45,7 @@ export function SuggestionItem({ s, col, onAccept, onReject, compact }: {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-semibold tracking-wide text-ink-faint uppercase">{col?.header ?? s.key}</span>
-            {s.confidence && <span className={cn("tag text-[10.5px]", CONF[s.confidence])}>{s.confidence}</span>}
+            {s.confidence && <span className={cn("tag text-[10.5px]", CONFIDENCE_TONE[s.confidence])}>{s.confidence}</span>}
           </div>
           {s.previous !== null && s.previous !== "" && (
             <p className="mt-1 truncate text-xs text-ink-faint line-through" title={display(s.previous)}>{show(s.previous, col)}</p>

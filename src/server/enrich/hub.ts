@@ -3,7 +3,9 @@
  * The page opens one stream while a campaign is on screen.
  */
 import type { CampaignEvent } from "../../shared/ai";
+import * as db from "../db";
 import { sseFrame, sseResponse } from "../sse";
+import * as store from "./store";
 
 type Send = (frame: string) => void;
 const subscribers = new Map<string, Set<Send>>();
@@ -17,6 +19,21 @@ export function publish(campaignId: string, ev: CampaignEvent): void {
   if (!subs?.size) return;
   const data = sseFrame(ev);
   for (const send of subs) send(data);
+}
+
+/**
+ * The campaign as it is now, to every page showing it: after the server changed its schema on
+ * its own (a recipe's new columns, the sources column, Discovery's intel columns). The page's
+ * own schema edits are not echoed: it already has them, and an echo could undo a newer one.
+ */
+export function publishCampaign(campaignId: string): void {
+  const campaign = db.getCampaign(campaignId);
+  if (campaign) publish(campaignId, { type: "campaign", campaign });
+}
+
+/** The campaign's recipes, whole: after the server made, changed or removed one. */
+export function publishRecipes(campaignId: string): void {
+  publish(campaignId, { type: "recipes", recipes: store.listRecipes(campaignId) });
 }
 
 /**

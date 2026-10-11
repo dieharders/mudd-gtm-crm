@@ -42,6 +42,17 @@ export const EMPLOYEES_HEADER = "# Employees";
 export const EMPLOYEES_HEADERS = ["employees", "staff", "headcount", "size", "companysize", "employeecount", "numemployees", "numberofemployees"];
 export const isEmployeesHeader = (header: string) => EMPLOYEES_HEADERS.includes(norm(header));
 
+/**
+ * The prospect's website: a column so headed, else the first link column that isn't a person's
+ * profile or the meeting link. Discovery reads it to tell a found company from one already in
+ * the list, and writes an accepted company's website into it: one rule for both.
+ */
+export const WEBSITE_HEADERS = ["website", "url", "domain", "site", "homepage", "web", "companywebsite"];
+export function websiteColumn(schema: Pick<CampaignSchema, "columns">): Column | undefined {
+  return WEBSITE_HEADERS.map((n) => schema.columns.find((c) => norm(c.header) === n)).find(Boolean)
+    ?? schema.columns.find((c) => c.type === "url" && !/linkedin|meeting|profile/i.test(c.header));
+}
+
 /** A contact's job title. "Title" is not among them: see TITLE_HEADER. */
 export const ROLE_HEADERS = ["role", "jobtitle", "position", "contactrole", "decisionmakertitle"];
 /** How a contact is addressed: Mr., Dr., Col. */

@@ -9,7 +9,7 @@ import type { Candidate, CandidateContact } from "../../../shared/sourcing";
 import { cn } from "../../lib/cn";
 import { typeTone } from "../../lib/stages";
 import { openLink } from "../grid/cells";
-import { SourceChip } from "../enrich/SuggestionItem";
+import { CONFIDENCE_TONE, SourceChip } from "../enrich/SuggestionItem";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { Popover } from "../ui/Menu";
@@ -18,11 +18,6 @@ const FIT_TONE: Record<string, string> = {
   High: "bg-emerald-100 text-emerald-800",
   Medium: "bg-yellow-100 text-yellow-800",
   Low: "bg-zinc-100 text-zinc-600",
-};
-const CONF: Record<string, string> = {
-  high: "bg-emerald-100 text-emerald-800",
-  medium: "bg-yellow-100 text-yellow-800",
-  low: "bg-zinc-100 text-zinc-600",
 };
 
 export function CandidateCard({ c, typeOptions, onAccept, onDismiss, onMapAgain, busy }: {
@@ -132,7 +127,7 @@ function ContactRow({ p, first, checked, onToggle, typeOptions }: { p: Candidate
           <span className="text-[13px] font-semibold">{p.name}</span>
           {p.type && <span className={cn("tag", typeTone(p.type, typeOptions))}>{p.type}</span>}
           {first && <span className="tag bg-brand-100 text-brand-800" title="The agent suggests approaching this person first; made Primary on accept"><Star size={10} /> Approach first</span>}
-          <span className={cn("tag text-[10.5px]", CONF[p.confidence])}>{p.confidence}</span>
+          <span className={cn("tag text-[10.5px]", CONFIDENCE_TONE[p.confidence])}>{p.confidence}</span>
           {p.title && <span className="text-xs text-ink-faint">{p.title}</span>}
         </div>
         <dl className="mt-1 grid gap-x-3 gap-y-0.5 text-xs sm:grid-cols-[auto_1fr]">

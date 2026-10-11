@@ -8,8 +8,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import type { CampaignEvent } from "../../shared/ai";
-import { inboxOrder, isLiveStatus, type Candidate, type DiscoveryRun } from "../../shared/sourcing";
+import { isLiveStatus, newestFirst, withRun, type CampaignEvent } from "../../shared/ai";
+import { inboxOrder, type Candidate, type DiscoveryRun } from "../../shared/sourcing";
 import type { Thesis, ThesisId } from "../../shared/types";
 import { api, type StartDiscoveryBody } from "../lib/api";
 import { useCampaignEvents } from "../lib/campaignEvents";
@@ -18,17 +18,18 @@ import type { CampaignState } from "./useCampaign";
 import type { ConsentGate } from "./useConsentGate";
 
 const THESIS_DEBOUNCE = 600;
-const newestFirst = (a: DiscoveryRun, b: DiscoveryRun) => b.startedAt - a.startedAt;
 
-/** Take a run a request returned, unless it is live and the stream already brought it. */
-function withRun(runs: DiscoveryRun[], run: DiscoveryRun): DiscoveryRun[] {
-  if (isLiveStatus(run.status) && runs.some((r) => r.id === run.id)) return runs;
-  return [run, ...runs.filter((r) => r.id !== run.id)].sort(newestFirst);
-}
-
+/**
+ * Candidates the server sent, merged in: each replaces the page's copy unless that copy is
+ * newer. The server stamps every change, so a request's reply that was overtaken by the stream
+ * (the initial load, with a run mapping companies meanwhile) cannot roll a candidate back.
+ */
 function withCandidates(prev: Candidate[], changed: Candidate[]): Candidate[] {
   const byId = new Map(changed.map((c) => [c.id, c]));
-  const kept = prev.map((c) => byId.get(c.id) ?? c);
+  const kept = prev.map((c) => {
+    const next = byId.get(c.id);
+    return next && next.updatedAt >= c.updatedAt ? next : c;
+  });
   const known = new Set(prev.map((c) => c.id));
   return [...kept, ...changed.filter((c) => !known.has(c.id))];
 }
@@ -43,7 +44,7 @@ export function useDiscovery(state: CampaignState, consent: ConsentGate) {
     api.discovery(id).then((d) => {
       if (!current()) return;
       setRuns((prev) => d.runs.reduce(withRun, prev.filter((r) => r.campaignId === id)));
-      setCandidates(d.candidates);
+      setCandidates((prev) => withCandidates(prev.filter((c) => c.campaignId === id), d.candidates));
     }).catch(() => {});
   });
 

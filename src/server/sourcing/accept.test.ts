@@ -11,7 +11,7 @@ import { updateAiSettings } from "../ai/settings";
 import * as db from "../db";
 import * as enrichStore from "../enrich/store";
 import { acceptCandidates, dismissCandidates, ensureDiscoveryColumns, restoreCandidates } from "./accept";
-import { enrichQueueIdle } from "./enrichQueue";
+import { enqueueEnrichment, enrichQueueIdle } from "./enrichQueue";
 import * as store from "./store";
 
 const realAi = { ...ai };
@@ -177,6 +177,21 @@ describe("accept", () => {
     expect(new Set(runs.flatMap((r) => r.rowIds)).size).toBe(2);
     expect(maxInFlight).toBeLessThanOrEqual(2);
     expect(prompts.map((p) => p.rows).sort()).toEqual(["Alpha", "Alpha", "Bravo", "Bravo"]);
+  });
+
+  test("a recipe deleted before its turn in the queue is skipped; the batch's other recipes still run", async () => {
+    const id = campaign();
+    const s = db.getCampaign(id)!.schema;
+    const [row] = db.insertRows(id, [{ cells: { [s.companyKey!]: "Alpha" } }]);
+    const recipe = enrichStore.saveRecipe({ campaignId: id, name: "Kept", instructions: "Find it.", inputKeys: [], webSearch: false, outputs: [{ key: key(s, "Location"), header: "Location" }] });
+    fakeTurn = async (req) => {
+      const keys = [...req.prompt.matchAll(/^- "([^"]+)"/gm)].map((m) => m[1]!);
+      return { data: { fields: Object.fromEntries(keys.map((k) => [k, { value: null, source: null, confidence: "low" }])), notes: null }, costUsd: null };
+    };
+    enqueueEnrichment(id, [row!.id], ["gone", recipe.id], false);
+    await enrichQueueIdle(id);
+    fakeTurn = null;
+    expect(enrichStore.listRuns(id).map((r) => [r.recipeId, r.status])).toEqual([[recipe.id, "done"]]);
   });
 
   test("dismiss keeps the reason; restore brings it back", () => {

@@ -194,12 +194,24 @@ export function prospectTitle(org: Pick<Row, "cells">, primary: Pick<Row, "cells
 
 /** A link's host without "www.", lowercased: "https://www.Acme.com/about" is acme.com. Null for no link. */
 export function domainOf(url: CellValue | undefined): string | null {
+  return parseLink(url)?.host ?? null;
+}
+
+/**
+ * Hosts many companies share, where the path names the company, not the host: a small firm's
+ * "website" is often its LinkedIn or Facebook page, or a free site builder's subdomain.
+ */
+const SHARED_HOST = /(^|\.)(linkedin\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com|tiktok\.com|medium\.com|crunchbase\.com|yelp\.com|google\.com|sites\.google\.com|wixsite\.com|wordpress\.com|squarespace\.com|weebly\.com|webflow\.io|github\.io|blogspot\.com|notion\.site|carrd\.co|godaddysites\.com)$/i;
+
+function parseLink(url: CellValue | undefined): { host: string; path: string } | null {
   if (url === null || url === undefined) return null;
   const href = hrefFor(String(url));
   if (!href || !/^https?:/i.test(href)) return null;
   try {
-    const host = new URL(href).hostname.toLowerCase().replace(/^www\./, "");
-    return host.includes(".") ? host : null;
+    const u = new URL(href);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    if (!host.includes(".")) return null;
+    return { host, path: u.pathname.toLowerCase().replace(/\/+$/, "") };
   } catch {
     return null;
   }
@@ -216,14 +228,18 @@ export function companyKey(name: CellValue | undefined): string {
 
 /**
  * The keys a company is known by: its domain, its name, and the domain's own label (acme from
- * acme.com), so "Acme Inc." with no website still meets acme.com.
+ * acme.com), so "Acme Inc." with no website still meets acme.com. On a shared host (a LinkedIn
+ * page, a Google Site) the host names no company: the page does, so the key is host and path,
+ * and a bare shared host is no key at all.
  */
 export function companyKeys(name: CellValue | undefined, website: CellValue | undefined): string[] {
   const keys: string[] = [];
-  const domain = domainOf(website);
-  if (domain) {
-    keys.push(`d:${domain}`);
-    const label = domain.split(".")[0] ?? "";
+  const link = parseLink(website);
+  if (link && SHARED_HOST.test(link.host)) {
+    if (link.path) keys.push(`d:${link.host}${link.path}`);
+  } else if (link) {
+    keys.push(`d:${link.host}`);
+    const label = link.host.split(".")[0] ?? "";
     if (label.length >= 3) keys.push(`n:${norm(label)}`);
   }
   const n = companyKey(name);

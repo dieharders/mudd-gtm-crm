@@ -6,7 +6,7 @@
  */
 import { isContactKey } from "./schema";
 import type { Candidate, DiscoveryRun } from "./sourcing";
-import type { CampaignSchema, CellValue, Column, ColumnType, Row, Thesis } from "./types";
+import type { Campaign, CampaignSchema, CellValue, Column, ColumnType, Row, Thesis } from "./types";
 
 export type ProviderId = "claude" | "codex";
 export const PROVIDER_IDS: ProviderId[] = ["claude", "codex"];
@@ -145,6 +145,22 @@ export type RunKind = "enrich" | "intro";
 export type RunStatus = "running" | "paused" | "stopping" | "stopped" | "done" | "failed";
 export type RowRunState = "pending" | "running" | "done" | "error" | "skipped";
 
+/** A run still going: one the page shows as live and offers to pause or stop. */
+export const isLiveStatus = (s: RunStatus): boolean => s === "running" || s === "paused" || s === "stopping";
+
+/** The run list's order: the newest first. */
+export const newestFirst = <T extends { startedAt: number }>(a: T, b: T): number => b.startedAt - a.startedAt;
+
+/**
+ * Take a run a request returned, unless it is live and the stream already brought it: the
+ * stream's copy of a live run is the newest the page has (see the module comment in
+ * useEnrichment), and replacing it would undo the updates that arrived in between.
+ */
+export function withRun<T extends { id: string; status: RunStatus; startedAt: number }>(runs: T[], run: T): T[] {
+  if (isLiveStatus(run.status) && runs.some((r) => r.id === run.id)) return runs;
+  return [run, ...runs.filter((r) => r.id !== run.id)].sort(newestFirst);
+}
+
 export interface RunRow {
   state: RowRunState;
   error?: string;
@@ -232,6 +248,10 @@ export type CampaignEvent =
   | { type: "cells"; edits: { rowId: string; key: string; value: CellValue }[] }
   /** Rows the server added (a run's first contact for a prospect that had none). */
   | { type: "rows"; rows: Row[] }
+  /** The campaign changed on the server (a recipe or Discovery added columns): take it as it is. */
+  | { type: "campaign"; campaign: Campaign }
+  /** The campaign's recipes, whole, after the server made, changed or removed one. */
+  | { type: "recipes"; recipes: Recipe[] }
   /** A Discovery run, whole: it is small (angles and per-company steps), so it goes whole, at most one every 400 ms. */
   | { type: "discovery"; run: DiscoveryRun }
   /** Candidates made or changed by a Discovery run, or by accepting and dismissing. */

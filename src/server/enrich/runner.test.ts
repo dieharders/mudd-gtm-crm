@@ -156,10 +156,12 @@ describe("runs", () => {
     saves.mockRestore();
     expect(store.getRun(run.id)).toEqual(run);
 
-    // The page: the whole run, then one event per row, then the whole run again.
+    // The page: the campaign with its new sources column, then the whole run, then one event
+    // per row, then the whole run again.
     await until(() => sse.events.some((e) => e.type === "run" && e.run.status === "done"));
     void sse.close();
-    const { events } = sse;
+    expect(sse.events[0]).toMatchObject({ type: "campaign", campaign: { id, schema: { columns: expect.arrayContaining([expect.objectContaining({ header: "Enrichment sources" })]) } } });
+    const events = sse.events.slice(1);
     expect(events[0]).toMatchObject({ type: "run", run: { id: run.id, status: "running" } });
     expect(events.at(-1)).toMatchObject({ type: "run", run: { id: run.id, status: "done" } });
     const rows = events.slice(1, -1);

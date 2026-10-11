@@ -5,7 +5,7 @@ import { providerStatus } from "./ai";
 import { getAiSettings, updateAiSettings } from "./ai/settings";
 import { installStream, openSignInPage, signInStream, signOut } from "./ai/setup";
 import * as db from "./db";
-import { eventStream } from "./enrich/hub";
+import { eventStream, publishRecipes } from "./enrich/hub";
 import { createRecipe, resolveOutputs, type OutputInput } from "./enrich/recipes";
 import { liveRuns, liveRunsOn, pauseRun, recentRuns, resumeRun, startRun, stopRun } from "./enrich/runner";
 import * as store from "./enrich/store";
@@ -54,10 +54,13 @@ export function registerAiRoutes(on: On, { json, body, fail }: { json: Json; bod
     const b = await body<{ name?: string; instructions?: string; inputKeys?: string[]; outputs?: OutputInput[]; webSearch?: boolean }>(req);
     const outputs = b.outputs ? resolveOutputs(cur.campaignId, b.outputs, cur.id) : cur.outputs;
     const recipe = store.saveRecipe({ ...cur, ...b, name: b.name?.trim() || cur.name, instructions: b.instructions?.trim() || cur.instructions, outputs });
+    publishRecipes(cur.campaignId);
     return json({ recipe, campaign: db.getCampaign(cur.campaignId) });
   });
   on("DELETE", "/api/recipes/:id", (_req, [rid]) => {
+    const cur = store.getRecipe(rid!);
     store.deleteRecipe(rid!);
+    if (cur) publishRecipes(cur.campaignId);
     return json({ ok: true });
   });
 

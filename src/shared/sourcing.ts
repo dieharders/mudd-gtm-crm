@@ -147,10 +147,12 @@ export interface DiscoveryRun {
 export const TARGET_OPTIONS = [5, 10, 25];
 export const PER_COMPANY_OPTIONS = [3, 5, 8];
 
+/** How many angles a run of this size plans: 3 for a handful, 6 for a long list. */
+export const angleCount = (target: number): number => (target <= 5 ? 3 : target <= 10 ? 4 : 6);
+
 /** Roughly how many agent turns a Find run takes: the angles, plus one per company, plus some for duplicates. */
 export function estimateTurns(target: number): number {
-  const angles = target <= 5 ? 3 : target <= 10 ? 4 : 6;
-  return angles + Math.ceil(target * 1.3);
+  return angleCount(target) + Math.ceil(target * 1.3);
 }
 
 /** The column for each Discovery field in this layout (a deleted one is undefined). */
@@ -171,5 +173,3 @@ export function inboxOrder(a: Candidate, b: Candidate): number {
   const rank = (c: Candidate) => (c.fit ? FIT_OPTIONS.indexOf(c.fit) : FIT_OPTIONS.length);
   return rank(a) - rank(b) || b.createdAt - a.createdAt;
 }
-
-export const isLiveStatus = (s: RunStatus): boolean => s === "running" || s === "paused" || s === "stopping";

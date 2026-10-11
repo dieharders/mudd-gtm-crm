@@ -15,6 +15,7 @@
  */
 import type { ProviderId } from "../../shared/ai";
 import type { Candidate, CandidateContact, DiscoveryKind, DiscoveryRun, EnrichChoice, SearchAngle } from "../../shared/sourcing";
+import { websiteColumn } from "../../shared/schema";
 import { DEAL_ROLES, DEFAULT_ENRICH, FIT_OPTIONS } from "../../shared/sourcing";
 import { canFind, THESIS_IDS } from "../../shared/thesis";
 import { isScreened, stagesOf, type Thesis, type ThesisId } from "../../shared/types";
@@ -222,7 +223,9 @@ export function startDiscovery(input: StartDiscoveryInput): DiscoveryRun {
   const index = new CompanyIndex<string>();
   const { schema } = campaign;
   const prospects = db.listRows(input.campaignId);
-  for (const r of prospects) index.add(schema.companyKey ? r.cells[schema.companyKey] : null, websiteOf(r.cells, schema), r.id);
+  // The same column accept.ts reads, so what Find drops as a repeat, accept would have too.
+  const website = websiteColumn(schema);
+  for (const r of prospects) index.add(schema.companyKey ? r.cells[schema.companyKey] : null, website ? r.cells[website.key] : null, r.id);
   const candidates = store.listCandidates(input.campaignId);
   for (const c of candidates) index.add(c.company, c.website, c.id);
   const ex = examples({
@@ -244,13 +247,6 @@ export function startDiscovery(input: StartDiscoveryInput): DiscoveryRun {
   emitRun(ctrl);
   ctrl.done = pump(ctrl);
   return run;
-}
-
-/** The prospect's website, from a Website column (by header) or the first link column. */
-function websiteOf(cells: Record<string, unknown>, schema: { columns: { key: string; header: string; type: string }[] }): string | null {
-  const col = schema.columns.find((c) => /^(website|url|domain|site)$/i.test(c.header.replace(/\s+/g, ""))) ?? schema.columns.find((c) => c.type === "url" && !/linkedin|meeting/i.test(c.header));
-  const v = col ? cells[col.key] : null;
-  return v === null || v === undefined ? null : String(v);
 }
 
 // ---------- the pump ----------

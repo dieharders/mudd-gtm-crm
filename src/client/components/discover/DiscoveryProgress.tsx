@@ -1,6 +1,6 @@
 /** A Discovery run as it goes: its stages, each search angle, each company's step, and pause / resume / stop. */
 import { AlertCircle, Check, CircleDashed, Loader2, Pause, Play, Search, Square } from "lucide-react";
-import { PROVIDERS } from "../../../shared/ai";
+import { isLiveStatus, PROVIDERS } from "../../../shared/ai";
 import type { Candidate, DiscoveryRun, DiscoveryStage, JobState } from "../../../shared/sourcing";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
@@ -29,7 +29,7 @@ export function DiscoveryProgress({ run, candidates, onAction }: {
   candidates: Candidate[];
   onAction: (a: "pause" | "resume" | "stop") => void;
 }) {
-  const live = run.status === "running" || run.status === "paused" || run.status === "stopping";
+  const live = isLiveStatus(run.status);
   const [label, tone] = STATUS[run.status];
   const byId = new Map(candidates.map((c) => [c.id, c]));
   const stageAt = STAGES.findIndex((s) => s.id === run.stage);
