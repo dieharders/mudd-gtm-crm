@@ -23,12 +23,12 @@ export function ThesisEditor({ discovery, ready, onSetup, onNext }: {
   const busy = discovery.activeRuns.length > 0;
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-4">
+      <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-clay bg-clay-soft/30 p-4">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold">Your ideal customer</h3>
-          <p className="mt-0.5 text-xs text-ink-soft">
+          <p className="mt-0.5 text-xs text-mud-soft">
             Discovery searches from these answers. The first two are required; the rest make the search sharper, and the AI can draft any you leave blank.
-            {blanks.length > 0 && <> <b className="text-ink">{blanks.length}</b> of {THESIS_SECTIONS.reduce((n, s) => n + s.questions.length, 0)} still blank.</>}
+            {blanks.length > 0 && <> <b className="text-mud">{blanks.length}</b> of {THESIS_SECTIONS.reduce((n, s) => n + s.questions.length, 0)} still blank.</>}
           </p>
         </div>
         {!ready ? (
@@ -53,14 +53,14 @@ export function ThesisEditor({ discovery, ready, onSetup, onNext }: {
                     <label className="label mb-0" htmlFor={`th-${q.id}`}>{q.label}{q.required && <span className="text-rose-500"> *</span>}</label>
                     {draft && (
                       <>
-                        <span className="tag bg-violet-100 text-violet-800"><Sparkles size={10} /> AI draft</span>
-                        <button className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-700 hover:underline" onClick={() => discovery.keepDraft(q.id)}>
+                        <span className="tag bg-lake-soft text-lake-deep"><Sparkles size={10} /> AI draft</span>
+                        <button className="inline-flex items-center gap-1 text-[11px] font-medium text-clay-deep hover:underline" onClick={() => discovery.keepDraft(q.id)}>
                           <Check size={11} /> Keep
                         </button>
                       </>
                     )}
                   </div>
-                  <p className="mt-0.5 mb-1 text-[11px] text-ink-faint">{q.help}</p>
+                  <p className="mt-0.5 mb-1 text-[11px] text-mud-faint">{q.help}</p>
                   <textarea
                     id={`th-${q.id}`}
                     rows={value.length > 160 ? 4 : 2}
@@ -77,8 +77,8 @@ export function ThesisEditor({ discovery, ready, onSetup, onNext }: {
       ))}
 
       {onNext && (
-        <div className="flex items-center justify-end gap-3 border-t border-line pt-4">
-          {!canFind(thesis) && <span className="text-xs text-ink-faint">Answer the two required questions to go on.</span>}
+        <div className="flex items-center justify-end gap-3 border-t border-rim/40 pt-4">
+          {!canFind(thesis) && <span className="text-xs text-mud-faint">Answer the two required questions to go on.</span>}
           <Button variant="primary" onClick={onNext} disabled={!canFind(thesis)}>Next: find prospects <ArrowRight size={14} /></Button>
         </div>
       )}

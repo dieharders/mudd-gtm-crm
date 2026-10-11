@@ -96,14 +96,14 @@ export function GenerateTemplateDialog({ open, campaignId, thesis, consent, onKe
           </div>
           <div>
             <p className="label">Message</p>
-            <div className="rounded-xl border border-line bg-white p-3.5 font-mono text-[13px] leading-relaxed whitespace-pre-wrap shadow-xs" data-testid="gen-body">{draft.body}</div>
+            <div className="rounded-xl border border-rim/40 bg-paper p-3.5 font-mono text-[13px] leading-relaxed whitespace-pre-wrap shadow-xs" data-testid="gen-body">{draft.body}</div>
             <UnknownPlaceholders names={draft.unknown} />
           </div>
         </div>
       ) : (
         <div>
           <label className="label" htmlFor="gen-problem">The problem you're working on, and how you think about it</label>
-          <p className="mb-1.5 text-[11px] text-ink-faint">Who has it, what it costs them, and what a solution might look like. Your words; the AI keeps them as the point of the message.</p>
+          <p className="mb-1.5 text-[11px] text-mud-faint">Who has it, what it costs them, and what a solution might look like. Your words; the AI keeps them as the point of the message.</p>
           <textarea
             id="gen-problem"
             rows={7}

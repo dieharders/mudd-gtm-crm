@@ -9,8 +9,8 @@ import { Button } from "../ui/Button";
 const STATUS: Record<DiscoveryRun["status"], [string, string]> = {
   running: ["Running", "bg-sky-100 text-sky-800"],
   paused: ["Paused", "bg-yellow-100 text-yellow-800"],
-  stopping: ["Stopping…", "bg-zinc-100 text-zinc-600"],
-  stopped: ["Stopped", "bg-zinc-100 text-zinc-600"],
+  stopping: ["Stopping…", "bg-paper-deep text-mud-soft"],
+  stopped: ["Stopped", "bg-paper-deep text-mud-soft"],
   done: ["Done", "bg-emerald-100 text-emerald-800"],
   failed: ["Failed", "bg-rose-100 text-rose-700"],
 };
@@ -41,11 +41,11 @@ export function DiscoveryProgress({ run, candidates, onAction }: {
     : mapJobs.length ? Math.round((finished / mapJobs.length) * 100) : run.status === "done" ? 100 : 0;
 
   return (
-    <div className="rounded-2xl border border-line bg-white p-4">
+    <div className="rounded-2xl border border-rim/40 bg-paper p-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className={cn("tag", tone)}>{run.status === "running" && <Loader2 size={11} className="animate-spin" />}{label}</span>
         <span className="text-sm font-semibold">{KIND_LABEL[run.kind]}</span>
-        <span className="text-xs text-ink-faint">{PROVIDERS[run.provider].label} · {run.model} · {timeAgo(run.startedAt)}{run.costUsd !== null ? ` · $${run.costUsd.toFixed(2)}` : ""}</span>
+        <span className="text-xs text-mud-faint">{PROVIDERS[run.provider].label} · {run.model} · {timeAgo(run.startedAt)}{run.costUsd !== null ? ` · $${run.costUsd.toFixed(2)}` : ""}</span>
         <div className="ml-auto flex gap-1.5">
           {run.status === "running" && <Button size="sm" onClick={() => onAction("pause")}><Pause size={12} /> Pause</Button>}
           {run.status === "paused" && <Button size="sm" variant="primary" onClick={() => onAction("resume")}><Play size={12} /> Resume</Button>}
@@ -60,26 +60,26 @@ export function DiscoveryProgress({ run, candidates, onAction }: {
             const state = run.stage === "done" ? "done" : idx < stageAt ? "done" : idx === stageAt ? "running" : "pending";
             return (
               <span key={s.id} className="flex items-center gap-1.5">
-                <span className={cn("tag", state === "done" ? "bg-emerald-100 text-emerald-800" : state === "running" ? "bg-sky-100 text-sky-800" : "bg-zinc-100 text-zinc-500")}>
+                <span className={cn("tag", state === "done" ? "bg-emerald-100 text-emerald-800" : state === "running" ? "bg-sky-100 text-sky-800" : "bg-paper-deep text-mud-faint")}>
                   {state === "running" && live ? <Loader2 size={10} className="animate-spin" /> : state === "done" ? <Check size={10} /> : null} {s.label}
                 </span>
-                {i < stages.length - 1 && <span className="text-ink-faint">→</span>}
+                {i < stages.length - 1 && <span className="text-mud-faint">→</span>}
               </span>
             );
           })}
         </div>
       )}
 
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-100">
-        <div className={cn("h-full rounded-full transition-all duration-500", run.status === "failed" ? "bg-rose-400" : "bg-gradient-to-r from-brand-400 to-fuchsia-400")} style={{ width: `${Math.max(pct, live ? 3 : 0)}%` }} />
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-paper-deep">
+        <div className={cn("h-full rounded-full transition-all duration-500", run.status === "failed" ? "bg-rose-400" : "bg-clay")} style={{ width: `${Math.max(pct, live ? 3 : 0)}%` }} />
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-soft">
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-mud-soft">
         {run.kind === "thesis" ? (
-          <span><b className="text-ink tabular-nums">{run.drafted.length}</b> answers drafted</span>
+          <span><b className="text-mud tabular-nums">{run.drafted.length}</b> answers drafted</span>
         ) : (
           <>
-            {run.kind === "find" && <span><b className="text-ink tabular-nums">{run.found}</b> of {run.target} companies found</span>}
-            <span><b className="text-ink tabular-nums">{run.ready}</b> ready to review</span>
+            {run.kind === "find" && <span><b className="text-mud tabular-nums">{run.found}</b> of {run.target} companies found</span>}
+            <span><b className="text-mud tabular-nums">{run.ready}</b> ready to review</span>
             {run.disqualified > 0 && <span><b className="tabular-nums">{run.disqualified}</b> disqualified on a closer look</span>}
             {run.failed > 0 && <span className="text-rose-700"><b className="tabular-nums">{run.failed}</b> failed</span>}
           </>
@@ -93,7 +93,7 @@ export function DiscoveryProgress({ run, candidates, onAction }: {
             <li key={a.id} className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs">
               <JobIcon state={a.state} />
               <span className="w-56 shrink-0 truncate font-medium" title={a.query}>{a.label}</span>
-              <span className={cn("min-w-0 flex-1 truncate", a.state === "error" ? "text-rose-700" : "text-ink-faint")}>
+              <span className={cn("min-w-0 flex-1 truncate", a.state === "error" ? "text-rose-700" : "text-mud-faint")}>
                 {a.state === "running" ? <span className="inline-flex items-center gap-1"><Search size={10} /> {a.step ?? "Searching"}</span>
                   : a.state === "done" ? `${a.found} new compan${a.found === 1 ? "y" : "ies"}`
                   : a.state === "error" ? a.error : a.state === "skipped" ? "Not needed: target reached" : "Waiting"}
@@ -104,14 +104,14 @@ export function DiscoveryProgress({ run, candidates, onAction }: {
       )}
 
       {mapJobs.length > 0 && (
-        <ul className="mt-3 max-h-64 space-y-0.5 overflow-y-auto border-t border-line pt-2 scroll-thin">
+        <ul className="mt-3 max-h-64 space-y-0.5 overflow-y-auto border-t border-rim/40 pt-2 scroll-thin">
           {mapJobs.map(([cid, job]) => {
             const c = byId.get(cid);
             return (
               <li key={cid} className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs">
                 <JobIcon state={job.state} />
                 <span className="w-56 shrink-0 truncate font-medium">{c?.company ?? "A company"}</span>
-                <span className={cn("min-w-0 flex-1 truncate", job.state === "error" ? "text-rose-700" : "text-ink-faint")}>
+                <span className={cn("min-w-0 flex-1 truncate", job.state === "error" ? "text-rose-700" : "text-mud-faint")}>
                   {job.state === "running" ? <span className="inline-flex items-center gap-1"><Search size={10} /> {job.step ?? "Mapping the buying committee"}</span>
                     : job.state === "done" ? (c?.status === "dismissed" ? c.dismissReason ?? "Disqualified" : `${c?.contacts.length ?? 0} people`)
                     : job.state === "error" ? job.error : job.state === "skipped" ? job.error ?? "Skipped" : "Waiting"}
@@ -126,8 +126,8 @@ export function DiscoveryProgress({ run, candidates, onAction }: {
 }
 
 function JobIcon({ state }: { state: JobState }) {
-  if (state === "running") return <Loader2 size={13} className="shrink-0 animate-spin text-brand-500" />;
+  if (state === "running") return <Loader2 size={13} className="shrink-0 animate-spin text-clay" />;
   if (state === "done") return <Check size={13} className="shrink-0 text-emerald-600" />;
   if (state === "error") return <AlertCircle size={13} className="shrink-0 text-rose-500" />;
-  return <CircleDashed size={13} className="shrink-0 text-zinc-300" />;
+  return <CircleDashed size={13} className="shrink-0 text-rim/50" />;
 }

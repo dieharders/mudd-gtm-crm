@@ -44,7 +44,7 @@ export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
   };
 
   return (
-    <div className="rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-4">
+    <div className="rounded-2xl border border-clay bg-clay-soft/30 p-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="fb-target">Number of companies</label>
@@ -60,7 +60,7 @@ export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
         </div>
       </div>
       <div className="mt-3">
-        <label className="label" htmlFor="fb-focus">Focus for this run <span className="font-normal text-ink-faint">(optional)</span></label>
+        <label className="label" htmlFor="fb-focus">Focus for this run <span className="font-normal text-mud-faint">(optional)</span></label>
         <input id="fb-focus" className="field" placeholder="e.g. only the Midwest, or companies that exhibited at FABTECH" value={focus} onChange={(e) => setFocus(e.target.value)} />
       </div>
       <div className="mt-3">
@@ -70,7 +70,7 @@ export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
             const on = enrich.presets.includes(p.id);
             return (
               <button key={p.id} type="button" onClick={() => toggle("presets", p.id)} title={p.blurb}
-                className={cn("tag border", on ? "border-brand-300 bg-brand-100 text-brand-800" : "border-line bg-white text-ink-soft hover:border-line-strong")}>
+                className={cn("tag border", on ? "border-clay bg-clay-soft text-clay-deep" : "border-rim/40 bg-paper text-mud-soft hover:border-rim")}>
                 {p.name}
               </button>
             );
@@ -79,19 +79,19 @@ export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
             const on = enrich.recipeIds.includes(r.id);
             return (
               <button key={r.id} type="button" onClick={() => toggle("recipeIds", r.id)} title={`Your recipe: fills ${r.outputs.map((o) => o.header).join(", ")}`}
-                className={cn("tag border", on ? "border-brand-300 bg-brand-100 text-brand-800" : "border-line bg-white text-ink-soft hover:border-line-strong")}>
+                className={cn("tag border", on ? "border-clay bg-clay-soft text-clay-deep" : "border-rim/40 bg-paper text-mud-soft hover:border-rim")}>
                 {r.name}
               </button>
             );
           })}
         </div>
-        <p className="mt-1 text-[11px] text-ink-faint">Runs on each company as you accept it, one run at a time. Its findings go to Review.</p>
+        <p className="mt-1 text-[11px] text-mud-faint">Runs on each company as you accept it, one run at a time. Its findings go to Review.</p>
       </div>
       <label className="mt-3 flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-brand-500" checked={enrich.autoFill} onChange={(e) => setEnrich({ ...enrich, autoFill: e.target.checked })} />
-        <span>Fill empty cells automatically <span className="block text-xs text-ink-faint">Findings for cells that already have a value always wait for your review.</span></span>
+        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-clay" checked={enrich.autoFill} onChange={(e) => setEnrich({ ...enrich, autoFill: e.target.checked })} />
+        <span>Fill empty cells automatically <span className="block text-xs text-mud-faint">Findings for cells that already have a value always wait for your review.</span></span>
       </label>
-      <p className="mt-3 text-xs text-ink-soft">
+      <p className="mt-3 text-xs text-mud-soft">
         About {turns} web research turns (a few to search, one per company to map its people) · usually 1–3 minutes each, two at a time · about {minutes} min in all. Counts toward your plan's usage.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -102,8 +102,8 @@ export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
             <Radar size={14} /> Find {target} companies
           </Button>
         )}
-        {busy && <span className="text-xs text-brand-700">Discovery is running…</span>}
-        {!can && ready && <span className="text-xs text-ink-faint">Answer the two required thesis questions first.</span>}
+        {busy && <span className="text-xs text-clay-deep">Discovery is running…</span>}
+        {!can && ready && <span className="text-xs text-mud-faint">Answer the two required thesis questions first.</span>}
       </div>
     </div>
   );

@@ -50,7 +50,7 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
           <Save size={15} /> {busy ? "Saving…" : "Save file"}
         </Button>
         <Popover align="right" trigger={({ toggle }) => (
-          <Button variant="primary" className="rounded-l-none border-l border-brand-700 px-2" onClick={toggle} disabled={busy} aria-label="More save options">
+          <Button variant="primary" className="rounded-l-none border-l-2 border-clay-deep px-2" onClick={toggle} disabled={busy} aria-label="More save options">
             <ChevronDown size={15} />
           </Button>
         )}>
@@ -79,7 +79,7 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
           </>
         }
       >
-        <p className="text-sm text-ink-soft">Mudd writes your edits into the file as it was imported. Changes made to it in Excel since then would be replaced; the previous version is kept next to it as a <code>.bak.xlsx</code>.</p>
+        <p className="text-sm text-mud-soft">Mudd writes your edits into the file as it was imported. Changes made to it in Excel since then would be replaced; the previous version is kept next to it as a <code>.bak.xlsx</code>.</p>
       </Modal>
     </>
   );

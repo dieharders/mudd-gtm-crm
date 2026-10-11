@@ -10,7 +10,7 @@ import { display, hrefOf, openLink } from "../grid/cells";
 export const CONFIDENCE_TONE: Record<string, string> = {
   high: "bg-emerald-100 text-emerald-800",
   medium: "bg-yellow-100 text-yellow-800",
-  low: "bg-zinc-100 text-zinc-600",
+  low: "bg-paper-deep text-mud-soft",
 };
 
 const host = (url: string) => url.replace(/^https?:\/\/(www\.)?/, "").split(/[/?#]/)[0] ?? url;
@@ -40,35 +40,35 @@ export function SuggestionItem({ s, col, onAccept, onReject, compact }: {
 }) {
   const long = (col?.type === "longtext") || String(s.value ?? "").length > 90;
   return (
-    <div className={cn("group rounded-xl border border-line bg-white p-3 transition hover:border-brand-200", compact && "p-2.5")}>
+    <div className={cn("group rounded-xl border border-rim/40 bg-paper p-3 transition hover:border-clay", compact && "p-2.5")}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-semibold tracking-wide text-ink-faint uppercase">{col?.header ?? s.key}</span>
+            <span className="text-[11px] font-semibold tracking-wide text-mud-faint uppercase">{col?.header ?? s.key}</span>
             {s.confidence && <span className={cn("tag text-[10.5px]", CONFIDENCE_TONE[s.confidence])}>{s.confidence}</span>}
           </div>
           {s.previous !== null && s.previous !== "" && (
-            <p className="mt-1 truncate text-xs text-ink-faint line-through" title={display(s.previous)}>{show(s.previous, col)}</p>
+            <p className="mt-1 truncate text-xs text-mud-faint line-through" title={display(s.previous)}>{show(s.previous, col)}</p>
           )}
-          <p className={cn("mt-0.5 text-[13.5px] font-medium text-ink", long ? "leading-relaxed whitespace-pre-line" : "truncate")} title={long ? undefined : display(s.value)}>
+          <p className={cn("mt-0.5 text-[13.5px] font-medium text-mud", long ? "leading-relaxed whitespace-pre-line" : "truncate")} title={long ? undefined : display(s.value)}>
             {show(s.value, col)}
           </p>
           {(s.sources.length > 0 || s.note) && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {s.sources.slice(0, 4).map((src) => <SourceChip key={src.url} url={src.url} title={src.title} />)}
               {s.note && (
-                <span className="inline-flex max-w-full items-start gap-1 text-[11.5px] leading-snug text-ink-soft">
-                  <Info size={11} className="mt-0.5 shrink-0 text-ink-faint" /> <span className="whitespace-pre-line">{s.note}</span>
+                <span className="inline-flex max-w-full items-start gap-1 text-[11.5px] leading-snug text-mud-soft">
+                  <Info size={11} className="mt-0.5 shrink-0 text-mud-faint" /> <span className="whitespace-pre-line">{s.note}</span>
                 </span>
               )}
             </div>
           )}
         </div>
         <div className="flex shrink-0 gap-1">
-          <button onClick={onReject} title="Reject" className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-ink-faint hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
+          <button onClick={onReject} title="Reject" className="flex h-7 w-7 items-center justify-center rounded-lg border border-rim/40 text-mud-faint hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
             <X size={14} />
           </button>
-          <button onClick={onAccept} title="Accept into the sheet" className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-500 text-white shadow-[inset_0_-2px_0_rgba(0,0,0,0.18)] hover:bg-brand-600">
+          <button onClick={onAccept} title="Accept into the sheet" className="flex h-7 w-7 items-center justify-center rounded-lg bg-clay text-white shadow-[inset_0_-2px_0_rgba(0,0,0,0.18)] hover:bg-clay-deep">
             <Check size={14} />
           </button>
         </div>

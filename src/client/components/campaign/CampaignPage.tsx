@@ -21,7 +21,8 @@ import { ReviewPanel } from "../enrich/ReviewPanel";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
 import { stageEdits, stageIndex } from "../../lib/pipeline";
-import { tileFor, toneFor } from "../../lib/stages";
+import { paperTileFor } from "../../lib/paper";
+import { toneFor } from "../../lib/stages";
 import { useCampaignList } from "../../lib/campaignList";
 import { Tile } from "../ui/Logo";
 import { display } from "../grid/cells";
@@ -60,13 +61,13 @@ export function CampaignPage() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
         <TriangleAlert className="text-rose-500" />
-        <p className="text-sm text-ink-soft">{error}</p>
-        <Link to="/" className="text-sm text-brand-700 hover:underline">Back to campaigns</Link>
+        <p className="text-sm text-mud-soft">{error}</p>
+        <Link to="/" className="text-[15px] font-bold text-clay-deep hover:underline">Back to campaigns</Link>
       </div>
     );
   }
   if (!campaign) {
-    return <div className="flex h-full items-center justify-center text-ink-faint"><Loader2 className="animate-spin" /></div>;
+    return <div className="flex h-full items-center justify-center text-mud-faint"><Loader2 className="animate-spin" /></div>;
   }
   return <CampaignView key={campaign.id} state={state} />;
 }
@@ -337,71 +338,71 @@ function CampaignView({ state }: { state: CampaignState }) {
   }, [showColumns, state.rows, state.contacts, schema]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="paper flex h-full flex-col bg-board">
       {/* header */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-line px-6 pt-5 pb-3">
-        <Link to="/" className="rounded-lg p-1.5 text-ink-faint hover:bg-zinc-900/5 hover:text-ink" title="All campaigns"><ArrowLeft size={17} /></Link>
-        <Tile size="lg" className={tileFor(campaign.id)}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
+      <div className="flex flex-wrap items-center gap-3 px-6 pt-6 pb-3">
+        <Link to="/" className="rounded-xl border-2 border-transparent p-2 text-mud-faint transition hover:border-rim hover:bg-paper-deep hover:text-mud" title="All campaigns"><ArrowLeft size={20} /></Link>
+        <Tile size="lg" className={cn("text-lg", paperTileFor(campaign.id))}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
           <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />
-          <div className="flex items-center gap-2.5 truncate text-xs text-ink-faint">
+          <div className="flex items-center gap-2.5 truncate text-[13px] text-mud-faint">
             {campaign.sourcePath ? (
-              <span className="tag max-w-md truncate bg-emerald-100 text-emerald-800" title={campaign.sourcePath}>
+              <span className="tag max-w-md truncate bg-note-mint text-mud" title={campaign.sourcePath}>
                 <FileSpreadsheet size={12} /> <span className="truncate">{fileNameOf(campaign.sourcePath)}</span> <Link2 size={11} />
               </span>
             ) : campaign.sourceName ? (
-              <span className="tag bg-zinc-100 text-zinc-600" title="Dropped files are not linked: use Save as to pick where it goes"><FileSpreadsheet size={12} /> {campaign.sourceName} · not linked</span>
+              <span className="tag bg-paper-deep text-mud-soft" title="Dropped files are not linked: use Save as to pick where it goes"><FileSpreadsheet size={12} /> {campaign.sourceName} · not linked</span>
             ) : (
-              <span className="tag bg-violet-100 text-violet-800">Created in Mudd</span>
+              <span className="tag bg-lake-soft text-lake-deep">Created in Mudd</span>
             )}
             <SaveIndicator state={state} />
             {passthrough.length > 0 && (
               <span className="truncate" title="These tabs are written back to the file exactly as they were imported">
-                Also kept on export: {passthrough.map((p) => <span key={p} className="tag ml-1 bg-zinc-100 text-zinc-600">{p}</span>)}
+                Also kept on export: {passthrough.map((p) => <span key={p} className="tag ml-1 bg-paper-deep text-mud-soft">{p}</span>)}
               </span>
             )}
           </div>
         </div>
         {liveRun && (
-          <button onClick={() => setShowEnrich(true)} className="tag h-8 rounded-lg bg-sky-100 px-2.5 text-sky-800 hover:bg-sky-200" title="Open the running enrichment">
+          <button onClick={() => setShowEnrich(true)} className="tag h-9 rounded-lg bg-lake-soft px-3 font-bold text-lake-deep hover:bg-lake-soft/70" title="Open the running enrichment">
             <Spinner size={12} className={liveRun.status === "running" ? "animate-spin" : ""} />
             {liveRun.label}: {liveRun.completed + liveRun.failed}/{liveRun.total}{liveRun.status === "paused" ? " · paused" : ""}
           </button>
         )}
         {enrich.suggestions.length > 0 && (
-          <Button onClick={() => setShowReview(true)} className="border-yellow-300 bg-yellow-50 hover:bg-yellow-100">
-            Review <span className="rounded-md bg-yellow-300 px-1.5 text-[11px] font-bold text-yellow-900">{enrich.suggestions.length}</span>
+          <Button onClick={() => setShowReview(true)} className="bg-note hover:bg-note/70">
+            Review <span className="rounded-md border border-rim/60 bg-paper px-1.5 font-label text-[12px] font-bold">{enrich.suggestions.length}</span>
           </Button>
         )}
         {discovery.enabled && (
           <>
             {liveDiscovery && (
-              <button onClick={() => setShowDiscover("find")} className="tag h-8 rounded-lg bg-emerald-100 px-2.5 text-emerald-800 hover:bg-emerald-200" title="Open the running Discovery">
+              <button onClick={() => setShowDiscover("find")} className="tag h-9 rounded-lg bg-note-mint px-3 font-bold text-mud hover:bg-note-mint/70" title="Open the running Discovery">
                 <Spinner size={12} className={liveDiscovery.status === "running" ? "animate-spin" : ""} />
                 {liveDiscovery.kind === "find" ? `Discovery: ${liveDiscovery.found}/${liveDiscovery.target} found` : liveDiscovery.kind === "map" ? "Mapping…" : "Drafting thesis…"}{liveDiscovery.status === "paused" ? " · paused" : ""}
               </button>
             )}
             {discovery.inbox.length > 0 && (
-              <Button onClick={() => setShowDiscover("inbox")} className="border-emerald-300 bg-emerald-50 hover:bg-emerald-100">
-                <Inbox size={15} /> Inbox <span className="rounded-md bg-emerald-300 px-1.5 text-[11px] font-bold text-emerald-900">{discovery.inbox.length}</span>
+              <Button onClick={() => setShowDiscover("inbox")} className="bg-note-mint hover:bg-note-mint/70">
+                <Inbox size={16} /> Inbox <span className="rounded-md border border-rim/60 bg-paper px-1.5 font-label text-[12px] font-bold">{discovery.inbox.length}</span>
               </Button>
             )}
             <Button variant="subtle" onClick={() => setShowDiscover(discovery.inbox.length ? "inbox" : "find")}>
-              <Radar size={15} /> Discover
+              <Radar size={16} /> Discover
             </Button>
           </>
         )}
         <Button variant="subtle" onClick={() => setShowEnrich(true)}>
-          <Sparkles size={15} /> Enrich
+          <Sparkles size={16} /> Enrich
         </Button>
         <Button onClick={() => setShowTemplates(true)}>
-          <MessageSquareText size={15} /> Templates
-          {state.templates.length > 0 && <span className="rounded-md bg-brand-100 px-1.5 text-[11px] font-semibold text-brand-700">{state.templates.length}</span>}
+          <MessageSquareText size={16} /> Templates
+          {state.templates.length > 0 && <span className="rounded-md border border-rim/60 bg-clay-soft px-1.5 font-label text-[12px] font-bold text-clay-deep">{state.templates.length}</span>}
         </Button>
-        <Button onClick={() => setShowColumns(true)}><Columns3 size={15} /> Columns</Button>
+        <Button onClick={() => setShowColumns(true)}><Columns3 size={16} /> Columns</Button>
         <ExportMenu campaign={campaign} state={state} />
         <Popover align="right" trigger={({ toggle }) => (
-          <Button size="icon" variant="ghost" onClick={toggle} title="More" aria-label="Campaign menu"><MoreHorizontal size={16} /></Button>
+          <Button size="icon" variant="ghost" onClick={toggle} title="More" aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
         )}>
           {(close) => (
             <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); setRemoving(true); }} hint="The file stays">Remove from Mudd</MenuItem>
@@ -410,7 +411,7 @@ function CampaignView({ state }: { state: CampaignState }) {
       </div>
 
       {/* toolbar */}
-      <div className="flex min-h-14 flex-wrap items-center gap-2 px-6 py-3">
+      <div className="flex min-h-16 flex-wrap items-center gap-3 px-6 py-3">
         {onContacts && selectedContactRows.length > 0 ? (
           <ContactBulkBar rows={selectedContactRows} state={state} onDone={() => setSelectedContacts(new Set())} />
         ) : !onContacts && selectedRows.length > 0 ? (
@@ -427,37 +428,37 @@ function CampaignView({ state }: { state: CampaignState }) {
           <>
             <TabSwitch tab={tab} onChange={setTab} prospects={state.rows.length} contacts={state.contacts.length} />
             <div className="relative">
-              <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-faint" />
+              <Search size={16} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-mud-faint" />
               <input
-                className="field h-8 w-56 py-0 pl-8 text-xs"
+                className="field h-10 w-64 py-0 pl-10 text-[14px]"
                 placeholder={onContacts ? "Search contacts" : "Search prospects"}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
-              {query && <button className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-faint hover:text-ink" onClick={() => setQuery("")}><X size={13} /></button>}
+              {query && <button className="absolute top-1/2 right-3 -translate-y-1/2 text-mud-faint hover:text-mud" onClick={() => setQuery("")}><X size={15} /></button>}
             </div>
             {!onContacts && statusKey && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} tone="bg-brand-100 text-brand-700" />
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} tone="bg-clay-soft text-clay-deep" />
                 {[...stages, DEAD].map((s) => (counts.byStatus[s] ? (
                   <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts.byStatus[s]!} tone={toneFor(s, stages).pill} />
                 ) : null))}
                 {Object.keys(counts.byStatus).filter((s) => s !== NOT_SET && ![...stages, DEAD].includes(s)).map((s) => (
                   <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts.byStatus[s]!} tone={toneFor(s, stages).pill} />
                 ))}
-                {counts.byStatus[NOT_SET] ? <Chip active={statusFilter === NOT_SET} onClick={() => setStatusFilter(statusFilter === NOT_SET ? null : NOT_SET)} label="No status" count={counts.byStatus[NOT_SET]!} tone="bg-zinc-100 text-zinc-600" /> : null}
+                {counts.byStatus[NOT_SET] ? <Chip active={statusFilter === NOT_SET} onClick={() => setStatusFilter(statusFilter === NOT_SET ? null : NOT_SET)} label="No status" count={counts.byStatus[NOT_SET]!} tone="bg-paper-deep text-mud-soft" /> : null}
               </div>
             )}
             {!onContacts && screenedCount > 0 && (
-              <span className="text-xs text-ink-faint tabular-nums" title="Screened-out prospects stay in the list, greyed out. Open one to restore it.">
+              <span className="font-label text-[13px] text-mud-faint tabular-nums" title="Screened-out prospects stay in the list, greyed out. Open one to restore it.">
                 {screenedCount} screened out
               </span>
             )}
-            <div className="ml-auto flex items-center gap-1.5">
+            <div className="ml-auto flex items-center gap-2">
               {!onContacts && view === "reading" && groupable.length > 0 && (
-                <label className="flex items-center gap-1.5 text-xs text-ink-faint">
+                <label className="flex items-center gap-2 font-label text-[13px] text-mud-faint">
                   Group by
-                  <select className="field h-8 w-auto py-0 pr-7 text-xs" value={groupKey ?? ""} onChange={(e) => setGroupBy(e.target.value)}>
+                  <select className="field h-9 w-auto py-0 pr-8 text-[13px]" value={groupKey ?? ""} onChange={(e) => setGroupBy(e.target.value)}>
                     <option value="">Nothing</option>
                     {groupable.map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
                   </select>
@@ -465,16 +466,16 @@ function CampaignView({ state }: { state: CampaignState }) {
               )}
               {!onContacts && <ViewToggle view={view} onChange={setView} />}
               <Button size="sm" variant="ghost" disabled={!state.canUndo} onClick={() => { const l = state.undo(); if (l) toast(`Undid: ${l}`, { id: "undo" }); }} title="Undo (Ctrl+Z)">
-                <Undo2 size={13} /> Undo
+                <Undo2 size={15} /> Undo
               </Button>
-              {!onContacts && <Button size="sm" variant="primary" onClick={addRow}><Plus size={13} /> Add prospect</Button>}
+              {!onContacts && <Button size="sm" variant="primary" onClick={addRow}><Plus size={15} /> Add prospect</Button>}
             </div>
           </>
         )}
       </div>
 
       {/* grid + drawer */}
-      <div className="relative mx-6 mb-6 min-h-0 flex-1 overflow-hidden rounded-2xl border border-line bg-white shadow-[0_1px_2px_rgba(23,22,29,0.04)]">
+      <div className="relative mx-6 mb-6 min-h-0 flex-1 overflow-hidden rounded-2xl border-2 border-rim bg-paper shadow-hard">
         {onContacts ? (
           state.contacts.length === 0 ? (
             <EmptyContacts />
@@ -505,7 +506,7 @@ function CampaignView({ state }: { state: CampaignState }) {
                 openLabel="Open contact"
               />
               {filteredContacts.length === 0 && (
-                <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-sm text-ink-faint">No contacts match.</div>
+                <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-[15px] text-mud-faint">No contacts match.</div>
               )}
             </>
           )
@@ -539,7 +540,7 @@ function CampaignView({ state }: { state: CampaignState }) {
             />
             )}
             {filtered.length === 0 && (
-              <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-sm text-ink-faint">No rows match.</div>
+              <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-[15px] text-mud-faint">No rows match.</div>
             )}
           </>
         )}
@@ -591,7 +592,7 @@ function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) =
   useEffect(() => setDraft(value), [value]);
   return (
     <input
-      className="-ml-1 w-full max-w-xl truncate rounded-md border border-transparent bg-transparent px-1 text-base font-semibold outline-none hover:border-line focus:border-brand-300 focus:bg-white"
+      className="-ml-1.5 w-full max-w-xl truncate rounded-lg border-2 border-transparent bg-transparent px-1.5 font-display text-[26px] leading-tight font-bold outline-none transition hover:border-rim/50 focus:border-clay focus:bg-paper"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => (draft.trim() ? onCommit(draft.trim()) : setDraft(value))}
@@ -626,7 +627,7 @@ function Segmented<T extends string>({ value, onChange, options, tabs }: {
   tabs?: boolean;
 }) {
   return (
-    <div role={tabs ? "tablist" : undefined} className="flex rounded-lg bg-zinc-200/60 p-0.5">
+    <div role={tabs ? "tablist" : undefined} className="flex rounded-xl border-2 border-rim bg-paper-deep/60 p-1">
       {options.map((o) => (
         <button
           key={o.value}
@@ -636,11 +637,11 @@ function Segmented<T extends string>({ value, onChange, options, tabs }: {
           title={o.title}
           onClick={() => onChange(o.value)}
           className={cn(
-            "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition",
-            value === o.value ? "bg-white text-ink shadow-[0_1px_2px_rgba(23,22,29,0.12)]" : "text-ink-faint hover:text-ink",
+            "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-bold transition",
+            value === o.value ? "bg-paper text-mud shadow-hard-sm" : "text-mud-faint hover:text-mud",
           )}
         >
-          {o.icon} {o.label}{o.count !== undefined && <span className="opacity-60 tabular-nums">{o.count}</span>}
+          {o.icon} {o.label}{o.count !== undefined && <span className="font-label font-normal opacity-70 tabular-nums">{o.count}</span>}
         </button>
       ))}
     </div>
@@ -651,8 +652,8 @@ function Segmented<T extends string>({ value, onChange, options, tabs }: {
 function TabSwitch({ tab, onChange, prospects, contacts }: { tab: Tab; onChange: (t: Tab) => void; prospects: number; contacts: number }) {
   return (
     <Segmented tabs value={tab} onChange={onChange} options={[
-      { value: "prospects", icon: <Building2 size={13} />, label: "Prospects", count: prospects },
-      { value: "contacts", icon: <Users size={13} />, label: "Contacts", count: contacts },
+      { value: "prospects", icon: <Building2 size={15} />, label: "Prospects", count: prospects },
+      { value: "contacts", icon: <Users size={15} />, label: "Contacts", count: contacts },
     ]} />
   );
 }
@@ -660,8 +661,8 @@ function TabSwitch({ tab, onChange, prospects, contacts }: { tab: Tab; onChange:
 function ViewToggle({ view, onChange }: { view: "table" | "reading"; onChange: (v: "table" | "reading") => void }) {
   return (
     <Segmented value={view} onChange={onChange} options={[
-      { value: "table", icon: <Table2 size={13} />, label: "Table", title: "Table view" },
-      { value: "reading", icon: <Rows3 size={13} />, label: "Reading", title: "Reading view" },
+      { value: "table", icon: <Table2 size={15} />, label: "Table", title: "Table view" },
+      { value: "reading", icon: <Rows3 size={15} />, label: "Reading", title: "Reading view" },
     ]} />
   );
 }
@@ -691,12 +692,12 @@ function Chip({ active, onClick, label, count, tone }: { active: boolean; onClic
     <button
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition",
-        active ? cn(tone, "shadow-[inset_0_0_0_1.5px_currentColor]") : "border border-line bg-white text-ink-soft hover:border-line-strong hover:text-ink",
+        "inline-flex h-9 items-center gap-1.5 rounded-lg border-2 px-3 font-label text-[13px] transition",
+        active ? cn(tone, "border-rim font-bold shadow-hard-sm") : "border-rim/40 bg-paper text-mud-soft hover:border-rim hover:text-mud",
       )}
     >
       {label}
-      <span className="opacity-60 tabular-nums">{count}</span>
+      <span className="opacity-70 tabular-nums">{count}</span>
     </button>
   );
 }
@@ -706,22 +707,22 @@ function EmptyList({ onAdd, discovery }: { onAdd: () => void; discovery: { waiti
   if (discovery) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-        <Radar className="text-brand-300" size={32} />
-        <p className="text-sm font-medium">{discovery.waiting ? `${discovery.waiting} compan${discovery.waiting === 1 ? "y" : "ies"} waiting in the Discovery inbox` : "Discovery hasn't run yet"}</p>
-        <p className="max-w-sm text-xs text-ink-faint">Your prospects will appear here once you accept them from the Discovery inbox.</p>
-        <div className="mt-2 flex gap-2">
-          <Button size="sm" variant="primary" onClick={discovery.open}><Radar size={13} /> {discovery.waiting ? "Open inbox" : "Open Discover"}</Button>
-          <Button size="sm" variant="ghost" onClick={onAdd}><Plus size={13} /> Add one by hand</Button>
+        <Radar className="text-clay" size={40} strokeWidth={2.2} />
+        <p className="font-display text-xl font-bold">{discovery.waiting ? `${discovery.waiting} compan${discovery.waiting === 1 ? "y" : "ies"} waiting in the Discovery inbox` : "Discovery hasn't run yet"}</p>
+        <p className="max-w-sm text-[14px] text-mud-faint">Your prospects will appear here once you accept them from the Discovery inbox.</p>
+        <div className="mt-3 flex gap-3">
+          <Button variant="primary" onClick={discovery.open}><Radar size={16} /> {discovery.waiting ? "Open inbox" : "Open Discover"}</Button>
+          <Button variant="ghost" onClick={onAdd}><Plus size={16} /> Add one by hand</Button>
         </div>
       </div>
     );
   }
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-      <FileSpreadsheet className="text-brand-300" size={32} />
-      <p className="text-sm font-medium">No prospects yet</p>
-      <p className="max-w-sm text-xs text-ink-faint">Add your first prospect, or paste rows straight from Excel into the grid.</p>
-      <Button size="sm" variant="primary" className="mt-2" onClick={onAdd}><Plus size={13} /> Add prospect</Button>
+      <FileSpreadsheet className="text-clay" size={40} strokeWidth={2.2} />
+      <p className="font-display text-xl font-bold">No prospects yet</p>
+      <p className="max-w-sm text-[14px] text-mud-faint">Add your first prospect, or paste rows straight from Excel into the grid.</p>
+      <Button variant="primary" className="mt-3" onClick={onAdd}><Plus size={16} /> Add prospect</Button>
     </div>
   );
 }
@@ -729,9 +730,9 @@ function EmptyList({ onAdd, discovery }: { onAdd: () => void; discovery: { waiti
 function EmptyContacts() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-      <Users className="text-brand-300" size={32} />
-      <p className="text-sm font-medium">No contacts yet</p>
-      <p className="max-w-sm text-xs text-ink-faint">Open a prospect and add its people there: who holds the budget, who evaluates, who uses it. Everyone you add is listed here.</p>
+      <Users className="text-clay" size={40} strokeWidth={2.2} />
+      <p className="font-display text-xl font-bold">No contacts yet</p>
+      <p className="max-w-sm text-[14px] text-mud-faint">Open a prospect and add its people there: who holds the budget, who evaluates, who uses it. Everyone you add is listed here.</p>
     </div>
   );
 }
@@ -742,7 +743,7 @@ function ContactBulkBar({ rows, state, onDone }: { rows: Row[]; state: CampaignS
   const label = `${n} ${n === 1 ? "contact" : "contacts"}`;
   return (
     <>
-      <span className="text-sm font-medium">{n} selected</span>
+      <span className="text-[15px] font-extrabold">{n} selected</span>
       <Button size="sm" variant="danger" onClick={() => {
         state.deleteRows(rows.map((r) => r.id), `Delete ${label}`);
         onDone();
@@ -775,8 +776,8 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
   };
   return (
     <>
-      <span className="text-sm font-medium">{rows.length} selected</span>
-      {activeIds.length > 0 && screenedIds.length > 0 && <span className="text-xs text-ink-faint">({screenedIds.length} screened out)</span>}
+      <span className="text-[15px] font-extrabold">{rows.length} selected</span>
+      {activeIds.length > 0 && screenedIds.length > 0 && <span className="font-label text-[13px] text-mud-faint">({screenedIds.length} screened out)</span>}
       {activeIds.length > 0 && (
         <>
           <ScreenOutButton count={activeIds.length} onConfirm={(reason) => {

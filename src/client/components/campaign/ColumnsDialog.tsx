@@ -84,7 +84,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
     >
       <div className="max-h-[52vh] overflow-y-auto pr-1 scroll-thin">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-panel text-left text-xs text-ink-faint">
+          <thead className="sticky top-0 bg-paper text-left text-xs text-mud-faint">
             <tr>
               <th className="w-8 py-1.5" />
               <th className="py-1.5 font-medium">Header</th>
@@ -98,15 +98,15 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
               const locked = inSheet.has(c.key) || roleKeys.has(c.key);
               const dup = dupes.has(tidy(c).header.toLowerCase());
               return (
-                <tr key={c.key} className={cn("border-t border-line", c.hidden && "opacity-55")}>
+                <tr key={c.key} className={cn("border-t border-rim/40", c.hidden && "opacity-55")}>
                   <td className="py-1.5">
-                    <button className="rounded-sm p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink" onClick={() => patch(c.key, { hidden: !c.hidden })} title={c.hidden ? "Show in grid" : "Hide in grid"}>
+                    <button className="rounded-sm p-1 text-mud-faint hover:bg-paper-deep hover:text-mud" onClick={() => patch(c.key, { hidden: !c.hidden })} title={c.hidden ? "Show in grid" : "Hide in grid"}>
                       {c.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </td>
                   <td className="py-1.5 pr-2">
                     <input className={cn("field h-8 py-0", dup && "border-rose-300")} value={c.header} onChange={(e) => patch(c.key, { header: e.target.value })} />
-                    {role(c.key) && <span className="mt-0.5 block text-[10px] text-brand-600">{role(c.key)}</span>}
+                    {role(c.key) && <span className="mt-0.5 block text-[10px] text-clay-deep">{role(c.key)}</span>}
                   </td>
                   <td className="py-1.5 pr-2">
                     <select className="field h-8 py-0" value={c.type} disabled={fixedType.has(c.key)}
@@ -118,13 +118,13 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
                     {c.type === "select" ? (
                       <input className="field h-8 py-0 text-xs" placeholder="Comma-separated" value={(c.options ?? []).join(", ")}
                         onChange={(e) => patch(c.key, { options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
-                    ) : <span className="text-xs text-ink-faint">—</span>}
+                    ) : <span className="text-xs text-mud-faint">—</span>}
                   </td>
                   <td className="py-1.5">
                     {locked ? (
-                      <span className="flex justify-center text-ink-faint" title={inSheet.has(c.key) ? "In your spreadsheet — hide it instead" : "Used by Mudd — hide it instead"}><Lock size={13} /></span>
+                      <span className="flex justify-center text-mud-faint" title={inSheet.has(c.key) ? "In your spreadsheet — hide it instead" : "Used by Mudd — hide it instead"}><Lock size={13} /></span>
                     ) : (
-                      <button className="rounded-sm p-1 text-ink-faint hover:bg-rose-50 hover:text-rose-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
+                      <button className="rounded-sm p-1 text-mud-faint hover:bg-rose-50 hover:text-rose-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
                         <Trash2 size={14} />
                       </button>
                     )}
@@ -135,9 +135,9 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
           </tbody>
         </table>
       </div>
-      <form className="mt-3 flex gap-2 border-t border-line pt-3" onSubmit={(e) => { e.preventDefault(); add(); }}>
-        <input className="field h-9" placeholder="New column header" value={newHeader} onChange={(e) => setNewHeader(e.target.value)} />
-        <select className="field h-9 w-40" value={newType} onChange={(e) => setNewType(e.target.value as ColumnType)}>
+      <form className="mt-3 flex gap-2 border-t border-rim/40 pt-3" onSubmit={(e) => { e.preventDefault(); add(); }}>
+        <input className="field h-10 py-0" placeholder="New column header" value={newHeader} onChange={(e) => setNewHeader(e.target.value)} />
+        <select className="field h-10 w-40 py-0" value={newType} onChange={(e) => setNewType(e.target.value as ColumnType)}>
           {COLUMN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
         <Button type="submit" disabled={!newHeader.trim()}><Plus size={15} /> Add</Button>

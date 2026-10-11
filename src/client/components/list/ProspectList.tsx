@@ -46,14 +46,14 @@ export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenR
         {groups.map((g) => (
           <section key={g.label} className="mb-8 last:mb-2">
             {groupCol && (
-              <div className="sticky top-0 z-10 -mx-2 mb-3 flex items-center gap-2 bg-white/90 px-2 py-2 backdrop-blur-sm">
+              <div className="sticky top-0 z-10 -mx-2 mb-3 flex items-center gap-2 bg-paper/90 px-2 py-2 backdrop-blur-sm">
                 <span className="eyebrow">{groupCol.header}</span>
                 {groupCol.key === schema.statusKey ? (
                   <StatusPill value={g.value} stages={stages} />
                 ) : (
                   <span className={cn("tag", groupTone(g.index))}>{g.label}</span>
                 )}
-                <span className="ml-auto text-xs text-ink-faint tabular-nums">{g.rows.length}</span>
+                <span className="ml-auto text-xs text-mud-faint tabular-nums">{g.rows.length}</span>
               </div>
             )}
             <div className="space-y-3">
@@ -84,7 +84,7 @@ export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenR
   );
 }
 
-const GROUP_TONES = ["bg-violet-100 text-violet-800", "bg-sky-100 text-sky-800", "bg-yellow-100 text-yellow-800", "bg-pink-100 text-pink-800", "bg-emerald-100 text-emerald-800", "bg-orange-100 text-orange-800"];
+const GROUP_TONES = ["bg-lake-soft text-lake-deep", "bg-sky-100 text-sky-800", "bg-yellow-100 text-yellow-800", "bg-pink-100 text-pink-800", "bg-emerald-100 text-emerald-800", "bg-orange-100 text-orange-800"];
 const groupTone = (i: number) => GROUP_TONES[i % GROUP_TONES.length]!;
 
 function groupRows(rows: Row[], schema: CampaignSchema, stages: string[], key: string | null) {
@@ -142,30 +142,30 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
       onKeyDown={(e) => e.target === e.currentTarget && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 220px" }}
       className={cn(
-        "group grid cursor-pointer gap-5 rounded-2xl border bg-white p-5 transition sm:grid-cols-[124px_1fr]",
-        active ? "border-brand-300 shadow-[0_0_0_3px_var(--color-brand-100)]" : "border-line hover:border-brand-200 hover:shadow-[0_8px_30px_-14px_rgba(103,68,245,0.35)]",
-        screened ? "bg-zinc-50 opacity-60 hover:opacity-80" : dead && "opacity-70",
+        "group grid cursor-pointer gap-5 rounded-2xl border-2 bg-paper p-5 transition sm:grid-cols-[124px_1fr]",
+        active ? "border-clay shadow-hard-sm" : "border-rim/40 hover:border-clay hover:shadow-hard-sm",
+        screened ? "bg-paper-deep/40 opacity-60 hover:opacity-80" : dead && "opacity-70",
       )}
     >
       <div className="flex flex-row flex-wrap items-start gap-2 sm:flex-col">
-        {screened && <span className="tag bg-zinc-200 text-zinc-700"><Ban size={12} /> Screened out</span>}
+        {screened && <span className="tag bg-paper-deep text-mud-soft"><Ban size={12} /> Screened out</span>}
         {schema.statusKey && <StatusPill value={status || "No status"} stages={stages} />}
-        {tier && !hideTier && <span className="tag bg-zinc-100 text-zinc-700">{schema.columns.find((x) => x.key === layout.tierKey)?.header ?? "Tier"} {tier}</span>}
+        {tier && !hideTier && <span className="tag bg-paper-deep text-mud-soft">{schema.columns.find((x) => x.key === layout.tierKey)?.header ?? "Tier"} {tier}</span>}
         {meetingAt && (
           <span className="tag bg-yellow-100 text-yellow-800" title={formatDateTime(meetingAt)}>
             <CalendarClock size={12} /> {relative(meetingAt)}
           </span>
         )}
-        {intro && <span className="tag bg-violet-100 text-violet-800"><MessageSquareText size={12} /> Intro drafted</span>}
-        {pendingCount > 0 && <span className="tag bg-brand-500 text-white">✨ {pendingCount} to review</span>}
+        {intro && <span className="tag bg-lake-soft text-lake-deep"><MessageSquareText size={12} /> Intro drafted</span>}
+        {pendingCount > 0 && <span className="tag bg-clay text-white">✨ {pendingCount} to review</span>}
       </div>
 
       <div className="min-w-0">
-        <h3 className="flex items-baseline gap-2 text-[19px] leading-snug font-bold tracking-tight group-hover:text-brand-700">
-          {layout.rankKey && txt(layout.rankKey) && <span className="text-xs font-semibold text-ink-faint tabular-nums">#{txt(layout.rankKey)}</span>}
+        <h3 className="flex items-baseline gap-2 font-display text-[21px] leading-snug font-bold tracking-tight group-hover:text-clay-deep">
+          {layout.rankKey && txt(layout.rankKey) && <span className="text-xs font-semibold text-mud-faint tabular-nums">#{txt(layout.rankKey)}</span>}
           <span className="min-w-0">{title}</span>
         </h3>
-        {layout.subtitleKey && txt(layout.subtitleKey) && <p className="mt-0.5 text-xs font-medium text-brand-600">{txt(layout.subtitleKey)}</p>}
+        {layout.subtitleKey && txt(layout.subtitleKey) && <p className="mt-0.5 text-xs font-medium text-clay-deep">{txt(layout.subtitleKey)}</p>}
 
         {reason && (
           <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-[13px] leading-relaxed text-rose-900">
@@ -176,8 +176,8 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
         {paragraphs.length > 0 && (
           <div className="mt-3 space-y-2.5">
             {paragraphs.map((p, i) => (
-              <p key={p.col.key} className={cn("max-w-prose text-[13.5px] leading-relaxed whitespace-pre-line", i === 0 ? "text-ink" : "text-ink-soft")}>
-                {paragraphs.length > 1 && <span className="mr-1.5 text-[10.5px] font-semibold tracking-wider text-ink-faint uppercase">{p.col.header}</span>}
+              <p key={p.col.key} className={cn("max-w-prose text-[13.5px] leading-relaxed whitespace-pre-line", i === 0 ? "text-mud" : "text-mud-soft")}>
+                {paragraphs.length > 1 && <span className="mr-1.5 text-[10.5px] font-semibold tracking-wider text-mud-faint uppercase">{p.col.header}</span>}
                 {p.v}
               </p>
             ))}
@@ -192,14 +192,14 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
               const cue = cueFor(col, c, schema);
               const href = hrefOf(v, "email");
               return (
-                <span key={v} className={cn("inline-flex items-center gap-1.5", cue === "unverified" ? "text-rose-700" : "text-ink-soft")} title={cue === "unverified" ? "Pattern email: inferred, verify before sending" : undefined}>
-                  {cue === "unverified" ? <AlertTriangle size={13} /> : <Mail size={13} className="text-ink-faint" />}
+                <span key={v} className={cn("inline-flex items-center gap-1.5", cue === "unverified" ? "text-rose-700" : "text-mud-soft")} title={cue === "unverified" ? "Pattern email: inferred, verify before sending" : undefined}>
+                  {cue === "unverified" ? <AlertTriangle size={13} /> : <Mail size={13} className="text-mud-faint" />}
                   {href ? <LinkText href={href}>{v}</LinkText> : v}
                 </span>
               );
             })}
             {phones.map((v) => (
-              <span key={v} className="inline-flex items-center gap-1.5 text-ink-soft"><Phone size={13} className="text-ink-faint" />{v}</span>
+              <span key={v} className="inline-flex items-center gap-1.5 text-mud-soft"><Phone size={13} className="text-mud-faint" />{v}</span>
             ))}
           </div>
         )}
@@ -219,14 +219,14 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
                   <ExternalLink size={11} className="shrink-0" /> <span className="truncate">{host.length > 48 ? `${host.slice(0, 46)}…` : host}</span>
                 </button>
               ) : (
-                <span key={col.key + v} className="tag bg-zinc-100 text-zinc-600">{v}</span>
+                <span key={col.key + v} className="tag bg-paper-deep text-mud-soft">{v}</span>
               );
             })}
           </div>
         )}
 
         {facts.length > 0 && (
-          <dl className="mt-3.5 flex flex-wrap gap-1.5 border-t border-dashed border-line pt-3">
+          <dl className="mt-3.5 flex flex-wrap gap-1.5 border-t border-dashed border-rim/40 pt-3">
             {facts.map(({ col, v }) => <Fact key={col.key} col={col} v={v} cells={c} schema={schema} />)}
           </dl>
         )}
@@ -244,7 +244,7 @@ function ContactChips({ contacts, schema, onOpenContact, onMore }: { contacts: R
   const more = list.length - CHIPS;
   return (
     <div className="mt-4 flex flex-wrap items-center gap-1.5">
-      <Users size={13} className="mr-0.5 text-ink-faint" aria-label="Contacts" />
+      <Users size={13} className="mr-0.5 text-mud-faint" aria-label="Contacts" />
       {list.slice(0, CHIPS).map((p) => {
         const label = contactLabel(p, schema);
         const type = cs.typeKey ? display(p.cells[cs.typeKey]).trim() : "";
@@ -253,7 +253,7 @@ function ContactChips({ contacts, schema, onOpenContact, onMore }: { contacts: R
             key={p.id}
             onClick={(e) => { e.stopPropagation(); onOpenContact(p.id); }}
             title={`Open ${label}${type ? ` · ${type}` : ""}${p === primary ? " · primary contact" : ""}`}
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-line bg-white py-0.5 pr-2 pl-0.5 text-xs transition hover:border-brand-300 hover:bg-brand-50"
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-rim/40 bg-paper py-0.5 pr-2 pl-0.5 text-xs transition hover:border-clay hover:bg-clay-soft/50"
           >
             <Tile size="sm" className={cn("h-5 w-5 rounded-full text-[10px]", tileFor(p.id))}>{label[0]?.toUpperCase() ?? "?"}</Tile>
             <span className="truncate font-medium">{label}</span>
@@ -263,7 +263,7 @@ function ContactChips({ contacts, schema, onOpenContact, onMore }: { contacts: R
         );
       })}
       {more > 0 && (
-        <button onClick={(e) => { e.stopPropagation(); onMore(); }} className="rounded-full px-2 py-0.5 text-xs text-ink-soft hover:bg-zinc-100 hover:text-ink">
+        <button onClick={(e) => { e.stopPropagation(); onMore(); }} className="rounded-full px-2 py-0.5 text-xs text-mud-soft hover:bg-paper-deep hover:text-mud">
           +{more} more
         </button>
       )}
@@ -277,9 +277,9 @@ function Fact({ col, v, cells, schema }: { col: Column; v: string; cells: Record
   const value = col.type === "date" && /^\d{4}-\d{2}-\d{2}/.test(v) ? formatDate(v) : col.type === "datetime" ? formatDateTime(v) : amount !== null ? `$${amount.toLocaleString()}` : v;
   const tone = col.type === "select" && col.key !== schema.statusKey ? toneFor(v, col.options ?? []).pill : "";
   return (
-    <div className={cn("inline-flex max-w-full items-baseline gap-1.5 rounded-lg border px-2 py-1 text-xs", cue === "expired" ? "border-rose-200 bg-rose-50" : "border-line bg-white")}>
-      <dt className="shrink-0 text-ink-faint">{col.header}</dt>
-      <dd className={cn("min-w-0 truncate font-medium", cue === "expired" ? "text-rose-700" : "text-ink", tone && "rounded-sm px-1", tone)} title={v}>
+    <div className={cn("inline-flex max-w-full items-baseline gap-1.5 rounded-lg border px-2 py-1 text-xs", cue === "expired" ? "border-rose-200 bg-rose-50" : "border-rim/40 bg-paper")}>
+      <dt className="shrink-0 text-mud-faint">{col.header}</dt>
+      <dd className={cn("min-w-0 truncate font-medium", cue === "expired" ? "text-rose-700" : "text-mud", tone && "rounded-sm px-1", tone)} title={v}>
         {value.length > 60 ? `${value.slice(0, 58)}…` : value}
       </dd>
     </div>
@@ -289,7 +289,7 @@ function Fact({ col, v, cells, schema }: { col: Column; v: string; cells: Record
 function LinkText({ href, children }: { href: string; children: ReactNode }) {
   return (
     <button
-      className="underline decoration-line-strong underline-offset-2 hover:text-brand-700 hover:decoration-brand-300"
+      className="underline decoration-rim/60 underline-offset-2 hover:text-clay-deep hover:decoration-clay"
       onClick={(e) => { e.stopPropagation(); openLink(href); }}
     >
       {children}

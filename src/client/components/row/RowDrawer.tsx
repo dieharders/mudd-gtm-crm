@@ -79,13 +79,13 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
   }, [inContact, onOpenContact, onClose, onNext, onPrev]);
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(460px,100%)] flex-col border-l border-line bg-panel shadow-2xl shadow-zinc-900/10 animate-slide-in">
-      <div className="flex items-start gap-2 border-b border-line px-4 py-3">
+    <aside className="paper absolute inset-y-0 right-0 z-30 flex w-[min(480px,100%)] flex-col border-l-2 border-rim bg-paper shadow-[-8px_0_24px_-12px_rgba(43,30,22,0.35)] animate-slide-in">
+      <div className="flex items-start gap-2 border-b-2 border-rim/40 px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-base font-semibold">{title}</h2>
-          <p className="truncate text-xs text-ink-soft">
+          <p className="truncate text-xs text-mud-soft">
             {subtitle || " "}
-            {screened && <span className="ml-2 rounded-sm bg-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 uppercase">Screened out</span>}
+            {screened && <span className="ml-2 rounded-sm bg-paper-deep px-1.5 py-0.5 text-[10px] font-semibold text-mud-soft uppercase">Screened out</span>}
           </p>
         </div>
         {!screened && schema.screenedKey && (
@@ -125,8 +125,8 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
 
           <section>
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">Company</h3>
-              {screened && <span className="text-xs text-ink-faint">Restore the prospect to edit</span>}
+              <h3 className="text-xs font-semibold tracking-wide text-mud-faint uppercase">Company</h3>
+              {screened && <span className="text-xs text-mud-faint">Restore the prospect to edit</span>}
             </div>
             <div className="space-y-3">
               {fields.map((col) => (
@@ -148,7 +148,7 @@ function Field({ col, row, onEdit, disabled, autoFocus }: { col: Column; row: Ro
       <label className="label flex items-center gap-1">
         {col.header}
         {href && (
-          <button className="ml-auto rounded-sm p-0.5 text-ink-faint hover:text-brand-700" onClick={() => openLink(href)} title={`Open ${href}`}>
+          <button className="ml-auto rounded-sm p-0.5 text-mud-faint hover:text-clay-deep" onClick={() => openLink(href)} title={`Open ${href}`}>
             <ExternalLink size={12} />
           </button>
         )}
@@ -192,10 +192,10 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
   return (
     <section>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">
+        <h3 className="text-xs font-semibold tracking-wide text-mud-faint uppercase">
           Contacts{contacts.length > 0 && <span className="ml-1.5 font-normal tabular-nums">{contacts.length}</span>}
         </h3>
-        {!disabled && contacts.length > 0 && <button className="text-xs text-brand-700 hover:underline" onClick={add}>+ Add contact</button>}
+        {!disabled && contacts.length > 0 && <button className="text-xs text-clay-deep hover:underline" onClick={add}>+ Add contact</button>}
       </div>
       {contacts.length > 0 ? (
         <ul className="space-y-1.5">
@@ -208,7 +208,7 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
             return (
               <li key={c.id}>
                 <button onClick={() => onOpenContact(c.id)}
-                  className="group flex w-full items-center gap-2.5 rounded-xl border border-line bg-white px-3 py-2 text-left transition hover:border-brand-200 hover:bg-brand-50/30">
+                  className="group flex w-full items-center gap-2.5 rounded-xl border border-rim/40 bg-paper px-3 py-2 text-left transition hover:border-clay hover:bg-clay-soft/30">
                   <Tile size="sm" className={tileFor(c.id)}>{label[0]?.toUpperCase() ?? "?"}</Tile>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
@@ -216,19 +216,19 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
                       {c === primary && <PrimaryStar />}
                     </span>
                     {/* A contact with no name is titled by their email: not shown twice. */}
-                    {(role || (email && email !== label)) && <span className="block truncate text-xs text-ink-soft">{[role, email !== label && email].filter(Boolean).join(" · ")}</span>}
+                    {(role || (email && email !== label)) && <span className="block truncate text-xs text-mud-soft">{[role, email !== label && email].filter(Boolean).join(" · ")}</span>}
                   </span>
-                  {pending > 0 && <span className="tag shrink-0 bg-brand-500 text-white">✨ {pending}</span>}
+                  {pending > 0 && <span className="tag shrink-0 bg-clay text-white">✨ {pending}</span>}
                   {type && <span className={cn("tag shrink-0", typeTone(type, typeCol?.options))}>{type}</span>}
-                  <ChevronRight size={14} className="shrink-0 text-ink-faint group-hover:text-brand-600" />
+                  <ChevronRight size={14} className="shrink-0 text-mud-faint group-hover:text-clay-deep" />
                 </button>
               </li>
             );
           })}
         </ul>
       ) : (
-        <div className="flex items-center justify-between rounded-xl border border-dashed border-line-strong px-3 py-2.5">
-          <span className="text-sm text-ink-faint">No contacts yet</span>
+        <div className="flex items-center justify-between rounded-xl border border-dashed border-rim/60 px-3 py-2.5">
+          <span className="text-sm text-mud-faint">No contacts yet</span>
           {!disabled && <Button size="sm" onClick={add}><UserPlus size={13} /> Add contact</Button>}
         </div>
       )}
@@ -263,7 +263,7 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
   };
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 scroll-thin">
-      <button onClick={onBack} className="mb-3 inline-flex max-w-full items-center gap-1 text-xs font-medium text-ink-soft hover:text-brand-700" title="Back to the prospect (Esc)">
+      <button onClick={onBack} className="mb-3 inline-flex max-w-full items-center gap-1 text-xs font-medium text-mud-soft hover:text-clay-deep" title="Back to the prospect (Esc)">
         <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{orgTitle}</span>
       </button>
       <div className="flex items-start gap-3">
@@ -273,7 +273,7 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
             <span className="truncate">{label}</span>
             {isPrimary && <PrimaryStar />}
           </h3>
-          <p className="truncate text-xs text-ink-soft">{[type, role].filter(Boolean).join(" · ") || "Contact"}</p>
+          <p className="truncate text-xs text-mud-soft">{[type, role].filter(Boolean).join(" · ") || "Contact"}</p>
         </div>
       </div>
       {!disabled && (
@@ -295,14 +295,14 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
         {!disabled && <RowSuggestions row={contact} contacts={[]} schema={schema} enrich={enrich} />}
         <section>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">Details</h3>
-            {disabled && <span className="text-xs text-ink-faint">Restore the prospect to edit</span>}
+            <h3 className="text-xs font-semibold tracking-wide text-mud-faint uppercase">Details</h3>
+            {disabled && <span className="text-xs text-mud-faint">Restore the prospect to edit</span>}
           </div>
           <div className="space-y-3">
             {fields.map((col) => (
               <div key={col.key}>
                 <Field col={col} row={contact} onEdit={onEdit} disabled={disabled} autoFocus={col.key === cs.nameKey && !contact.cells[col.key] && !disabled} />
-                {col.key === cs.typeKey && type && CONTACT_TYPE_HINTS[type] && <p className="mt-1 text-[11px] text-ink-faint">{CONTACT_TYPE_HINTS[type]}</p>}
+                {col.key === cs.typeKey && type && CONTACT_TYPE_HINTS[type] && <p className="mt-1 text-[11px] text-mud-faint">{CONTACT_TYPE_HINTS[type]}</p>}
               </div>
             ))}
           </div>
@@ -325,8 +325,8 @@ function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSc
   return (
     <section>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">Pipeline</h3>
-        {status && cur < 0 && !dead && <span className="text-xs text-ink-soft">Current: {status}</span>}
+        <h3 className="text-xs font-semibold tracking-wide text-mud-faint uppercase">Pipeline</h3>
+        {status && cur < 0 && !dead && <span className="text-xs text-mud-soft">Current: {status}</span>}
       </div>
       <ol className={cn("flex items-start", dead && "opacity-40")}>
         {stages.map((s, i) => {
@@ -335,19 +335,19 @@ function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSc
           const tone = toneFor(s, stages);
           return (
             <li key={s} className="relative flex min-w-0 flex-1 flex-col items-center">
-              {i > 0 && <span className={cn("absolute top-[9px] right-1/2 h-0.5 w-full", done ? tone.bar : "bg-zinc-200")} />}
+              {i > 0 && <span className={cn("absolute top-[9px] right-1/2 h-0.5 w-full", done ? tone.bar : "bg-paper-deep")} />}
               <button
                 onClick={() => set(here ? "" : s)}
                 title={here ? `Clear ${s}` : `Set to ${s}`}
                 className={cn(
                   "relative z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 transition",
-                  done ? cn("border-transparent text-white", tone.dot) : "border-zinc-300 bg-white hover:border-brand-400",
-                  here && "ring-4 ring-brand-100",
+                  done ? cn("border-transparent text-white", tone.dot) : "border-rim/60 bg-paper hover:border-clay",
+                  here && "ring-4 ring-clay-soft",
                 )}
               >
                 {done && <Check size={11} strokeWidth={3} />}
               </button>
-              <span className={cn("mt-1.5 px-0.5 text-center text-[10.5px] leading-tight", here ? "font-semibold text-ink" : "text-ink-soft")}>{s}</span>
+              <span className={cn("mt-1.5 px-0.5 text-center text-[10.5px] leading-tight", here ? "font-semibold text-mud" : "text-mud-soft")}>{s}</span>
             </li>
           );
         })}
@@ -371,9 +371,9 @@ function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSc
 function ScreenedBanner({ row, schema, state }: { row: Row; schema: CampaignSchema; state: CampaignState }) {
   const reasonCol = schema.columns.find((c) => c.key === schema.reasonKey);
   return (
-    <section className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+    <section className="rounded-xl border border-rim/40 bg-paper-deep/40 p-3">
       <div className="flex items-center gap-2">
-        <Ban size={15} className="text-zinc-500" />
+        <Ban size={15} className="text-mud-faint" />
         <h3 className="text-sm font-semibold">Screened out</h3>
         <Button size="sm" className="ml-auto" onClick={() => {
           if (state.restore([row.id])) undoToast("Restored", () => state.undo());
@@ -381,7 +381,7 @@ function ScreenedBanner({ row, schema, state }: { row: Row; schema: CampaignSche
           <ArchiveRestore size={13} /> Restore
         </Button>
       </div>
-      <p className="mt-1 text-xs text-ink-soft">It stays in the list, greyed out, until you restore it.</p>
+      <p className="mt-1 text-xs text-mud-soft">It stays in the list, greyed out, until you restore it.</p>
       {reasonCol && (
         <div className="mt-3">
           <label className="label">{reasonCol.header}</label>
@@ -442,9 +442,9 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
 
   return (
     <section>
-      <h3 className="mb-2 text-xs font-semibold tracking-wide text-ink-faint uppercase">Meeting</h3>
+      <h3 className="mb-2 text-xs font-semibold tracking-wide text-mud-faint uppercase">Meeting</h3>
       {editing ? (
-        <div className="space-y-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
+        <div className="space-y-3 rounded-xl border border-clay bg-clay-soft/40 p-3">
           <div>
             <label className="label" htmlFor="m-url">Meeting link</label>
             <input id="m-url" className="field" placeholder="Zoom, Google Meet, Teams or Calendly link" value={draftUrl} onChange={(e) => setDraftUrl(e.target.value)} autoFocus />
@@ -459,12 +459,12 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
           </div>
         </div>
       ) : booked ? (
-        <div className={cn("rounded-xl border p-3", today ? "border-amber-200 bg-amber-50" : past ? "border-line bg-zinc-50" : "border-line bg-white")}>
+        <div className={cn("rounded-xl border p-3", today ? "border-amber-200 bg-amber-50" : past ? "border-rim/40 bg-paper-deep/40" : "border-rim/40 bg-paper")}>
           <div className="flex items-start gap-3">
-            <div className={cn("rounded-lg p-2", today ? "bg-amber-100 text-amber-700" : "bg-brand-50 text-brand-600")}><Video size={18} /></div>
+            <div className={cn("rounded-lg p-2", today ? "bg-amber-100 text-amber-700" : "bg-clay-soft/60 text-clay-deep")}><Video size={18} /></div>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold">{at ? formatDateTime(at) : "Time not set"}</div>
-              <div className={cn("text-xs", today ? "font-medium text-amber-700" : "text-ink-soft")}>
+              <div className={cn("text-xs", today ? "font-medium text-amber-700" : "text-mud-soft")}>
                 {at ? relative(at) : ""}{url ? `${at ? " · " : ""}${url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]}` : ""}
               </div>
             </div>
@@ -480,7 +480,7 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
             <Button size="sm" variant="ghost" onClick={clear}><X size={13} /> Clear</Button>
           </div>
           {past && status === MEETING_STAGE && heldStage && (
-            <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 text-xs text-ink-soft">
+            <div className="mt-3 flex items-center gap-2 border-t border-rim/40 pt-3 text-xs text-mud-soft">
               <span>This was {relative(at)}. Did it happen?</span>
               <Button size="sm" variant="subtle" className="ml-auto" onClick={() => {
                 const { edits } = stageEdits(row, schema, stages, heldStage);
@@ -491,8 +491,8 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
           )}
         </div>
       ) : (
-        <div className="flex items-center justify-between rounded-xl border border-dashed border-line-strong px-3 py-2.5">
-          <span className="text-sm text-ink-faint">No meeting booked</span>
+        <div className="flex items-center justify-between rounded-xl border border-dashed border-rim/60 px-3 py-2.5">
+          <span className="text-sm text-mud-faint">No meeting booked</span>
           <Button size="sm" onClick={() => setEditing(true)}><CalendarPlus size={13} /> Book meeting</Button>
         </div>
       )}
@@ -534,8 +534,8 @@ function IntroSection({ row, primary, schema, stages, templates, onEdit, onOpenT
   return (
     <section>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold tracking-wide text-ink-faint uppercase">{introCol.header}</h3>
-        <button className="text-xs text-brand-700 hover:underline" onClick={onOpenTemplates}>Manage templates</button>
+        <h3 className="text-xs font-semibold tracking-wide text-mud-faint uppercase">{introCol.header}</h3>
+        <button className="text-xs text-clay-deep hover:underline" onClick={onOpenTemplates}>Manage templates</button>
       </div>
       {ai}
       {templates.length > 0 ? (
@@ -548,7 +548,7 @@ function IntroSection({ row, primary, schema, stages, templates, onEdit, onOpenT
           </Button>
         </div>
       ) : (
-        <button onClick={onOpenTemplates} className="mb-2 w-full rounded-lg border border-dashed border-line-strong px-3 py-2 text-left text-xs text-ink-soft hover:border-brand-300 hover:text-brand-700">
+        <button onClick={onOpenTemplates} className="mb-2 w-full rounded-lg border border-dashed border-rim/60 px-3 py-2 text-left text-xs text-mud-soft hover:border-clay hover:text-clay-deep">
           No templates yet — add your intro message templates to fill this in one click.
         </button>
       )}
@@ -569,7 +569,7 @@ function IntroSection({ row, primary, schema, stages, templates, onEdit, onOpenT
             <Send size={13} /> Mark sent
           </Button>
         )}
-        <span className="ml-auto text-[11px] text-ink-faint tabular-nums">{intro.length} chars</span>
+        <span className="ml-auto text-[11px] text-mud-faint tabular-nums">{intro.length} chars</span>
       </div>
     </section>
   );

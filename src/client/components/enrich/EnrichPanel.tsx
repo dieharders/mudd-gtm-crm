@@ -4,7 +4,7 @@
  *   2. test it on 3 rows and look at what comes back
  *   3. run it on the rest, with pause / resume / stop, and review the suggestions
  */
-import { Anchor, Building2, FlaskConical, Globe, Mail, Newspaper, Plus, Rocket, Sparkles, Trash2, TriangleAlert, UserRound, Wand2, X } from "lucide-react";
+import { Anchor, Building2, FlaskConical, Globe, Mail, Newspaper, Plus, Rocket, Sparkles, Trash2, UserRound, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { presetRecipe, PRESETS, type Preset } from "../../../shared/presets";
@@ -19,6 +19,7 @@ import type { RecipeDraft } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
 import { Button } from "../ui/Button";
+import { AiStatusTag, Panel, railItem } from "../ui/Panel";
 import { Tile } from "../ui/Logo";
 import { RunProgress } from "./RunProgress";
 import { fire } from "../../lib/fire";
@@ -185,39 +186,32 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
   }, [sel, recipe, enrich.runs]);
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-zinc-900/20 animate-fade-in" onMouseDown={onClose}>
-      <div className="flex h-full w-[min(1040px,100%)] flex-col bg-canvas shadow-2xl animate-slide-in" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-3 border-b border-line bg-panel px-5 py-3">
-          <Tile className="bg-gradient-to-br from-brand-400 to-fuchsia-400 text-white"><Sparkles size={16} /></Tile>
-          <div className="flex-1">
-            <h2 className="text-base font-semibold">Enrich with AI</h2>
-            <p className="text-xs text-ink-soft">Research every prospect and fill columns, with a source for each finding.</p>
-          </div>
-          <button onClick={() => ai.setOpen(true)} className={cn("tag", ready ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-800")}>
-            {ready ? "●" : <TriangleAlert size={11} />} {ai.settings?.provider ? PROVIDERS[ai.settings.provider].label : "No AI provider chosen"}{status?.auth.plan ? ` · ${status.auth.plan}` : ""}
-          </button>
-          <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close enrich"><X size={16} /></Button>
-        </div>
-
+    <Panel
+      onClose={onClose}
+      closeLabel="Close enrich"
+      icon={<Tile size="lg" className="border-2 border-rim bg-clay-soft text-clay-deep"><Sparkles size={20} /></Tile>}
+      title="Enrich with AI"
+      subtitle="Research every prospect and fill columns, with a source for each finding."
+      actions={<AiStatusTag ready={ready} onClick={() => ai.setOpen(true)} label={`${ai.settings?.provider ? PROVIDERS[ai.settings.provider].label : "No AI provider chosen"}${status?.auth.plan ? ` · ${status.auth.plan}` : ""}`} />}
+    >
         <div className="flex min-h-0 flex-1">
           {/* left rail */}
-          <aside className="w-64 shrink-0 space-y-5 overflow-y-auto border-r border-line bg-panel p-3 scroll-thin">
+          <aside className="w-64 shrink-0 space-y-5 overflow-y-auto border-r-2 border-rim/40 bg-paper-deep/40 p-3 scroll-thin">
             <div>
               <p className="eyebrow mb-1.5 px-1">Your recipes</p>
-              {enrich.recipes.length === 0 && <p className="px-1 text-xs text-ink-faint">None yet. Start from a preset below.</p>}
+              {enrich.recipes.length === 0 && <p className="px-1 text-xs text-mud-faint">None yet. Start from a preset below.</p>}
               <ul className="space-y-0.5">
                 {enrich.recipes.map((r) => {
                   const running = enrich.activeRuns.some((x) => x.recipeId === r.id);
                   return (
                     <li key={r.id} className="group relative">
-                      <button onClick={() => pick({ kind: "recipe", id: r.id })}
-                        className={cn("w-full rounded-lg px-2.5 py-2 pr-8 text-left", sel?.kind === "recipe" && sel.id === r.id ? "bg-brand-50 text-brand-800" : "hover:bg-zinc-100")}>
-                        <span className="flex items-center gap-1.5 truncate text-sm font-medium">
-                          {running && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-500" />}{r.name}
+                      <button onClick={() => pick({ kind: "recipe", id: r.id })} className={cn(railItem(sel?.kind === "recipe" && sel.id === r.id), "block pr-9")}>
+                        <span className="flex items-center gap-1.5 truncate text-[15px] font-extrabold">
+                          {running && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-clay" />}{r.name}
                         </span>
-                        <span className="block truncate text-[11px] text-ink-faint">Fills {r.outputs.map((o) => o.header).join(", ")}</span>
+                        <span className="block truncate text-[11px] text-mud-faint">Fills {r.outputs.map((o) => o.header).join(", ")}</span>
                       </button>
-                      <button title="Delete recipe" className="absolute top-2 right-1.5 rounded-sm p-1 text-ink-faint opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                      <button title="Delete recipe" className="absolute top-2 right-1.5 rounded-sm p-1 text-mud-faint opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
                         onClick={() => fire(enrich.deleteRecipe(r.id).then(() => {
                           if (sel?.kind === "recipe" && sel.id === r.id) setSel(null);
                         }))}>
@@ -234,16 +228,16 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
               <div className="space-y-1.5">
                 {PRESETS.map((p) => (
                   <button key={p.id} onClick={() => pick({ kind: "draft", from: p.id }, draftFromPreset(p, schema, [...state.rows, ...state.contacts]))}
-                    className={cn("flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left transition", sel?.kind === "draft" && sel.from === p.id ? "border-brand-300 bg-brand-50/60" : "border-line bg-white hover:border-brand-200")}>
+                    className={cn("flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left transition", sel?.kind === "draft" && sel.from === p.id ? "border-clay bg-clay-soft/50" : "border-rim/40 bg-paper hover:border-clay")}>
                     <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", p.tone)}>{(() => { const I = PRESET_ICONS[p.icon]; return <I size={14} />; })()}</span>
                     <span className="min-w-0">
                       <span className="block text-[13px] font-medium">{p.name}</span>
-                      <span className="block text-[11px] leading-snug text-ink-faint">{p.blurb}</span>
+                      <span className="block text-[11px] leading-snug text-mud-faint">{p.blurb}</span>
                     </span>
                   </button>
                 ))}
                 <button onClick={() => pick({ kind: "draft", from: "blank" }, blankDraft())}
-                  className="flex w-full items-center gap-2 rounded-xl border border-dashed border-line-strong px-2.5 py-2 text-left text-[13px] text-ink-soft hover:border-brand-300 hover:text-brand-700">
+                  className="flex w-full items-center gap-2 rounded-xl border border-dashed border-rim/60 px-2.5 py-2 text-left text-[13px] text-mud-soft hover:border-clay hover:text-clay-deep">
                   <Plus size={14} /> Blank recipe
                 </button>
               </div>
@@ -255,9 +249,9 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                 <ul className="space-y-0.5">
                   {enrich.runs.slice(0, 8).map((r) => (
                     <li key={r.id}>
-                      <button onClick={() => setSel({ kind: "run", id: r.id })} className={cn("w-full rounded-lg px-2.5 py-1.5 text-left", sel?.kind === "run" && sel.id === r.id ? "bg-brand-50" : "hover:bg-zinc-100")}>
+                      <button onClick={() => setSel({ kind: "run", id: r.id })} className={cn("w-full rounded-lg px-2.5 py-1.5 text-left", sel?.kind === "run" && sel.id === r.id ? "bg-clay-soft/60" : "hover:bg-paper-deep")}>
                         <span className="block truncate text-xs font-medium">{r.label}{r.test ? " · test" : ""}</span>
-                        <span className="block truncate text-[11px] text-ink-faint">{r.status} · {r.completed}/{r.total} · {timeAgo(r.startedAt)}</span>
+                        <span className="block truncate text-[11px] text-mud-faint">{r.status} · {r.completed}/{r.total} · {timeAgo(r.startedAt)}</span>
                       </button>
                     </li>
                   ))}
@@ -278,7 +272,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                   {(dirty || !recipe) && (
                     <Button variant={recipe ? "primary" : "secondary"} onClick={() => fire(save())} disabled={saving}>{saving ? "Saving…" : recipe ? "Save changes" : "Save recipe"}</Button>
                   )}
-                  {dirty && recipe && <span className="text-xs text-ink-faint">Unsaved changes</span>}
+                  {dirty && recipe && <span className="text-xs text-mud-faint">Unsaved changes</span>}
                 </div>
                 <RunBox
                   draft={draft}
@@ -304,15 +298,14 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
               </div>
             ) : (
               <div className="mx-auto mt-16 max-w-md text-center">
-                <Tile size="lg" className="mx-auto bg-brand-100 text-brand-700"><Wand2 size={18} /></Tile>
+                <Tile size="lg" className="mx-auto bg-clay-soft text-clay-deep"><Wand2 size={18} /></Tile>
                 <h3 className="mt-3 text-lg font-semibold">Pick a preset to begin</h3>
-                <p className="mt-1 text-sm text-ink-soft">Each recipe says what to find and which columns to fill. Test it on three prospects, check the results, then run it on the rest.</p>
+                <p className="mt-1 text-sm text-mud-soft">Each recipe says what to find and which columns to fill. Test it on three prospects, check the results, then run it on the rest.</p>
               </div>
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -332,8 +325,8 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
           <label className="label" htmlFor="rc-name">Recipe name</label>
           <input id="rc-name" className="field" value={draft.name} placeholder="e.g. Company snapshot" onChange={(e) => onChange({ name: e.target.value })} />
         </div>
-        <label className="flex items-center gap-2 self-end rounded-lg border border-line bg-white px-3 py-2 text-sm">
-          <input type="checkbox" className="h-4 w-4 accent-brand-500" checked={draft.webSearch} onChange={(e) => onChange({ webSearch: e.target.checked })} />
+        <label className="flex items-center gap-2 self-end rounded-lg border border-rim/40 bg-paper px-3 py-2 text-sm">
+          <input type="checkbox" className="h-4 w-4 accent-clay" checked={draft.webSearch} onChange={(e) => onChange({ webSearch: e.target.checked })} />
           <Globe size={14} className="text-sky-600" /> Search the web
         </label>
       </div>
@@ -348,11 +341,11 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <span className="label mb-0">Columns to fill</span>
-          <span className="text-[11px] text-ink-faint">New columns go after your last column</span>
+          <span className="text-[11px] text-mud-faint">New columns go after your last column</span>
         </div>
         <div className="space-y-2">
           {draft.outputs.map((o, i) => (
-            <div key={i} className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_auto] items-start gap-2 rounded-xl border border-line bg-white p-2">
+            <div key={i} className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_auto] items-start gap-2 rounded-xl border border-rim/40 bg-paper p-2">
               <div className="space-y-1.5">
                 <select className="field h-8 py-0 text-xs" value={o.target}
                   onChange={(e) => {
@@ -381,7 +374,7 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
                 )}
               </div>
               <input className="field h-8 py-0 text-xs" placeholder="Guidance for this field (optional)" value={o.hint} onChange={(e) => setOutput(i, { hint: e.target.value })} />
-              <button className="mt-1 rounded-sm p-1 text-ink-faint hover:bg-rose-50 hover:text-rose-600" title="Remove" onClick={() => onChange({ outputs: draft.outputs.filter((_, j) => j !== i) })}>
+              <button className="mt-1 rounded-sm p-1 text-mud-faint hover:bg-rose-50 hover:text-rose-600" title="Remove" onClick={() => onChange({ outputs: draft.outputs.filter((_, j) => j !== i) })}>
                 <X size={14} />
               </button>
             </div>
@@ -393,7 +386,7 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
       </div>
 
       <div>
-        <button className="text-xs font-medium text-brand-700 hover:underline" onClick={() => {
+        <button className="text-xs font-medium text-clay-deep hover:underline" onClick={() => {
           if (showInputs) onChange({ inputKeys: [] });
           setShowInputs(!showInputs);
         }}>
@@ -405,7 +398,7 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
               const on = draft.inputKeys.includes(c.key);
               return (
                 <button key={c.key} onClick={() => onChange({ inputKeys: on ? draft.inputKeys.filter((k) => k !== c.key) : [...draft.inputKeys, c.key] })}
-                  className={cn("tag border", on ? "border-brand-300 bg-brand-100 text-brand-800" : "border-line bg-white text-ink-soft hover:border-line-strong")}>
+                  className={cn("tag border", on ? "border-clay bg-clay-soft text-clay-deep" : "border-rim/40 bg-paper text-mud-soft hover:border-rim")}>
                   {c.header}
                 </button>
               );
@@ -488,7 +481,7 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
   };
 
   return (
-    <div className="rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-4">
+    <div className="rounded-2xl border border-clay bg-clay-soft/30 p-4">
       <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
         <div>
           <label className="label" htmlFor="rb-scope">Run on</label>
@@ -504,10 +497,10 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
         </div>
       </div>
       <label className="mt-3 flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-brand-500" checked={autoFill} onChange={(e) => setAutoFill(e.target.checked)} />
-        <span>Fill empty cells automatically <span className="block text-xs text-ink-faint">Findings for cells that already have a value always wait for your review.</span></span>
+        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-clay" checked={autoFill} onChange={(e) => setAutoFill(e.target.checked)} />
+        <span>Fill empty cells automatically <span className="block text-xs text-mud-faint">Findings for cells that already have a value always wait for your review.</span></span>
       </label>
-      <p className="mt-3 text-xs text-ink-soft">
+      <p className="mt-3 text-xs text-mud-soft">
         {turns} research turn{turns === 1 ? "" : "s"}
         {perContact && <> (one per contact{withPeople < n ? `; ${n - withPeople} prospect${n - withPeople === 1 ? " has" : "s have"} none, and ${n - withPeople === 1 ? "is" : "are"} skipped` : ""})</>}
         {" "}· usually 10–40 seconds each · about {minutes} min for all at {concurrency} at a time. Counts toward your plan's usage.
@@ -521,7 +514,7 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
             <Button variant="primary" onClick={() => fire(go(false))} disabled={!n || busy || starting}><Rocket size={14} /> Run on {n} row{n === 1 ? "" : "s"}</Button>
           </>
         )}
-        {busy && <span className="self-center text-xs text-brand-700">This recipe is running…</span>}
+        {busy && <span className="self-center text-xs text-clay-deep">This recipe is running…</span>}
       </div>
     </div>
   );

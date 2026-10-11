@@ -3,7 +3,7 @@
  * and a live preview against any prospect. Placeholders name the prospect's columns or its
  * primary contact's; {{First name}} is the primary contact's.
  */
-import { Braces, Plus, Trash2, Wand2, X } from "lucide-react";
+import { Braces, Plus, Trash2, Wand2, MessageSquareText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { mergeTemplate, placeholdersFor } from "../../../shared/merge";
 import { prospectSchema } from "../../../shared/schema";
@@ -14,6 +14,8 @@ import type { ConsentGate } from "../../hooks/useConsentGate";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
+import { Tile } from "../ui/Logo";
+import { Panel, railItem } from "../ui/Panel";
 import { fire } from "../../lib/fire";
 import { GenerateTemplateDialog } from "./GenerateTemplateDialog";
 import { UnknownPlaceholders } from "./UnknownPlaceholders";
@@ -83,35 +85,30 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, co
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-zinc-900/20 animate-fade-in" onMouseDown={onClose}>
-      <div className="flex h-full w-[min(980px,100%)] flex-col bg-panel shadow-2xl animate-slide-in" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-3 border-b border-line px-5 py-3">
-          <div className="flex-1">
-            <h2 className="text-base font-semibold">Intro message templates</h2>
-            <p className="text-xs text-ink-soft">Write it once; each prospect's panel fills in the placeholders from that row.</p>
-          </div>
-          <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close templates"><X size={16} /></Button>
-        </div>
-
+    <Panel
+      onClose={onClose}
+      closeLabel="Close templates"
+      width="max-w-[1040px]"
+      icon={<Tile size="lg" className="border-2 border-rim bg-note text-mud"><MessageSquareText size={20} /></Tile>}
+      title="Intro message templates"
+      subtitle="Write it once; each prospect's panel fills in the placeholders from that row."
+    >
         <div className="flex min-h-0 flex-1">
-          <div className="flex w-56 shrink-0 flex-col border-r border-line">
-            <div className="flex flex-col gap-1.5 border-b border-line p-2">
+          <div className="flex w-60 shrink-0 flex-col border-r-2 border-rim/40 bg-paper-deep/40">
+            <div className="flex flex-col gap-2 border-b-2 border-rim/40 p-3">
               <Button variant="primary" size="sm" onClick={() => fire(create())}><Plus size={14} /> New template</Button>
               <Button size="sm" onClick={openGenerate} disabled={ai.loading} title={generateTitle}><Wand2 size={14} /> Generate with AI</Button>
             </div>
           <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2 scroll-thin">
             {templates.map((t) => (
               <li key={t.id}>
-                <button
-                  onClick={() => setSelected(t.id)}
-                  className={cn("w-full rounded-lg px-2.5 py-2 text-left", t.id === selected ? "bg-brand-50 text-brand-800" : "hover:bg-zinc-100")}
-                >
-                  <div className="truncate text-sm font-medium">{t.name || "Untitled"}</div>
-                  <div className="truncate text-xs text-ink-faint">{t.body.replace(/\s+/g, " ").slice(0, 60) || "Empty"}</div>
+                <button onClick={() => setSelected(t.id)} className={cn(railItem(t.id === selected), "block")}>
+                  <div className="truncate text-[15px] font-extrabold">{t.name || "Untitled"}</div>
+                  <div className="truncate font-label text-[12px] text-mud-faint">{t.body.replace(/\s+/g, " ").slice(0, 60) || "Empty"}</div>
                 </button>
               </li>
             ))}
-            {!templates.length && <li className="px-2 py-6 text-center text-xs text-ink-faint">No templates yet.</li>}
+            {!templates.length && <li className="px-2 py-6 text-center text-xs text-mud-faint">No templates yet.</li>}
           </ul>
           </div>
 
@@ -135,17 +132,16 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, co
               confirmingDelete={confirmDelete}
             />
           ) : (
-            <div className="flex flex-1 items-center justify-center text-sm text-ink-faint">Create a template to get started.</div>
+            <div className="flex flex-1 items-center justify-center text-sm text-mud-faint">Create a template to get started.</div>
           )}
         </div>
-      </div>
       {generating && state.campaign && (
         // A click on the dialog's own backdrop must not reach the panel's, which would close both.
         <div onMouseDown={(e) => e.stopPropagation()}>
           <GenerateTemplateDialog open campaignId={state.campaign.id} thesis={thesis} consent={consent} onKeep={keepGenerated} onClose={() => setGenerating(false)} />
         </div>
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -225,32 +221,32 @@ function Editor({ tpl, schema, state, preview, previewSelect, onDelete, confirmi
           <p className="label flex items-center gap-1"><Braces size={12} /> Insert a placeholder</p>
           <div className="flex flex-wrap gap-1.5">
             {chips.map((h) => (
-              <button key={h} onClick={() => insert(h)} className="rounded-md border border-line bg-white px-1.5 py-0.5 text-xs text-ink-soft hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800">
+              <button key={h} onClick={() => insert(h)} className="rounded-md border border-rim/40 bg-paper px-1.5 py-0.5 text-xs text-mud-soft hover:border-clay hover:bg-clay-soft/50 hover:text-clay-deep">
                 {h}
               </button>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-ink-faint">Tip: <code className="font-mono">{"{{Hook|your work}}"}</code> uses “your work” when the Hook cell is empty.</p>
+          <p className="mt-2 text-[11px] text-mud-faint">Tip: <code className="font-mono">{"{{Hook|your work}}"}</code> uses “your work” when the Hook cell is empty.</p>
         </div>
       </div>
 
-      <div className="flex w-[360px] shrink-0 flex-col border-l border-line bg-zinc-50/60">
-        <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
-          <span className="text-xs font-semibold text-ink-soft">Preview for</span>
+      <div className="flex w-[360px] shrink-0 flex-col border-l-2 border-rim/40 bg-paper-deep/40">
+        <div className="flex items-center gap-2 border-b border-rim/40 px-4 py-2.5">
+          <span className="text-xs font-semibold text-mud-soft">Preview for</span>
           {previewSelect}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4 scroll-thin">
           {merged ? (
             <>
-              <div className="rounded-xl border border-line bg-white p-3.5 text-sm leading-relaxed whitespace-pre-wrap shadow-xs">
+              <div className="rounded-xl border border-rim/40 bg-paper p-3.5 text-sm leading-relaxed whitespace-pre-wrap shadow-xs">
                 <Highlighted text={merged.text} />
               </div>
               {merged.missing.length > 0 && (
-                <p className="mt-2 text-xs text-ink-soft">Empty for this prospect: {merged.missing.join(", ")}</p>
+                <p className="mt-2 text-xs text-mud-soft">Empty for this prospect: {merged.missing.join(", ")}</p>
               )}
             </>
           ) : (
-            <p className="text-sm text-ink-faint">Add a prospect to preview.</p>
+            <p className="text-sm text-mud-faint">Add a prospect to preview.</p>
           )}
         </div>
       </div>
