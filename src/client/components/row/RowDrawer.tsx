@@ -540,10 +540,10 @@ function IntroSection({ row, primary, schema, stages, templates, onEdit, onOpenT
       {ai}
       {templates.length > 0 ? (
         <div className="mb-2 flex gap-2">
-          <select className="field h-8 py-0 text-xs" value={pick} onChange={(e) => setPick(e.target.value)}>
+          <select className="field h-9 py-0 text-[13px]" value={pick} onChange={(e) => setPick(e.target.value)}>
             {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-          <Button size="sm" variant="subtle" onClick={apply} disabled={!merged} className="h-8">
+          <Button size="sm" variant="subtle" onClick={apply} disabled={!merged}>
             {intro ? "Replace with template" : "Use template"}
           </Button>
         </div>

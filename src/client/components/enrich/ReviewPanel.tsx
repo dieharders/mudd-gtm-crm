@@ -60,7 +60,7 @@ export function ReviewPanel({ state, enrich, onClose, onOpenRow }: {
     >
         {enrich.suggestions.length > 0 && (
           <div className="flex flex-wrap items-center gap-3 border-b-2 border-rim/40 bg-paper-deep/40 px-6 py-3">
-            <select className="field h-8 w-auto py-0 pr-8 text-xs" value={column} onChange={(e) => setColumn(e.target.value)}>
+            <select className="field h-9 w-auto py-0 pr-8 text-[13px]" value={column} onChange={(e) => setColumn(e.target.value)}>
               <option value="">All columns</option>
               {columns.map((k) => <option key={k} value={k}>{colOf(k)?.header ?? k}</option>)}
             </select>

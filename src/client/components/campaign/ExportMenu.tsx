@@ -50,7 +50,7 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
           <Save size={15} /> {busy ? "Saving…" : "Save file"}
         </Button>
         <Popover align="right" trigger={({ toggle }) => (
-          <Button variant="primary" className="rounded-l-none border-l-2 border-clay-deep px-2" onClick={toggle} disabled={busy} aria-label="More save options">
+          <Button variant="primary" className="rounded-l-none border-l-clay-deep px-2" onClick={toggle} disabled={busy} aria-label="More save options">
             <ChevronDown size={15} />
           </Button>
         )}>

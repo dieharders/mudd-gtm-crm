@@ -8,7 +8,7 @@ import { Anchor, Building2, FlaskConical, Globe, Mail, Newspaper, Plus, Rocket, 
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { presetRecipe, PRESETS, type Preset } from "../../../shared/presets";
-import { isSourcesColumn, PROVIDERS, recipeMode, type EnrichRun, type Recipe } from "../../../shared/ai";
+import { isSourcesColumn, recipeMode, type EnrichRun, type Recipe } from "../../../shared/ai";
 import { allColumns, columnOf, contactSchema, typeFromHeader } from "../../../shared/schema";
 import { COLUMN_TYPES, isScreened, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../../shared/types";
 import { primaryOf, researchedContacts } from "../../../shared/values";
@@ -19,7 +19,8 @@ import type { RecipeDraft } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
 import { Button } from "../ui/Button";
-import { AiStatusTag, Panel, railItem } from "../ui/Panel";
+import { AiStatusTag } from "../ai/AiStatusTag";
+import { Panel, railItem } from "../ui/Panel";
 import { Tile } from "../ui/Logo";
 import { RunProgress } from "./RunProgress";
 import { fire } from "../../lib/fire";
@@ -116,7 +117,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
 }) {
   const schema = state.campaign!.schema;
   const ai = useAi();
-  const { status, ready } = useActiveProvider();
+  const { ready } = useActiveProvider();
   const [sel, setSel] = useState<Selection>(() => {
     const live = enrich.activeRuns.find((r) => r.kind === "enrich");
     if (live?.recipeId) return { kind: "recipe", id: live.recipeId };
@@ -192,7 +193,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
       icon={<Tile size="lg" className="border-2 border-rim bg-clay-soft text-clay-deep"><Sparkles size={20} /></Tile>}
       title="Enrich with AI"
       subtitle="Research every prospect and fill columns, with a source for each finding."
-      actions={<AiStatusTag ready={ready} onClick={() => ai.setOpen(true)} label={`${ai.settings?.provider ? PROVIDERS[ai.settings.provider].label : "No AI provider chosen"}${status?.auth.plan ? ` · ${status.auth.plan}` : ""}`} />}
+      actions={<AiStatusTag />}
     >
         <div className="flex min-h-0 flex-1">
           {/* left rail */}

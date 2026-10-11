@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { Button } from "./Button";
 
 /** `locked` holds the dialog open (Escape, the backdrop and × do nothing) while work in it must not be cut short. */
 export function Modal({
@@ -41,14 +42,7 @@ export function Modal({
             <h2 className="font-display text-[22px] leading-tight font-bold text-mud">{title}</h2>
             {subtitle && <p className="mt-1 text-[15px] text-mud-soft">{subtitle}</p>}
           </div>
-          <button
-            className="-mr-1 rounded-lg border-2 border-transparent p-1.5 text-mud-faint transition hover:border-rim hover:bg-paper-deep hover:text-mud disabled:pointer-events-none disabled:opacity-40"
-            onClick={onClose}
-            disabled={locked}
-            aria-label="Close"
-          >
-            <X size={20} />
-          </button>
+          <Button size="icon" variant="ghost" className="-mt-1.5 -mr-2" onClick={onClose} disabled={locked} aria-label="Close"><X size={20} /></Button>
         </div>
         <div className="px-6 py-5 text-[15px]">{children}</div>
         {footer && <div className="flex justify-end gap-3 rounded-b-2xl border-t-2 border-rim/40 bg-paper-deep/40 px-6 py-4">{footer}</div>}

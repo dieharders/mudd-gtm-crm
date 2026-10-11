@@ -136,11 +136,11 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
         </table>
       </div>
       <form className="mt-3 flex gap-2 border-t border-rim/40 pt-3" onSubmit={(e) => { e.preventDefault(); add(); }}>
-        <input className="field h-10 py-0" placeholder="New column header" value={newHeader} onChange={(e) => setNewHeader(e.target.value)} />
-        <select className="field h-10 w-40 py-0" value={newType} onChange={(e) => setNewType(e.target.value as ColumnType)}>
+        <input className="field h-9 py-0" placeholder="New column header" value={newHeader} onChange={(e) => setNewHeader(e.target.value)} />
+        <select className="field h-9 w-40 py-0" value={newType} onChange={(e) => setNewType(e.target.value as ColumnType)}>
           {COLUMN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
-        <Button type="submit" disabled={!newHeader.trim()}><Plus size={15} /> Add</Button>
+        <Button type="submit" size="sm" disabled={!newHeader.trim()}><Plus size={15} /> Add</Button>
       </form>
       {dupes.size > 0 && <p className="mt-2 text-xs text-rose-600">Two columns can't share a header.</p>}
     </Modal>

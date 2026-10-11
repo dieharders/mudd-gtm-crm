@@ -162,9 +162,7 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
         </div>
         <div onClick={(e) => e.stopPropagation()}>
           <Popover align="right" trigger={({ toggle }) => (
-            <button className="rounded-lg border-2 border-transparent p-1.5 text-mud-faint hover:border-rim hover:bg-paper-deep hover:text-mud" onClick={toggle} aria-label="Campaign menu">
-              <MoreHorizontal size={20} />
-            </button>
+            <Button size="icon" variant="ghost" className="-mt-2 -mr-2" onClick={toggle} aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
           )}>
             {(close) => <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); onRemove(); }} hint="The file stays">Remove from Mudd</MenuItem>}
           </Popover>
@@ -247,7 +245,7 @@ function MeetingItem({ m, past, tilt = 0 }: { m: Meeting; past?: boolean; tilt?:
           {formatDateTime(m.at)} · <span className={today ? "font-bold text-lake-deep" : ""}>{relative(m.at)}</span>
         </span>
         {m.url && !past && (
-          <Button size="sm" variant="primary" className="ml-auto h-8 px-3" onClick={() => fire(api.openUrl(m.url!))}>
+          <Button size="xs" variant="primary" className="ml-auto" onClick={() => fire(api.openUrl(m.url!))}>
             <Video size={14} /> Join
           </Button>
         )}

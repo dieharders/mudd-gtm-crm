@@ -113,9 +113,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
         {campaigns && campaigns.length === 0 && <p className="hidden px-3 py-1 font-label text-[13px] text-mud-faint wide:block">No campaigns yet</p>}
       </nav>
 
-      <div className="hidden wide:block">
-        <UpdateNotice info={update} />
-      </div>
+      <UpdateNotice info={update} />
 
       <div className="px-2.5 pb-3 wide:px-3">
         <button
@@ -136,10 +134,14 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
         </button>
       </div>
 
-      <div className="hidden border-t-2 border-rim px-4 py-3.5 font-label text-[13px] text-mud-faint wide:block">
+      <div className="border-t-2 border-rim px-2.5 py-3 font-label text-[13px] text-mud-faint wide:px-4 wide:py-3.5">
         {update && (
-          <button onClick={() => void showReleaseNotes()} className="flex items-center gap-2 transition hover:text-mud">
-            <Gift size={14} /> What's new in <span className="tabular-nums">v{update.current}</span>
+          <button
+            onClick={() => void showReleaseNotes()}
+            className="flex w-full items-center justify-center gap-2 transition hover:text-mud wide:justify-start"
+            title={`What's new in v${update.current}`}
+          >
+            <Gift size={14} /> <span className="hidden wide:inline">What's new in <span className="tabular-nums">v{update.current}</span></span>
           </button>
         )}
       </div>

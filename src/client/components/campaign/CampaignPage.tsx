@@ -31,7 +31,7 @@ import { ProspectList } from "../list/ProspectList";
 import { RowDrawer } from "../row/RowDrawer";
 import { cardLayout, groupableColumns, pinnedCount } from "../../lib/listLayout";
 import { TemplatesPanel } from "../templates/TemplatesPanel";
-import { Button } from "../ui/Button";
+import { Button, buttonClass } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Menu";
 import { undoToast } from "../ui/Toaster";
 import { RemoveCampaignDialog } from "../campaigns/RemoveCampaignDialog";
@@ -341,7 +341,7 @@ function CampaignView({ state }: { state: CampaignState }) {
     <div className="flex h-full flex-col bg-board">
       {/* header */}
       <div className="flex flex-wrap items-center gap-3 px-6 pt-6 pb-3">
-        <Link to="/" className="rounded-xl border-2 border-transparent p-2 text-mud-faint transition hover:border-rim hover:bg-paper-deep hover:text-mud" title="All campaigns"><ArrowLeft size={20} /></Link>
+        <Link to="/" className={buttonClass("ghost", "icon", "-ml-2")} title="All campaigns"><ArrowLeft size={20} /></Link>
         <Tile size="lg" className={cn("text-lg", paperTileFor(campaign.id))}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
           <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />

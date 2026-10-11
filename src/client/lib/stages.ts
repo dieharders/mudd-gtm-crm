@@ -35,6 +35,13 @@ export function toneFor(stage: string | null | undefined, stages: string[] = [])
   return CYCLE[(i < 0 ? stage.length : i) % CYCLE.length]!;
 }
 
+/** One entry of `list` for this id, the same one every time: a string hash, so tiles stay put across reloads. */
+export function pickFor<T>(list: readonly T[], id: string): T {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return list[h % list.length]!;
+}
+
 /** Avatar tiles for people: a paper pastel per contact, picked from its id. Campaigns use paperTileFor. */
 const TILES = [
   "bg-clay-soft text-clay-deep",
@@ -44,11 +51,7 @@ const TILES = [
   "bg-note-mint text-mud",
   "bg-paper-deep text-mud-soft",
 ];
-export function tileFor(id: string): string {
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return TILES[h % TILES.length]!;
-}
+export const tileFor = (id: string): string => pickFor(TILES, id);
 
 /** Colours for contact types: one per type, in the Contact type dropdown's order. */
 const TYPE_TONES = [

@@ -330,9 +330,11 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
             const isOpen = p.openRowId === row.id;
             const locked = !!p.isLocked?.(row);
             // Every one opaque: the pinned cells wear it too, and the cells scrolling under them
-            // would show through a see-through tint. A selected row's is clay-soft mixed into paper.
-            const rowBg = isOpen ? "bg-clay-soft/60" : isSel ? "bg-[color-mix(in_oklab,var(--color-clay-soft)_45%,var(--color-paper))]"
-              : locked ? "bg-paper-deep/40 group-hover/row:bg-paper-deep" : "bg-paper group-hover/row:bg-paper-deep/40";
+            // would show through a see-through tint. So the tints are mixed into paper, not alpha.
+            const rowBg = isOpen ? "bg-[color-mix(in_oklab,var(--color-clay-soft)_60%,var(--color-paper))]"
+              : isSel ? "bg-[color-mix(in_oklab,var(--color-clay-soft)_45%,var(--color-paper))]"
+              : locked ? "bg-[color-mix(in_oklab,var(--color-paper-deep)_40%,var(--color-paper))] group-hover/row:bg-paper-deep"
+              : "bg-paper group-hover/row:bg-[color-mix(in_oklab,var(--color-paper-deep)_40%,var(--color-paper))]";
             return (
               <div
                 key={row.id}

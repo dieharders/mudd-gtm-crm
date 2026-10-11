@@ -43,15 +43,6 @@ export function Panel({ title, subtitle, icon, actions, onClose, closeLabel = "C
   );
 }
 
-/** The header's AI status: which provider is signed in, or that none is. Opens AI settings. */
-export function AiStatusTag({ ready, label, onClick }: { ready: boolean; label: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className={cn("tag h-8 shrink-0 px-2.5 font-bold", ready ? "bg-note-mint text-mud" : "bg-note text-mud")}>
-      <span className={cn("h-2 w-2 rounded-full border border-rim", ready ? "bg-emerald-400" : "bg-clay")} /> {label}
-    </button>
-  );
-}
-
 /** A left-rail entry in a Panel: icon, label with an optional count, and a hint line. */
 export const railItem = (active: boolean) =>
   cn("flex w-full items-center gap-3 rounded-xl border-2 px-3 py-2 text-left transition", active ? "border-rim bg-paper text-mud shadow-hard-sm" : "border-transparent hover:bg-paper-deep");

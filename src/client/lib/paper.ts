@@ -1,8 +1,6 @@
-/** Outlined paper tiles for campaigns: the same hash as tileFor, with a rim. */
+/** Outlined paper tiles for campaigns: the same pick as tileFor, with a rim. */
+import { pickFor } from "./stages";
+
 const TILES = ["bg-clay-soft", "bg-lake-soft", "bg-note", "bg-note-pink", "bg-note-mint", "bg-paper-deep"];
 
-export function paperTileFor(id: string): string {
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return `${TILES[h % TILES.length]!} border-2 border-rim text-mud`;
-}
+export const paperTileFor = (id: string): string => `${pickFor(TILES, id)} border-2 border-rim text-mud`;

@@ -5,7 +5,7 @@
  */
 import { ArchiveRestore, Inbox, Radar, ScrollText } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { isLiveStatus, PROVIDERS } from "../../../shared/ai";
+import { isLiveStatus } from "../../../shared/ai";
 import { answeredCount, THESIS_QUESTIONS } from "../../../shared/thesis";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { DiscoveryState } from "../../hooks/useDiscovery";
@@ -13,8 +13,9 @@ import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
+import { AiStatusTag } from "../ai/AiStatusTag";
 import { Button } from "../ui/Button";
-import { AiStatusTag, Panel, railItem } from "../ui/Panel";
+import { Panel, railItem } from "../ui/Panel";
 import { Tile } from "../ui/Logo";
 import { CandidateCard } from "./CandidateCard";
 import { DiscoveryProgress } from "./DiscoveryProgress";
@@ -33,7 +34,7 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
   onClose: () => void;
 }) {
   const ai = useAi();
-  const { status, ready } = useActiveProvider();
+  const { ready } = useActiveProvider();
   const [sel, setSel] = useState<Selection>({ kind: initial });
   const [busy, setBusy] = useState<Set<string>>(new Set());
 
@@ -84,7 +85,7 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
       icon={<Tile size="lg" className="border-2 border-rim bg-note-mint text-mud"><Radar size={20} /></Tile>}
       title="Discover prospects"
       subtitle="Companies that fit your ideal customer, with who to talk to at each. You review every one before it joins the list."
-      actions={<AiStatusTag ready={ready} onClick={() => ai.setOpen(true)} label={`${ai.settings?.provider ? PROVIDERS[ai.settings.provider].label : "No AI provider chosen"}${status?.auth.plan ? ` · ${status.auth.plan}` : ""}`} />}
+      actions={<AiStatusTag />}
     >
         <div className="flex min-h-0 flex-1">
           <aside className="w-64 shrink-0 space-y-5 overflow-y-auto border-r-2 border-rim/40 bg-paper-deep/40 p-3 scroll-thin">
@@ -178,7 +179,7 @@ function Dismissed({ list, onRestore }: { list: DiscoveryState["dismissed"]; onR
             <li key={c.id} className="flex items-center gap-2 rounded-lg bg-paper-deep/40 px-2.5 py-1.5 text-xs">
               <span className="font-medium">{c.company}</span>
               <span className="min-w-0 flex-1 truncate text-mud-faint">{c.dismissReason ?? "No reason given"}</span>
-              <Button size="sm" variant="ghost" onClick={() => onRestore([c.id])}><ArchiveRestore size={12} /> Restore</Button>
+              <Button size="xs" variant="ghost" onClick={() => onRestore([c.id])}><ArchiveRestore size={12} /> Restore</Button>
             </li>
           ))}
         </ul>

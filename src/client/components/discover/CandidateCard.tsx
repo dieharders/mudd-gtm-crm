@@ -92,12 +92,12 @@ export function CandidateCard({ c, typeOptions, onAccept, onDismiss, onMapAgain,
         ) : c.status === "error" ? (
           <div className="flex flex-wrap items-center gap-2 rounded-lg bg-rose-50 px-2.5 py-2 text-xs text-rose-800">
             <AlertCircle size={13} className="shrink-0" /> <span className="min-w-0 flex-1">{c.error ?? "Its buying committee could not be mapped."}</span>
-            <Button size="sm" onClick={onMapAgain}><RefreshCw size={12} /> Map again</Button>
+            <Button size="xs" onClick={onMapAgain}><RefreshCw size={12} /> Map again</Button>
           </div>
         ) : c.contacts.length === 0 ? (
           <div className="flex flex-wrap items-center gap-2 text-xs text-mud-faint">
             No one found on a page they could be checked against.
-            <Button size="sm" variant="ghost" onClick={onMapAgain}><RefreshCw size={12} /> Map again</Button>
+            <Button size="xs" variant="ghost" onClick={onMapAgain}><RefreshCw size={12} /> Map again</Button>
           </div>
         ) : (
           <ul className="space-y-2">

@@ -1,14 +1,8 @@
 @import 'tailwindcss';
 
 /* Bundled fonts (see fonts/README.md). Bun inlines them into the stylesheet as data: URLs, which the
-   CSP in index.html allows for fonts. */
-@font-face {
-  font-family: "Libron";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/Libron-Regular.woff2") format("woff2");
-}
+   CSP in index.html allows for fonts. Only the faces the app uses ship: Libron is always bold and
+   nothing is set in italic. */
 @font-face {
   font-family: "Libron";
   font-style: normal;
@@ -22,13 +16,6 @@
   font-weight: 400 900;
   font-display: swap;
   src: url("./fonts/Nunito-Latin.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Nunito";
-  font-style: italic;
-  font-weight: 400 900;
-  font-display: swap;
-  src: url("./fonts/Nunito-Italic-Latin.woff2") format("woff2");
 }
 @font-face {
   font-family: "Comic Mono";
@@ -113,8 +100,6 @@
   button { cursor: pointer; }
   button:disabled { cursor: not-allowed; }
   input, textarea, select { font: inherit; color: inherit; }
-  /* Lucide icons, drawn heavier than their 2px default to sit with the bold type. */
-  .lucide { stroke-width: 2.5; }
   :focus-visible { outline: 2px solid var(--color-clay); outline-offset: 2px; }
 }
 
@@ -156,9 +141,6 @@
   }
   .btn-primary {
     @apply bg-clay text-paper hover:bg-clay-deep;
-  }
-  .btn-icon {
-    @apply w-11 px-0;
   }
   /* A sticky note: paper square with a push-pin through the top edge. */
   .note {
