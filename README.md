@@ -39,7 +39,7 @@ bun run start        # opens the Mudd window
 | `bun run headless`  | Server only. Open the printed `http://127.0.0.1:24871` in a browser.                        |
 | `bun run dev`       | Browser dev server with hot reload on `http://127.0.0.1:3000`.                              |
 | `bun run build`     | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS).                                         |
-| `bun run icon`      | Rebuild `assets/icon.ico` from `assets/icon.svg` (needs Edge or Chrome). Commit the result. |
+| `bun run icon`      | Rebuild `assets/icon.ico` from `assets/icon.png` (needs Edge or Chrome). Commit the result. |
 | `bun run typecheck` | TypeScript check.                                                                           |
 | `bun test`          | Unit and round-trip tests (see below).                                                      |
 

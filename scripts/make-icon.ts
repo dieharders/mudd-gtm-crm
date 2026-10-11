@@ -1,10 +1,10 @@
 /**
- * assets/icon.svg -> assets/icon.ico, at every size Windows asks for. Run it after changing the SVG
+ * assets/icon.png -> assets/icon.ico, at every size Windows asks for. Run it after changing the PNG
  * and commit the .ico; the build reads only the .ico.
  *
  *   bun run icon
  *
- * The SVG is drawn onto a transparent canvas in headless Edge or Chrome, so the rounded corners stay
+ * The PNG is drawn onto a transparent canvas in headless Edge or Chrome, so the rounded corners stay
  * transparent (a converter that flattens onto white loses them).
  */
 import fs from "node:fs";
@@ -15,7 +15,7 @@ import path from "node:path";
 const SIZES = [256, 128, 64, 48, 32, 16] as const;
 
 const ROOT = path.join(import.meta.dir, "..");
-const SVG_PATH = path.join(ROOT, "assets", "icon.svg");
+const PNG_PATH = path.join(ROOT, "assets", "icon.png");
 const ICO_PATH = path.join(ROOT, "assets", "icon.ico");
 
 function findBrowser(): string {
@@ -38,19 +38,20 @@ function findBrowser(): string {
   return found;
 }
 
-/** Rasterise the SVG at one size, as raw RGBA, top-down. */
-async function rasterise(send: Send, svgDataUrl: string, size: number): Promise<Uint8Array> {
+/** Rasterise the image at one size, as raw RGBA, top-down. */
+async function rasterise(send: Send, imageDataUrl: string, size: number): Promise<Uint8Array> {
   const { result } = (await send("Runtime.evaluate", {
     awaitPromise: true,
     returnByValue: true,
     expression: `
       (async () => {
         const img = new Image();
-        img.src = ${JSON.stringify(svgDataUrl)};
+        img.src = ${JSON.stringify(imageDataUrl)};
         await img.decode();
         const c = document.createElement('canvas');
         c.width = c.height = ${size};
         const ctx = c.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, ${size}, ${size});
         const d = ctx.getImageData(0, 0, ${size}, ${size}).data;
         let s = '';
@@ -193,13 +194,12 @@ async function withBrowser<T>(fn: (send: Send) => Promise<T>): Promise<T> {
   }
 }
 
-const svg = fs.readFileSync(SVG_PATH, "utf8");
-const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
+const imageDataUrl = `data:image/png;base64,${fs.readFileSync(PNG_PATH).toString("base64")}`;
 
 const images = await withBrowser(async (send) => {
   const out = new Map<number, Uint8Array>();
   for (const size of SIZES) {
-    const rgba = await rasterise(send, svgDataUrl, size);
+    const rgba = await rasterise(send, imageDataUrl, size);
     out.set(size, dibEntry(size, rgba));
     // The corner must be transparent, or the rounded tile was flattened onto something.
     console.log(`  ${String(size).padStart(3)}x${size}  corner alpha=${rgba[3]}`);
