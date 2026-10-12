@@ -85,7 +85,7 @@ Open **AI settings** from the bottom of the sidebar to pick the provider, model 
 
 ### Enrichment
 
-- **Enrich** (campaign toolbar): pick a preset or write a recipe.
+- **Enrich** (selection bar, shown when rows are selected): pick a preset or write a recipe.
   - A recipe is what to find, which columns to send, and which columns to fill. It targets existing columns when the headers match, otherwise it appends new ones.
   - Presets: Company snapshot, Recent news & trigger, Decision-maker, Published email (the domain's mail server is checked), Personalization hook.
   - **Test on 3 rows**, then **Run** on the selection, on rows missing the fields, or on everything.

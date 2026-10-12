@@ -370,9 +370,6 @@ function CampaignView({ state }: { state: CampaignState }) {
             </Button>
           </>
         )}
-        <Button variant="subtle" onClick={() => setShowEnrich(true)}>
-          <Sparkles size={16} /> Enrich
-        </Button>
         <ExportMenu campaign={campaign} state={state} />
         <Popover align="right" trigger={({ toggle }) => (
           <Button size="icon" variant="ghost" onClick={toggle} title="More" aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
