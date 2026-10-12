@@ -102,9 +102,9 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
       <div className="mt-7 hidden px-6 pb-2 wide:block">
         <span className="font-label text-[13px] font-bold text-mud-faint">Campaigns</span>
       </div>
-      <nav className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-y-auto px-2.5 pb-3 scroll-thin wide:mt-0 wide:px-3">
+      <nav className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto px-2.5 pb-3 scroll-thin wide:mt-0 wide:px-3">
         {campaigns?.map((c) => (
-          <NavLink key={c.id} to={`/c/${c.id}`} className={item} title={c.name}>
+          <NavLink key={c.id} to={`/c/${c.id}`} className={(s) => cn(item(s), "h-14")} title={c.name}>
             <Tile size="md" className={cn("text-[13px]", paperTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
             <span className="hidden min-w-0 flex-1 truncate wide:inline">{c.name}</span>
             <span className="hidden font-label text-[13px] text-mud-faint tabular-nums wide:inline">{c.prospects}</span>

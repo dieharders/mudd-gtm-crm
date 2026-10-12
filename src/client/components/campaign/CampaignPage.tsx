@@ -627,7 +627,7 @@ function Segmented<T extends string>({ value, onChange, options, tabs }: {
   tabs?: boolean;
 }) {
   return (
-    <div role={tabs ? "tablist" : undefined} className="flex rounded-xl border-2 border-rim bg-paper-deep/60 p-1">
+    <div role={tabs ? "tablist" : undefined} className="flex gap-1 rounded-xl border-2 border-rim bg-paper-deep/60 p-1.5">
       {options.map((o) => (
         <button
           key={o.value}
@@ -637,8 +637,8 @@ function Segmented<T extends string>({ value, onChange, options, tabs }: {
           title={o.title}
           onClick={() => onChange(o.value)}
           className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-bold transition",
-            value === o.value ? "bg-paper text-mud shadow-hard-sm" : "text-mud-faint hover:text-mud",
+            "inline-flex h-8 items-center gap-1.5 rounded-lg border-2 px-3 text-[13px] font-bold transition",
+            value === o.value ? "border-rim/40 bg-paper text-mud shadow-[0_2px_0_0_color-mix(in_oklab,var(--color-rim)_40%,transparent),0_4px_10px_-4px_rgba(43,30,22,0.22)]" : "border-transparent text-mud-faint hover:text-mud",
           )}
         >
           {o.icon} {o.label}{o.count !== undefined && <span className="font-label font-normal opacity-70 tabular-nums">{o.count}</span>}
