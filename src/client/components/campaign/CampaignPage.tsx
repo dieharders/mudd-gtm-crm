@@ -778,14 +778,9 @@ function EmptyContacts() {
   );
 }
 
-/** The selection count, with the way to clear it underneath. */
-function SelectionCount({ n, onClear }: { n: number; onClear: () => void }) {
-  return (
-    <div className="flex flex-col items-start">
-      <span className="text-[15px] font-extrabold">{n} selected</span>
-      <Button size="xs" variant="ghost" className="-ml-2.5" onClick={onClear}>Clear selection</Button>
-    </div>
-  );
+/** The selection count. */
+function SelectionCount({ n }: { n: number }) {
+  return <span className="text-[15px] font-extrabold">{n} selected</span>;
 }
 
 /** Actions on the selected contacts. */
@@ -794,7 +789,7 @@ function ContactBulkBar({ rows, state, onDone }: { rows: Row[]; state: CampaignS
   const label = `${n} ${n === 1 ? "contact" : "contacts"}`;
   return (
     <>
-      <SelectionCount n={n} onClear={onDone} />
+      <SelectionCount n={n} />
       <Button size="sm" variant="danger" onClick={() => {
         state.deleteRows(rows.map((r) => r.id), `Delete ${label}`);
         onDone();
@@ -826,7 +821,7 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
   };
   return (
     <>
-      <SelectionCount n={rows.length} onClear={onDone} />
+      <SelectionCount n={rows.length} />
       {activeIds.length > 0 && screenedIds.length > 0 && <span className="font-label text-[13px] text-mud-faint">({screenedIds.length} screened out)</span>}
       {activeIds.length > 0 && (
         <>
