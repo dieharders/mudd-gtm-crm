@@ -63,6 +63,7 @@
 
   /* A ledge straight below the element, plus a soft drop shadow for depth. */
   --shadow-hard-sm: 0 2px 0 0 var(--color-rim), 0 4px 10px -4px rgba(43, 30, 22, 0.22);
+  --shadow-hard-sm-clay: 0 2px 0 0 var(--color-clay), 0 4px 10px -4px rgba(43, 30, 22, 0.22);
   --shadow-hard: 0 3px 0 0 var(--color-rim), 0 10px 22px -10px rgba(43, 30, 22, 0.3);
   --shadow-hard-lg: 0 5px 0 0 var(--color-rim), 0 18px 30px -12px rgba(43, 30, 22, 0.35);
   --shadow-dialog: 0 5px 0 0 var(--color-rim-deep), 0 18px 30px -12px rgba(43, 30, 22, 0.35);

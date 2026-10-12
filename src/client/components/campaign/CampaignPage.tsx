@@ -435,11 +435,6 @@ function CampaignView({ state }: { state: CampaignState }) {
                 {counts.byStatus[NOT_SET] ? <Chip active={statusFilter === NOT_SET} onClick={() => setStatusFilter(statusFilter === NOT_SET ? null : NOT_SET)} label="No status" count={counts.byStatus[NOT_SET]!} tone="bg-paper-deep text-mud-soft" /> : null}
               </div>
             )}
-            {!onContacts && screenedCount > 0 && (
-              <span className="font-label text-[13px] text-mud-faint tabular-nums" title="Screened-out prospects stay in the list, greyed out. Open one to restore it.">
-                {screenedCount} screened out
-              </span>
-            )}
           </>
         )}
       </div>

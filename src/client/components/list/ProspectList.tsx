@@ -47,13 +47,13 @@ export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenR
           <section key={g.label} className="mb-8 last:mb-2">
             {groupCol && (
               <div className="sticky top-0 z-10 -mx-2 mb-3 flex items-center gap-2 bg-paper/90 px-2 py-2 backdrop-blur-sm">
-                <span className="eyebrow">{groupCol.header}</span>
+                <span className="eyebrow normal-case">{groupCol.header}</span>
                 {groupCol.key === schema.statusKey ? (
                   <StatusPill value={g.value} stages={stages} />
                 ) : (
                   <span className={cn("tag", groupTone(g.index))}>{g.label}</span>
                 )}
-                <span className="ml-auto text-xs text-mud-faint tabular-nums">{g.rows.length}</span>
+                <span className="eyebrow ml-auto normal-case tabular-nums">Count: {g.rows.length}</span>
               </div>
             )}
             <div className="space-y-3">
@@ -143,7 +143,7 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 220px" }}
       className={cn(
         "group grid cursor-pointer gap-5 rounded-2xl border-2 bg-paper p-5 transition sm:grid-cols-[124px_1fr]",
-        active ? "border-clay shadow-hard-sm" : "border-rim/40 hover:border-clay hover:shadow-hard-sm",
+        active ? "border-clay shadow-hard-sm-clay" : "border-rim/40 hover:border-clay hover:shadow-hard-sm-clay",
         screened ? "bg-paper-deep/40 opacity-60 hover:opacity-80" : dead && "opacity-70",
       )}
     >
