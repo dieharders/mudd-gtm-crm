@@ -31,7 +31,7 @@ import { RowDrawer } from "../row/RowDrawer";
 import { cardLayout, groupableColumns, pinnedCount } from "../../lib/listLayout";
 import { TemplatesPanel } from "../templates/TemplatesPanel";
 import { Button } from "../ui/Button";
-import { MenuItem, Popover } from "../ui/Menu";
+import { MenuItem, MenuSeparator, Popover } from "../ui/Menu";
 import { undoToast } from "../ui/Toaster";
 import { RemoveCampaignDialog } from "../campaigns/RemoveCampaignDialog";
 import { ColumnsDialog } from "./ColumnsDialog";
@@ -373,17 +373,20 @@ function CampaignView({ state }: { state: CampaignState }) {
         <Button variant="subtle" onClick={() => setShowEnrich(true)}>
           <Sparkles size={16} /> Enrich
         </Button>
-        <Button onClick={() => setShowTemplates(true)}>
-          <MessageSquareText size={16} /> Templates
-          {state.templates.length > 0 && <span className="rounded-md border border-rim/60 bg-clay-soft px-1.5 font-label text-[12px] font-bold text-clay-deep">{state.templates.length}</span>}
-        </Button>
-        <Button onClick={() => setShowColumns(true)}><Columns3 size={16} /> Columns</Button>
         <ExportMenu campaign={campaign} state={state} />
         <Popover align="right" trigger={({ toggle }) => (
           <Button size="icon" variant="ghost" onClick={toggle} title="More" aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
         )}>
           {(close) => (
             <>
+              <MenuItem icon={<MessageSquareText size={15} />} onClick={() => { close(); setShowTemplates(true); }}>
+                <span className="flex items-center justify-between gap-3">
+                  Templates
+                  {state.templates.length > 0 && <span className="rounded-md border border-rim/60 bg-paper-deep px-1.5 font-label text-[12px] font-bold text-mud-soft">{state.templates.length}</span>}
+                </span>
+              </MenuItem>
+              <MenuItem icon={<Columns3 size={15} />} onClick={() => { close(); setShowColumns(true); }}>Columns</MenuItem>
+              <MenuSeparator />
               {campaign.sourcePath && (
                 <MenuItem icon={<FolderOpen size={15} />} onClick={() => { close(); fire(api.revealFile(campaign.id)); }} hint={<span className="block max-w-72 whitespace-normal break-all">{campaign.sourcePath}</span>}>
                   Show in folder
