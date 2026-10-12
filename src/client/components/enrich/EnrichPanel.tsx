@@ -19,7 +19,6 @@ import type { RecipeDraft } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
 import { Button } from "../ui/Button";
-import { AiStatusTag } from "../ai/AiStatusTag";
 import { Panel, railItem } from "../ui/Panel";
 import { Tile } from "../ui/Logo";
 import { RunProgress } from "./RunProgress";
@@ -187,7 +186,6 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
       icon={<Tile size="lg" className="border-2 border-rim bg-clay-soft text-clay-deep"><Sparkles size={20} /></Tile>}
       title="Enrich with AI"
       subtitle="Research every prospect and fill columns, with a source for each finding."
-      actions={<AiStatusTag />}
     >
         <div className="flex min-h-0 flex-1">
           {/* left rail */}

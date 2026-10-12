@@ -13,7 +13,6 @@ import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
-import { AiStatusTag } from "../ai/AiStatusTag";
 import { Button } from "../ui/Button";
 import { Panel, railItem } from "../ui/Panel";
 import { Tile } from "../ui/Logo";
@@ -79,7 +78,6 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
       icon={<Tile size="lg" className="border-2 border-rim bg-note-mint text-mud"><Radar size={20} /></Tile>}
       title="Discover prospects"
       subtitle="Companies that fit your ideal customer, with who to talk to at each. You review every one before it joins the list."
-      actions={<AiStatusTag />}
     >
         <div className="flex min-h-0 flex-1">
           <aside className="w-64 shrink-0 space-y-5 overflow-y-auto border-r-2 border-rim/40 bg-paper-deep/40 p-3 scroll-thin">
