@@ -1,4 +1,4 @@
-# Mudd
+<h1><img src="assets/icon.png" alt="" width="48" height="48" align="absmiddle"> Mudd</h1>
 
 **A free desktop CRM for sales prospecting that works on the spreadsheet you already have.**
 
