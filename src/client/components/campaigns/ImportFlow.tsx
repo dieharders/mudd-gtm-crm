@@ -26,7 +26,9 @@ const Ctx = createContext<ImportApi>({ startImport: () => {}, busy: false });
 export const useImport = () => useContext(Ctx);
 
 export function ImportProvider({ children }: { children: ReactNode }) {
-  const [result, setResult] = useState<InspectResult | null>(null);
+  // The last file read stays after its dialog closes, so the dialog can animate out; `n` starts each read afresh.
+  const [read, setRead] = useState<{ result: InspectResult; n: number } | null>(null);
+  const [mapping, setMapping] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -39,7 +41,9 @@ export function ImportProvider({ children }: { children: ReactNode }) {
   const inspect = useCallback(async (p: Promise<InspectResult>) => {
     setBusy(true);
     try {
-      setResult(await p);
+      const result = await p;
+      setRead((r) => ({ result, n: (r?.n ?? 0) + 1 }));
+      setMapping(true);
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -127,12 +131,12 @@ export function ImportProvider({ children }: { children: ReactNode }) {
           </div>
         </div>
       )}
-      {result && <MappingDialog result={result} onClose={() => setResult(null)} />}
+      {read && <MappingDialog key={read.n} result={read.result} open={mapping} onClose={() => setMapping(false)} />}
     </Ctx.Provider>
   );
 }
 
-function MappingDialog({ result, onClose }: { result: InspectResult; onClose: () => void }) {
+function MappingDialog({ result, open, onClose }: { result: InspectResult; open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
   // An old Screened-out list is never offered, and never shown; nor are Mudd's own tabs.
   const candidates = result.sheets.filter((s) => s.guess !== "templates" && s.guess !== "thesis" && !looksLikeScreenedTab(s.name));
@@ -180,7 +184,7 @@ function MappingDialog({ result, onClose }: { result: InspectResult; onClose: ()
 
   return (
     <Modal
-      open
+      open={open}
       onClose={onClose}
       width="max-w-2xl"
       title={
