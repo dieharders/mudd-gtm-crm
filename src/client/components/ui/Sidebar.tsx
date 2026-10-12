@@ -27,16 +27,16 @@ async function showReleaseNotes() {
       <div className="text-[14px]">
         <div className="flex items-start gap-3">
           <p className="flex-1 font-bold">What's new in {notes.title}</p>
-          <button onClick={() => toast.dismiss(id)} className="-mt-0.5 -mr-1 rounded-md p-0.5 text-paper/60 hover:bg-paper/15 hover:text-paper" aria-label="Dismiss">
+          <button onClick={() => toast.dismiss(id)} className="-mt-0.5 -mr-1 rounded-md p-0.5 text-mud-soft hover:bg-mud/10 hover:text-mud" aria-label="Dismiss">
             <X size={14} />
           </button>
         </div>
         {notes.changes.length ? (
-          <ul className="mt-1.5 list-disc space-y-1 pl-4 text-paper/85">
+          <ul className="mt-1.5 list-disc space-y-1 pl-4 font-normal text-mud-soft">
             {notes.changes.map((c, i) => <li key={i}>{c}</li>)}
           </ul>
         ) : (
-          <p className="mt-1.5 text-paper/85">No changes are listed for this version.</p>
+          <p className="mt-1.5 font-normal text-mud-soft">No changes are listed for this version.</p>
         )}
       </div>,
       { id, duration: 30_000 },

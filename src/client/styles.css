@@ -60,6 +60,9 @@
   --color-note: #ffe68c;
   --color-note-pink: #ffcbd5;
   --color-note-mint: #cdefd9;
+  --color-leaf: #2f9e5b;
+  --color-rose: #e0405e;
+  --color-sun: #ffc533;
 
   /* A ledge straight below the element, plus a soft drop shadow for depth. */
   --shadow-hard-sm: 0 2px 0 0 var(--color-rim), 0 4px 10px -4px rgba(43, 30, 22, 0.22);
@@ -75,6 +78,9 @@
   --animate-fade-in: fade-in 140ms ease-out both;
   --animate-pop: pop 160ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
   --animate-float: float 6s ease-in-out infinite;
+  /* Toasts sit at the bottom of the window, so they rise from below it and sink back. */
+  --animate-toast-in: toast-in 380ms cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  --animate-toast-out: toast-out 260ms cubic-bezier(0.55, 0, 1, 0.45) both;
 
   @keyframes slide-in {
     from { transform: translateX(24px); opacity: 0; }
@@ -87,6 +93,14 @@
   @keyframes pop {
     from { transform: translateY(6px) scale(0.97); opacity: 0; }
     to { transform: none; opacity: 1; }
+  }
+  @keyframes toast-in {
+    from { transform: translateY(160%); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes toast-out {
+    from { transform: none; opacity: 1; }
+    to { transform: translateY(160%); opacity: 0; }
   }
   @keyframes float {
     0%, 100% { transform: translateY(0); }
