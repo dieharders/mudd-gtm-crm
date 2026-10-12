@@ -22,7 +22,7 @@ export function openLink(url: string) {
 }
 
 export function StatusPill({ value, stages, className }: { value: string; stages: string[]; className?: string }) {
-  if (!value) return <span className="text-ink-faint">—</span>;
+  if (!value) return <span className="text-mud-faint">—</span>;
   const tone = toneFor(value, stages);
   return (
     <span className={cn("inline-flex max-w-full items-center gap-1.5 truncate rounded-md px-1.5 py-0.5 text-xs font-medium", tone.pill, className)}>
@@ -46,14 +46,14 @@ export function CellView({
   if (col.key === schema.statusKey) return <StatusPill value={text} stages={stages} />;
   if (col.type === "checkbox") {
     return isChecked(v)
-      ? <SquareCheck size={16} className="shrink-0 text-brand-600" aria-label="Ticked" />
-      : <Square size={16} className="shrink-0 text-ink-faint/70" aria-label="Not ticked" />;
+      ? <SquareCheck size={16} className="shrink-0 text-clay-deep" aria-label="Ticked" />
+      : <Square size={16} className="shrink-0 text-mud-faint/70" aria-label="Not ticked" />;
   }
   if (!text) return null;
 
   switch (col.type) {
     case "select":
-      return <span className="truncate rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">{text}</span>;
+      return <span className="truncate rounded-md bg-paper-deep px-1.5 py-0.5 text-xs font-medium text-mud-soft">{text}</span>;
     case "date":
       return (
         <span className={cn("truncate tabular-nums", cue && "font-medium text-rose-700")} title={cue ? CUE_LABEL[cue] : text}>
@@ -63,7 +63,7 @@ export function CellView({
     case "datetime":
       return (
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className={cn("truncate tabular-nums", cue === "past" && "text-ink-faint")}>{formatDateTime(text)}</span>
+          <span className={cn("truncate tabular-nums", cue === "past" && "text-mud-faint")}>{formatDateTime(text)}</span>
           {cue === "today" && <span className="rounded-sm bg-yellow-200 px-1 text-[10px] font-semibold text-yellow-900 uppercase">Today</span>}
           {cue === "upcoming" && <CalendarClock size={13} className="shrink-0 text-yellow-600" />}
         </span>
@@ -74,12 +74,12 @@ export function CellView({
       return (
         <span className="flex min-w-0 items-center gap-1">
           {cue === "unverified" && <AlertTriangle size={13} className="shrink-0 text-rose-500" aria-label={CUE_LABEL.unverified} />}
-          <span className={cn("truncate", cue === "unverified" ? "text-rose-700" : "text-brand-700")} title={cue ? CUE_LABEL[cue] : text}>
+          <span className={cn("truncate", cue === "unverified" ? "text-rose-700" : "text-clay-deep")} title={cue ? CUE_LABEL[cue] : text}>
             {text.replace(/^https?:\/\/(www\.)?/, "")}
           </span>
           {href && (
             <button
-              className="shrink-0 rounded-sm p-0.5 text-ink-faint opacity-0 group-hover/cell:opacity-100 hover:bg-zinc-200 hover:text-ink"
+              className="shrink-0 rounded-sm p-0.5 text-mud-faint opacity-0 group-hover/cell:opacity-100 hover:bg-paper-deep hover:text-mud"
               title={`Open ${href}`}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
@@ -167,7 +167,7 @@ function InputEditor({ col, value, initial, onCommit, onCancel }: EditorProps) {
         else if (e.key === "Tab") { e.preventDefault(); commit(e.shiftKey ? "left" : "right"); }
         else if (e.key === "Escape") { e.preventDefault(); done.current = true; onCancel(); }
       }}
-      className="h-full w-full min-w-0 bg-white px-2 text-sm outline-none ring-2 ring-brand-400 ring-inset"
+      className="h-full w-full min-w-0 bg-paper px-2 text-sm outline-none ring-2 ring-clay ring-inset"
     />
   );
 }
@@ -188,7 +188,7 @@ function LongTextEditor({ value, initial, onCommit, onCancel, col }: EditorProps
     onCommit(coerce(draft, col), move);
   };
   return (
-    <div className="absolute top-0 left-0 z-30 w-[max(100%,380px)] rounded-lg bg-white shadow-xl ring-2 ring-brand-400">
+    <div className="absolute top-0 left-0 z-30 w-[max(100%,380px)] rounded-lg bg-paper shadow-xl ring-2 ring-clay">
       <textarea
         ref={ref}
         value={draft}
@@ -203,7 +203,7 @@ function LongTextEditor({ value, initial, onCommit, onCancel, col }: EditorProps
         rows={6}
         className="block w-full resize-y rounded-lg px-2.5 py-2 text-sm leading-relaxed outline-none"
       />
-      <div className="border-t border-line px-2.5 py-1 text-[11px] text-ink-faint">Ctrl+Enter to save · Esc to cancel</div>
+      <div className="border-t border-rim/40 px-2.5 py-1 text-[11px] text-mud-faint">Ctrl+Enter to save · Esc to cancel</div>
     </div>
   );
 }
@@ -227,7 +227,7 @@ function SelectEditor({ col, value, initial, onCommit, onCancel }: EditorProps) 
     onCommit(v, move);
   };
   return (
-    <div className="absolute top-0 left-0 z-30 w-[max(100%,220px)] overflow-hidden rounded-lg bg-white shadow-xl ring-2 ring-brand-400">
+    <div className="absolute top-0 left-0 z-30 w-[max(100%,220px)] overflow-hidden rounded-lg bg-paper shadow-xl ring-2 ring-clay">
       <input
         ref={ref}
         value={filter}
@@ -242,7 +242,7 @@ function SelectEditor({ col, value, initial, onCommit, onCancel }: EditorProps) 
           else if (e.key === "Tab") { e.preventDefault(); if (list[hi] !== undefined && filter) pick(list[hi]!, "right"); else { done.current = true; onCancel(); } }
           else if (e.key === "Escape") { e.preventDefault(); done.current = true; onCancel(); }
         }}
-        className="h-8 w-full border-b border-line px-2 text-sm outline-none"
+        className="h-8 w-full border-b border-rim/40 px-2 text-sm outline-none"
       />
       <ul className="max-h-60 overflow-y-auto py-1 scroll-thin">
         {list.map((o, i) => (
@@ -252,16 +252,16 @@ function SelectEditor({ col, value, initial, onCommit, onCancel }: EditorProps) 
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pick(o)}
               onMouseEnter={() => setHi(i)}
-              className={cn("flex w-full items-center px-2.5 py-1 text-left text-sm", i === hi && "bg-brand-50", o === cur && "font-semibold")}
+              className={cn("flex w-full items-center px-2.5 py-1 text-left text-sm", i === hi && "bg-clay-soft/60", o === cur && "font-semibold")}
             >
               {o}
             </button>
           </li>
         ))}
-        {!list.length && <li className="px-2.5 py-1.5 text-xs text-ink-faint">No matching option</li>}
+        {!list.length && <li className="px-2.5 py-1.5 text-xs text-mud-faint">No matching option</li>}
         {cur && (
-          <li className="border-t border-line">
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="w-full px-2.5 py-1.5 text-left text-xs text-ink-faint hover:bg-zinc-50">
+          <li className="border-t border-rim/40">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="w-full px-2.5 py-1.5 text-left text-xs text-mud-faint hover:bg-paper-deep/60">
               Clear
             </button>
           </li>

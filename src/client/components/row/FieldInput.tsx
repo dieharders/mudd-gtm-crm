@@ -47,14 +47,14 @@ export function FieldInput({
     autoFocus,
     placeholder,
     readOnly: disabled,
-    className: cn("field", disabled && "bg-zinc-50 text-ink-soft", className),
+    className: cn("field", disabled && "bg-paper-deep/40 text-mud-soft", className),
   };
 
   if (col.type === "checkbox") {
     return (
       <input
         type="checkbox"
-        className={cn("block h-4 w-4 accent-brand-600", disabled && "opacity-60", className)}
+        className={cn("block h-4 w-4 accent-clay", disabled && "opacity-60", className)}
         checked={isChecked(value)}
         disabled={disabled}
         autoFocus={autoFocus}
@@ -67,7 +67,7 @@ export function FieldInput({
     const opts = col.options ?? [];
     return (
       <select
-        className={cn("field", disabled && "bg-zinc-50 text-ink-soft", className)}
+        className={cn("field", disabled && "bg-paper-deep/40 text-mud-soft", className)}
         value={text}
         disabled={disabled}
         onChange={(e) => {
@@ -110,7 +110,7 @@ export function FieldInput({
         rows={rows}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        className={cn("field resize-y leading-relaxed", disabled && "bg-zinc-50 text-ink-soft", className)}
+        className={cn("field resize-y leading-relaxed", disabled && "bg-paper-deep/40 text-mud-soft", className)}
       />
     );
   }

@@ -1,56 +1,38 @@
 /**
- * assets/icon.svg -> assets/icon.ico, at every size Windows asks for. Run it after changing the SVG
+ * assets/icon.png -> assets/icon.ico, at every size Windows asks for. Run it after changing the PNG
  * and commit the .ico; the build reads only the .ico.
  *
  *   bun run icon
  *
- * The SVG is drawn onto a transparent canvas in headless Edge or Chrome, so the rounded corners stay
+ * The PNG is drawn onto a transparent canvas in headless Edge or Chrome, so the rounded corners stay
  * transparent (a converter that flattens onto white loses them).
  */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { withBrowser, type Send } from "./browser";
 
 /** 256 is Explorer's extra-large tile; 16 is the title bar. */
 const SIZES = [256, 128, 64, 48, 32, 16] as const;
 
 const ROOT = path.join(import.meta.dir, "..");
-const SVG_PATH = path.join(ROOT, "assets", "icon.svg");
+const PNG_PATH = path.join(ROOT, "assets", "icon.png");
 const ICO_PATH = path.join(ROOT, "assets", "icon.ico");
 
-function findBrowser(): string {
-  const pf86 = process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
-  const pf = process.env.ProgramFiles ?? "C:\\Program Files";
-  const candidates = [
-    process.env.CHROME_PATH,
-    path.join(pf86, "Microsoft", "Edge", "Application", "msedge.exe"),
-    path.join(pf, "Microsoft", "Edge", "Application", "msedge.exe"),
-    path.join(pf, "Google", "Chrome", "Application", "chrome.exe"),
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  ];
-  const found =
-    candidates.find((c): c is string => !!c && fs.existsSync(c)) ??
-    Bun.which("google-chrome") ??
-    Bun.which("chromium") ??
-    Bun.which("microsoft-edge");
-  if (!found) throw new Error("No Edge or Chrome found. Set CHROME_PATH to a Chromium-based browser.");
-  return found;
-}
 
-/** Rasterise the SVG at one size, as raw RGBA, top-down. */
-async function rasterise(send: Send, svgDataUrl: string, size: number): Promise<Uint8Array> {
+/** Rasterise the image at one size, as raw RGBA, top-down. */
+async function rasterise(send: Send, imageDataUrl: string, size: number): Promise<Uint8Array> {
   const { result } = (await send("Runtime.evaluate", {
     awaitPromise: true,
     returnByValue: true,
     expression: `
       (async () => {
         const img = new Image();
-        img.src = ${JSON.stringify(svgDataUrl)};
+        img.src = ${JSON.stringify(imageDataUrl)};
         await img.decode();
         const c = document.createElement('canvas');
         c.width = c.height = ${size};
         const ctx = c.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, ${size}, ${size});
         const d = ctx.getImageData(0, 0, ${size}, ${size}).data;
         let s = '';
@@ -123,89 +105,19 @@ function buildIco(images: Map<number, Uint8Array>): Uint8Array {
   return out;
 }
 
-type Send = (method: string, params?: Record<string, unknown>) => Promise<unknown>;
 
-async function withBrowser<T>(fn: (send: Send) => Promise<T>): Promise<T> {
-  const port = 9333;
-  // Its own profile, so it cannot hand off to (or open a window in) a browser already running.
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-icon-"));
-  const proc = Bun.spawn(
-    [findBrowser(), "--headless=new", "--disable-gpu", "--no-first-run", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "about:blank"],
-    { stdout: "ignore", stderr: "ignore" },
-  );
-  try {
-    // Polled until the page target is listed: the endpoint can answer `[]` before about:blank
-    // has registered.
-    type Target = { type: string; webSocketDebuggerUrl: string };
-    let page: Target | undefined;
-    for (let i = 0; i < 60 && !page; i++) {
-      try {
-        const list = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as Target[];
-        page = list.find((t) => t.type === "page");
-      } catch {
-        // Not listening yet.
-      }
-      if (!page) await Bun.sleep(250);
-    }
-    if (!page) throw new Error(`the headless browser exposed no page on port ${port} within 15s`);
-
-    const ws = new WebSocket(page.webSocketDebuggerUrl);
-    const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-    let id = 0;
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(String(e.data)) as { id?: number; result?: unknown };
-      if (msg.id && pending.has(msg.id)) pending.get(msg.id)!.resolve(msg.result ?? {});
-    };
-    // A socket that fails or drops fails the run, rather than leaving an await that never returns.
-    let closed: Error | null = null;
-    const opened = new Promise<void>((resolve, reject) => {
-      ws.onopen = () => resolve();
-      ws.onerror = () => reject(new Error(`could not connect to the browser's debugger at ${page.webSocketDebuggerUrl}`));
-    });
-    ws.onclose = () => {
-      closed = new Error("the browser's debugger connection closed");
-      for (const p of pending.values()) p.reject(closed);
-      pending.clear();
-    };
-    await opened;
-    const send: Send = (method, params = {}) =>
-      new Promise((resolve, reject) => {
-        if (closed) return reject(closed);
-        const n = ++id;
-        pending.set(n, { resolve, reject });
-        ws.send(JSON.stringify({ id: n, method, params }));
-      });
-    try {
-      return await fn(send);
-    } finally {
-      ws.close();
-    }
-  } finally {
-    proc.kill();
-    await proc.exited;
-    // Edge's child processes can outlive the parent and hold the profile open for a moment on
-    // Windows. A leftover temp folder isn't worth failing a run that already has its icon.
-    try {
-      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-    } catch (err) {
-      console.warn(`  (could not remove ${profile}: ${(err as Error).message})`);
-    }
-  }
-}
-
-const svg = fs.readFileSync(SVG_PATH, "utf8");
-const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
+const imageDataUrl = `data:image/png;base64,${fs.readFileSync(PNG_PATH).toString("base64")}`;
 
 const images = await withBrowser(async (send) => {
   const out = new Map<number, Uint8Array>();
   for (const size of SIZES) {
-    const rgba = await rasterise(send, svgDataUrl, size);
+    const rgba = await rasterise(send, imageDataUrl, size);
     out.set(size, dibEntry(size, rgba));
     // The corner must be transparent, or the rounded tile was flattened onto something.
     console.log(`  ${String(size).padStart(3)}x${size}  corner alpha=${rgba[3]}`);
   }
   return out;
-});
+}, { name: "icon" });
 
 fs.writeFileSync(ICO_PATH, buildIco(images));
 console.log(`\n-> ${ICO_PATH} (${(fs.statSync(ICO_PATH).size / 1024).toFixed(0)} kB, ${images.size} sizes)`);

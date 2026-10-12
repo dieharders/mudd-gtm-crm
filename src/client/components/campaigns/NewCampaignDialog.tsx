@@ -87,18 +87,18 @@ export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean;
         </div>
         <div>
           <span className="label">Start from</span>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3">
             <Choice active={layout === "generic"} onClick={() => setLayout("generic")} icon={<LayoutList size={16} />} title="Start from scratch" desc="Companies with their contacts, status, meeting and intro message." />
             <Choice active={layout === "copy"} onClick={() => setLayout("copy")} disabled={!campaigns.length} icon={<Copy size={16} />} title="Copy columns" desc={campaigns.length ? "Another campaign's columns and dropdowns, no rows." : "No campaigns to copy yet."} />
             <Choice active={discover} onClick={() => setLayout("discovery")} icon={<Radar size={16} />} title="Discover prospects" desc="AI finds companies that fit your ideal customer, and who to talk to at each." />
           </div>
         </div>
         {layout === "generic" && (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {Object.entries(GENERIC).map(([list, headers]) => (
-              <div key={list} className="flex flex-wrap items-center gap-1.5">
-                <span className="w-16 shrink-0 text-xs font-medium text-ink-faint">{list}</span>
-                {headers.map((h) => <span key={h} className="rounded-md border border-line bg-zinc-50 px-1.5 py-0.5 text-xs text-ink-soft">{h}</span>)}
+              <div key={list} className="flex flex-wrap items-center gap-2">
+                <span className="w-20 shrink-0 font-label text-[13px] font-bold text-mud-faint">{list}</span>
+                {headers.map((h) => <span key={h} className="rounded-md border border-rim/60 bg-paper-deep/60 px-2 py-0.5 font-label text-[13px] text-mud-soft">{h}</span>)}
               </div>
             ))}
           </div>
@@ -116,17 +116,17 @@ export function NewCampaignDialog({ open, onClose, campaigns }: { open: boolean;
             <div>
               <label className="label" htmlFor="nc-offer">{OFFER.label}</label>
               <textarea id="nc-offer" rows={2} className="field resize-y leading-relaxed" placeholder={OFFER.example} value={offer} onChange={(e) => setOffer(e.target.value)} />
-              <p className="mt-1 text-[11px] text-ink-faint">{OFFER.help}</p>
+              <p className="mt-1.5 text-[13px] text-mud-faint">{OFFER.help}</p>
             </div>
             <div>
               <label className="label" htmlFor="nc-avatar">{AVATAR.label}</label>
               <textarea id="nc-avatar" rows={3} className="field resize-y leading-relaxed" placeholder={AVATAR.example} value={avatar} onChange={(e) => setAvatar(e.target.value)} />
-              <p className="mt-1 text-[11px] text-ink-faint">{AVATAR.help}</p>
+              <p className="mt-1.5 text-[13px] text-mud-faint">{AVATAR.help}</p>
             </div>
-            <p className="text-xs text-ink-faint">The rest of the thesis comes next, with the AI able to draft what you leave blank. Nothing is sent anywhere until you run Find.</p>
+            <p className="text-[13px] text-mud-faint">The rest of the thesis comes next, with the AI able to draft what you leave blank. Nothing is sent anywhere until you run Find.</p>
           </div>
         )}
-        {!discover && <p className="text-xs text-ink-faint">You can add, rename and retype columns at any time. Exports use the same look as your tracker sheets.</p>}
+        {!discover && <p className="text-[13px] text-mud-faint">You can add, rename and retype columns at any time. Exports use the same look as your tracker sheets.</p>}
       </form>
     </Modal>
   );
@@ -139,14 +139,14 @@ function Choice({ active, onClick, icon, title, desc, disabled }: { active: bool
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "relative rounded-xl border p-3 text-left transition",
-        active ? "border-brand-400 bg-brand-50 ring-2 ring-brand-100" : "border-line hover:border-line-strong",
+        "relative rounded-xl border-2 p-4 text-left transition",
+        active ? "border-clay bg-clay-soft shadow-hard-sm-clay" : "border-rim/50 bg-paper hover:border-rim hover:bg-paper-deep",
         disabled && "opacity-50",
       )}
     >
-      {active && <Check size={14} className="absolute top-3 right-3 text-brand-600" />}
-      <div className="flex items-center gap-2 text-sm font-medium"><span className="text-brand-500">{icon}</span>{title}</div>
-      <p className="mt-1 text-xs text-ink-soft">{desc}</p>
+      {active && <Check size={16} strokeWidth={3} className="absolute top-3 right-3 text-clay-deep" />}
+      <div className="flex items-center gap-2.5 pr-5 text-[15px] font-extrabold"><span className="text-clay-deep">{icon}</span>{title}</div>
+      <p className="mt-1.5 text-[13px] leading-snug text-mud-soft">{desc}</p>
     </button>
   );
 }

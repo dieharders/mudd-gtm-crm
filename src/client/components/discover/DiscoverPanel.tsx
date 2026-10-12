@@ -3,9 +3,9 @@
  * goes: Thesis → Find → Inbox → Recent runs. Candidates wait in the inbox until accepted or
  * dismissed; nothing reaches the sheet on its own.
  */
-import { ArchiveRestore, Inbox, Radar, ScrollText, TriangleAlert, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { isLiveStatus, PROVIDERS } from "../../../shared/ai";
+import { ArchiveRestore, Inbox, Radar, ScrollText } from "lucide-react";
+import { useMemo, useState } from "react";
+import { isLiveStatus } from "../../../shared/ai";
 import { answeredCount, THESIS_QUESTIONS } from "../../../shared/thesis";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { DiscoveryState } from "../../hooks/useDiscovery";
@@ -14,6 +14,7 @@ import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
 import { Button } from "../ui/Button";
+import { Panel, railItem } from "../ui/Panel";
 import { Tile } from "../ui/Logo";
 import { CandidateCard } from "./CandidateCard";
 import { DiscoveryProgress } from "./DiscoveryProgress";
@@ -32,15 +33,9 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
   onClose: () => void;
 }) {
   const ai = useAi();
-  const { status, ready } = useActiveProvider();
+  const { ready } = useActiveProvider();
   const [sel, setSel] = useState<Selection>({ kind: initial });
   const [busy, setBusy] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !(e.target as HTMLElement).closest("input, textarea, select") && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const { thesis, inbox, dismissed, runs } = discovery;
   const firstRun = !runs.some((r) => r.kind === "find");
@@ -67,33 +62,25 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
   const mapAgain = (ids: string[]) => fire(discovery.start({ kind: "map", candidateIds: ids, concurrency: 2 }));
 
   const rail = (kind: DiscoverSection, icon: React.ReactNode, label: string, hint: string, count?: number) => (
-    <button onClick={() => setSel({ kind })}
-      className={cn("flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left", sel.kind === kind ? "bg-brand-50 text-brand-800" : "hover:bg-zinc-100")}>
-      <span className={cn("shrink-0", sel.kind === kind ? "text-brand-600" : "text-ink-faint")}>{icon}</span>
+    <button onClick={() => setSel({ kind })} className={railItem(sel.kind === kind)}>
+      <span className={cn("shrink-0", sel.kind === kind ? "text-clay-deep" : "text-mud-faint")}>{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5 text-sm font-medium">{label}{count !== undefined && count > 0 && <span className="rounded-md bg-brand-100 px-1.5 text-[11px] font-semibold text-brand-700 tabular-nums">{count}</span>}</span>
-        <span className="block truncate text-[11px] text-ink-faint">{hint}</span>
+        <span className="flex items-center gap-2 text-[15px] font-extrabold">{label}{count !== undefined && count > 0 && <span className="rounded-md border border-rim/60 bg-clay-soft px-1.5 font-label text-[12px] font-bold text-clay-deep tabular-nums">{count}</span>}</span>
+        <span className="block truncate font-label text-[12px] font-normal text-mud-faint">{hint}</span>
       </span>
     </button>
   );
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-zinc-900/20 animate-fade-in" onMouseDown={onClose}>
-      <div className="flex h-full w-[min(1040px,100%)] flex-col bg-canvas shadow-2xl animate-slide-in" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-3 border-b border-line bg-panel px-5 py-3">
-          <Tile className="bg-gradient-to-br from-emerald-400 to-brand-400 text-white"><Radar size={16} /></Tile>
-          <div className="flex-1">
-            <h2 className="text-base font-semibold">Discover prospects</h2>
-            <p className="text-xs text-ink-soft">Companies that fit your ideal customer, with who to talk to at each. You review every one before it joins the list.</p>
-          </div>
-          <button onClick={() => ai.setOpen(true)} className={cn("tag", ready ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-800")}>
-            {ready ? "●" : <TriangleAlert size={11} />} {ai.settings?.provider ? PROVIDERS[ai.settings.provider].label : "No AI provider chosen"}{status?.auth.plan ? ` · ${status.auth.plan}` : ""}
-          </button>
-          <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close discover"><X size={16} /></Button>
-        </div>
-
+    <Panel
+      onClose={onClose}
+      closeLabel="Close discover"
+      icon={<Tile size="lg" className="border-2 border-rim bg-note-mint text-mud"><Radar size={20} /></Tile>}
+      title="Discover prospects"
+      subtitle="Companies that fit your ideal customer, with who to talk to at each. You review every one before it joins the list."
+    >
         <div className="flex min-h-0 flex-1">
-          <aside className="w-64 shrink-0 space-y-5 overflow-y-auto border-r border-line bg-panel p-3 scroll-thin">
+          <aside className="w-64 shrink-0 space-y-5 overflow-y-auto border-r-2 border-rim/40 bg-paper-deep/40 p-3 scroll-thin">
             <div className="space-y-0.5">
               {rail("thesis", <ScrollText size={16} />, "Thesis", thesis ? `${answeredCount(thesis)} of ${THESIS_QUESTIONS.length} answered` : "")}
               {rail("find", <Radar size={16} />, "Find", findRun && isLiveStatus(findRun.status) ? "Running…" : firstRun ? "Not run yet" : `Last run ${timeAgo(findRun!.startedAt)}`)}
@@ -105,12 +92,12 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
                 <ul className="space-y-0.5">
                   {runs.slice(0, 8).map((r) => (
                     <li key={r.id}>
-                      <button onClick={() => setSel({ kind: "run", id: r.id })} className={cn("w-full rounded-lg px-2.5 py-1.5 text-left", sel.kind === "run" && sel.id === r.id ? "bg-brand-50" : "hover:bg-zinc-100")}>
+                      <button onClick={() => setSel({ kind: "run", id: r.id })} className={cn("w-full rounded-lg px-2.5 py-1.5 text-left", sel.kind === "run" && sel.id === r.id ? "bg-clay-soft/60" : "hover:bg-paper-deep")}>
                         <span className="flex items-center gap-1.5 truncate text-xs font-medium">
-                          {isLiveStatus(r.status) && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-500" />}
+                          {isLiveStatus(r.status) && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-clay" />}
                           {r.kind === "thesis" ? "Fill thesis blanks" : r.kind === "map" ? "Map again" : `Find ${r.target}`}
                         </span>
-                        <span className="block truncate text-[11px] text-ink-faint">{r.status}{r.kind === "find" ? ` · ${r.ready} ready` : ""} · {timeAgo(r.startedAt)}</span>
+                        <span className="block truncate text-[11px] text-mud-faint">{r.status}{r.kind === "find" ? ` · ${r.ready} ready` : ""} · {timeAgo(r.startedAt)}</span>
                       </button>
                     </li>
                   ))}
@@ -138,15 +125,15 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
               <div className="space-y-4">
                 {inbox.length === 0 ? (
                   <div className="mx-auto mt-16 max-w-md text-center">
-                    <Tile size="lg" className="mx-auto bg-brand-100 text-brand-700"><Inbox size={18} /></Tile>
+                    <Tile size="lg" className="mx-auto bg-clay-soft text-clay-deep"><Inbox size={18} /></Tile>
                     <h3 className="mt-3 text-lg font-semibold">Nothing to review</h3>
-                    <p className="mt-1 text-sm text-ink-soft">{firstRun ? "Run Find to look for companies that fit your thesis." : "Every company found has been accepted or dismissed. Run Find again for more."}</p>
+                    <p className="mt-1 text-sm text-mud-soft">{firstRun ? "Run Find to look for companies that fit your thesis." : "Every company found has been accepted or dismissed. Run Find again for more."}</p>
                     <Button className="mt-4" variant="primary" onClick={() => setSel({ kind: "find" })}><Radar size={14} /> {firstRun ? "Find prospects" : "Find more"}</Button>
                   </div>
                 ) : (
                   <>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm text-ink-soft"><b className="text-ink">{inbox.length}</b> compan{inbox.length === 1 ? "y" : "ies"} to review, best fit first.</p>
+                      <p className="text-sm text-mud-soft"><b className="text-mud">{inbox.length}</b> compan{inbox.length === 1 ? "y" : "ies"} to review, best fit first.</p>
                       {highFit.length > 1 && (
                         <Button size="sm" variant="subtle" className="ml-auto" disabled={highFit.some((c) => busy.has(c.id))}
                           onClick={() => fire(withBusy(highFit.map((c) => c.id), () => discovery.accept(highFit.map((c) => ({ id: c.id, contactIds: c.contacts.map((p) => p.id) })))))}>
@@ -167,25 +154,24 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
 function Dismissed({ list, onRestore }: { list: DiscoveryState["dismissed"]; onRestore: (ids: string[]) => void }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="border-t border-line pt-3">
-      <button className="text-xs font-medium text-ink-faint hover:text-ink" onClick={() => setOpen(!open)}>
+    <div className="border-t border-rim/40 pt-3">
+      <button className="text-xs font-medium text-mud-faint hover:text-mud" onClick={() => setOpen(!open)}>
         {open ? "Hide" : "Show"} {list.length} dismissed
       </button>
       {open && (
         <ul className="mt-2 space-y-1">
           {list.map((c) => (
-            <li key={c.id} className="flex items-center gap-2 rounded-lg bg-zinc-50 px-2.5 py-1.5 text-xs">
+            <li key={c.id} className="flex items-center gap-2 rounded-lg bg-paper-deep/40 px-2.5 py-1.5 text-xs">
               <span className="font-medium">{c.company}</span>
-              <span className="min-w-0 flex-1 truncate text-ink-faint">{c.dismissReason ?? "No reason given"}</span>
-              <Button size="sm" variant="ghost" onClick={() => onRestore([c.id])}><ArchiveRestore size={12} /> Restore</Button>
+              <span className="min-w-0 flex-1 truncate text-mud-faint">{c.dismissReason ?? "No reason given"}</span>
+              <Button size="xs" variant="ghost" onClick={() => onRestore([c.id])}><ArchiveRestore size={12} /> Restore</Button>
             </li>
           ))}
         </ul>

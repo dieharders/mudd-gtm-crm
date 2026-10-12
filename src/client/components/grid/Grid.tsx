@@ -278,20 +278,24 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
       onMouseDownCapture={onMouseDownCapture}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
-      className="relative h-full overflow-auto bg-white outline-none scroll-thin"
+      className="relative h-full overflow-auto bg-paper outline-none scroll-thin"
     >
       <div style={{ width: totalWidth, minWidth: "100%" }}>
         {/* header */}
-        <div className="sticky top-0 z-20 flex h-9 border-b border-line bg-white text-[11px] font-semibold tracking-wider text-ink-faint uppercase" style={{ width: totalWidth, minWidth: "100%" }}>
-          <div className="sticky left-0 z-[3] flex shrink-0 items-center gap-2 border-r border-line bg-white pl-3" style={{ width: GUTTER }}>
+        <div className="sticky top-0 z-20 flex h-10 border-b-2 border-rim/40 bg-paper-deep/60 font-label text-[12px] font-bold tracking-wide text-mud-soft uppercase" style={{ width: totalWidth, minWidth: "100%" }}>
+          <div className="sticky left-0 z-[3] flex shrink-0 items-center gap-1.5 border-r border-rim/40 bg-paper pl-3" style={{ width: GUTTER }}>
             <input
               type="checkbox"
               aria-label="Select all rows"
-              className="h-3.5 w-3.5 accent-brand-600"
+              className="h-3.5 w-3.5 accent-clay"
               checked={allSelected}
               ref={(el) => { if (el) el.indeterminate = someSelected; }}
               onChange={toggleAll}
             />
+            {/* Capped to fit beside the checkbox; the full count is in the tooltip. */}
+            <span className="truncate font-sans text-xs font-normal tracking-normal normal-case tabular-nums" title={`${p.rows.length.toLocaleString()} rows`}>
+              {p.rows.length > 999 ? "999+" : p.rows.length}
+            </span>
           </div>
           {p.columns.map((col, i) => {
             const s = p.sort?.key === col.key ? p.sort.dir : null;
@@ -300,22 +304,22 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                 key={col.key}
                 style={{ width: widthOf(col), ...pinnedStyle(i) }}
                 className={cn(
-                  "group relative flex shrink-0 items-center border-r border-line/70 bg-white px-2.5",
-                  i === p.pinned - 1 && "shadow-[1px_0_0_var(--color-line-strong)]",
+                  "group relative flex shrink-0 items-center border-r border-rim/25 bg-paper px-2.5",
+                  i === p.pinned - 1 && "shadow-[1px_0_0_var(--color-rim)]",
                 )}
               >
                 <button
-                  className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-ink"
+                  className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-mud"
                   onClick={() => p.onSort(s === null ? { key: col.key, dir: "asc" } : s === "asc" ? { key: col.key, dir: "desc" } : null)}
                   title={`${col.header} — click to sort`}
                 >
                   <span className="truncate">{col.header}</span>
-                  {s === "asc" && <ArrowUp size={12} className="shrink-0 text-brand-600" />}
-                  {s === "desc" && <ArrowDown size={12} className="shrink-0 text-brand-600" />}
+                  {s === "asc" && <ArrowUp size={12} className="shrink-0 text-clay-deep" />}
+                  {s === "desc" && <ArrowDown size={12} className="shrink-0 text-clay-deep" />}
                 </button>
                 <div
                   onMouseDown={(e) => startResize(e, col)}
-                  className="absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize hover:bg-brand-300/60"
+                  className="absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize hover:bg-clay/50"
                 />
               </div>
             );
@@ -330,27 +334,29 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
             const isOpen = p.openRowId === row.id;
             const locked = !!p.isLocked?.(row);
             // Every one opaque: the pinned cells wear it too, and the cells scrolling under them
-            // would show through a see-through tint. A selected row's is brand-50 mixed into white.
-            const rowBg = isOpen ? "bg-brand-50" : isSel ? "bg-[color-mix(in_oklab,var(--color-brand-50)_60%,white)]"
-              : locked ? "bg-zinc-50 group-hover/row:bg-zinc-100" : "bg-white group-hover/row:bg-zinc-50";
+            // would show through a see-through tint. So the tints are mixed into paper, not alpha.
+            const rowBg = isOpen ? "bg-[color-mix(in_oklab,var(--color-clay-soft)_60%,var(--color-paper))]"
+              : isSel ? "bg-[color-mix(in_oklab,var(--color-clay-soft)_45%,var(--color-paper))]"
+              : locked ? "bg-[color-mix(in_oklab,var(--color-paper-deep)_40%,var(--color-paper))] group-hover/row:bg-paper-deep"
+              : "bg-paper group-hover/row:bg-[color-mix(in_oklab,var(--color-paper-deep)_40%,var(--color-paper))]";
             return (
               <div
                 key={row.id}
-                className="group/row absolute left-0 flex border-b border-line/70"
+                className="group/row absolute left-0 flex border-b border-rim/25"
                 style={{ top: 0, transform: `translateY(${vr.start}px)`, height: ROW_H, width: totalWidth, minWidth: "100%" }}
               >
-                <div className={cn("sticky left-0 z-[3] flex shrink-0 items-center gap-1.5 border-r border-line pl-3", rowBg)} style={{ width: GUTTER }}>
+                <div className={cn("sticky left-0 z-[3] flex shrink-0 items-center gap-1.5 border-r border-rim/40 pl-3", rowBg)} style={{ width: GUTTER }}>
                   <input
                     type="checkbox"
                     aria-label="Select row"
-                    className="h-3.5 w-3.5 accent-brand-600"
+                    className="h-3.5 w-3.5 accent-clay"
                     checked={isSel}
                     onChange={() => toggleOne(row.id)}
                     // A click (not Space on the box) also picks the row, so Space then opens it.
                     onClick={(e) => e.detail > 0 && pickRow(vr.index)}
                   />
                   <button
-                    className={cn("rounded-sm p-1 text-ink-faint hover:bg-brand-100 hover:text-brand-700", !isOpen && "opacity-0 group-hover/row:opacity-100")}
+                    className={cn("rounded-sm p-1 text-mud-faint hover:bg-clay-soft hover:text-clay-deep", !isOpen && "opacity-0 group-hover/row:opacity-100")}
                     onClick={() => {
                       pickRow(vr.index);
                       p.onOpenRow(row.id);
@@ -370,11 +376,11 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                       key={col.key}
                       style={{ width: widthOf(col), ...pinnedStyle(ci) }}
                       className={cn(
-                        "group/cell relative flex shrink-0 items-center border-r border-line/50 px-2.5 text-[13px]",
+                        "group/cell relative flex shrink-0 items-center border-r border-rim/50 px-2.5 text-[13px]",
                         rowBg,
-                        ci === p.pinned - 1 && "shadow-[1px_0_0_var(--color-line-strong)]",
+                        ci === p.pinned - 1 && "shadow-[1px_0_0_var(--color-rim)]",
                         ci === 0 && "font-medium",
-                        isActive && !isEditing && "ring-2 ring-brand-400 ring-inset",
+                        isActive && !isEditing && "ring-2 ring-clay ring-inset",
                         isEditing && "z-[4] overflow-visible p-0",
                       )}
                       onMouseDown={(e) => {
@@ -404,7 +410,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                               tabIndex={-1}
                               aria-checked={isChecked(row.cells[col.key])}
                               aria-label={col.header}
-                              className="-ml-0.5 rounded-sm p-0.5 hover:bg-zinc-200/70"
+                              className="-ml-0.5 rounded-sm p-0.5 hover:bg-paper-deep"
                               onClick={() => startEdit(vr.index, ci)}
                               onDoubleClick={(e) => e.stopPropagation()}
                             >
@@ -412,7 +418,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
                             </button>
                           ) : view}
                           {p.pending?.get(row.id)?.has(col.key) && (
-                            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" title="AI suggestion waiting for review" />
+                            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-clay ring-2 ring-paper" title="AI suggestion waiting for review" />
                           )}
                         </div>
                       )}

@@ -181,7 +181,6 @@ export interface CampaignSummary {
   sourcePath: string | null;
   /** Prospects still in play (not screened out). */
   prospects: number;
-  screened: number;
   byStatus: Record<string, number>;
   stages: string[];
 }

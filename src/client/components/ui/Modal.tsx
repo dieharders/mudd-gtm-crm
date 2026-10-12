@@ -1,6 +1,18 @@
 import { X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
+import { useInert, useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
+import { Button } from "./Button";
+
+/** How long the dialog takes to go: it stays mounted until then. Matches `fade-out`. */
+const LEAVE_MS = 200;
+
+interface Content {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+}
 
 /** `locked` holds the dialog open (Escape, the backdrop and × do nothing) while work in it must not be cut short. */
 export function Modal({
@@ -15,6 +27,10 @@ export function Modal({
   width?: string;
   locked?: boolean;
 }) {
+  // While leaving it shows what it last had open: callers often clear the data it was showing as they close it.
+  const { shown, leaving, last: c } = useLeaving<Content>(open, LEAVE_MS, { title, subtitle, children, footer });
+  const layer = useInert<HTMLDivElement>(leaving);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -27,26 +43,32 @@ export function Modal({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [open, onClose, locked]);
 
-  if (!open) return null;
+  if (!shown) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-zinc-900/30 p-6 pt-[10vh] animate-fade-in" onMouseDown={locked ? undefined : onClose}>
+    // Click-through (and inert) while leaving, so the page is usable as soon as it is asked to close.
+    <div
+      ref={layer}
+      className={cn(
+        "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-mud/35 p-6 pt-[8vh]",
+        leaving ? "pointer-events-none animate-fade-out" : "animate-fade-in",
+      )}
+      onMouseDown={locked ? undefined : onClose}
+    >
       <div
         role="dialog"
         aria-modal="true"
-        className={cn("w-full rounded-2xl border border-line bg-panel shadow-2xl shadow-zinc-900/10 animate-pop", width)}
+        className={cn("w-full rounded-2xl border-2 border-rim-deep bg-paper shadow-dialog", leaving ? "animate-pop-out" : "animate-pop", width)}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b-2 border-rim/40 px-6 py-5">
           <div>
-            <h2 className="text-base font-semibold text-ink">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-sm text-ink-soft">{subtitle}</p>}
+            <h2 className="font-display text-[22px] leading-tight font-bold text-mud">{c.title}</h2>
+            {c.subtitle && <p className="mt-1 text-[15px] text-mud-soft">{c.subtitle}</p>}
           </div>
-          <button className="-mr-1 rounded-md p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink disabled:pointer-events-none disabled:opacity-40" onClick={onClose} disabled={locked} aria-label="Close">
-            <X size={18} />
-          </button>
+          <Button size="icon" variant="ghost" className="-mt-1.5 -mr-2" onClick={onClose} disabled={locked} aria-label="Close"><X size={20} /></Button>
         </div>
-        <div className="px-5 py-4">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-line bg-zinc-50/60 px-5 py-3 rounded-b-2xl">{footer}</div>}
+        <div className="px-6 py-5 text-[15px]">{c.children}</div>
+        {c.footer && <div className="flex justify-end gap-3 rounded-b-2xl border-t-2 border-rim/40 bg-paper-deep/40 px-6 py-4">{c.footer}</div>}
       </div>
     </div>
   );

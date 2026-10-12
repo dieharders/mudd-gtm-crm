@@ -104,12 +104,15 @@ export const newProspectId = (taken: Iterable<string>): string => prospectIds(ta
 
 export { CHANNEL };
 
+/** Whoever holds the budget: the Contacts tab has a quick filter for them. */
+export const ECONOMIC_BUYER = "Economic Buyer";
+
 /** The kinds of stakeholder a contact can be, and Channel for a way in that isn't a person. */
-export const CONTACT_TYPES = ["Economic Buyer", "Champion", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", CHANNEL];
+export const CONTACT_TYPES = [ECONOMIC_BUYER, "Champion", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", CHANNEL];
 
 /** What each contact type means: the type picker's hints. */
 export const CONTACT_TYPE_HINTS: Record<string, string> = {
-  "Economic Buyer": "Holds or controls the budget and gives final financial approval.",
+  [ECONOMIC_BUYER]: "Holds or controls the budget and gives final financial approval.",
   Champion: "The advocate with the most to gain: feels the pain and sells the deal internally.",
   "Technical Buyer": "The evaluator: checks the product meets technical, security and data standards.",
   "End User": "The operator: uses the product every day.",

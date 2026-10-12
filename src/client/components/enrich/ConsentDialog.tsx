@@ -23,14 +23,14 @@ export function ConsentDialog({ open, onConfirm, onCancel }: { open: boolean; on
         </>
       }
     >
-      <ul className="space-y-2 text-sm text-ink-soft">
+      <ul className="space-y-2 text-sm text-mud-soft">
         <li>• For each row you run, the columns the recipe uses are sent to {p.vendor} through your {p.label} CLI, and it may search the web about that prospect.</li>
         <li>• Discovery sends your ICP thesis and the names of the companies already in the campaign, and searches the web for companies and people that fit.</li>
         <li>• Research turns can only search and read web pages. They can't run commands or open your files.</li>
         <li>• Results come back as suggestions. Your sheet only changes when you accept one, or for empty cells if you turned on auto-fill.</li>
         <li>• Usage counts toward your {p.plan} plan's limits.</li>
       </ul>
-      <p className="mt-3 text-xs text-ink-faint">Mudd asks once. You can see what's in use any time under AI settings in the sidebar.</p>
+      <p className="mt-3 text-xs text-mud-faint">Mudd asks once. You can see what's in use any time under AI settings in the sidebar.</p>
     </Modal>
   );
 }

@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from "bun:te
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { CampaignEvent, Suggestion } from "../../shared/ai";
+import type { CampaignEvent, EnrichRun, Suggestion } from "../../shared/ai";
 import { allColumns, genericSchema } from "../../shared/schema";
 import { CHECKED, type CellValue } from "../../shared/types";
 import * as ai from "../ai";
@@ -134,6 +134,25 @@ describe("store", () => {
     const id = campaign([{ id: "r1", cells: { enrichment_sources: "left by a deleted column" } }]);
     expect(ensureSourcesColumn(id)).toBe("enrichment_sources_2");
     expect(ensureSourcesColumn(id)).toBe("enrichment_sources_2");
+  });
+
+  test("the rows each recipe's runs finished, over more runs than listRuns returns", () => {
+    const id = campaign([]);
+    const run = (n: number, kind: EnrichRun["kind"], recipeId: string | null, rows: EnrichRun["rows"]): EnrichRun => ({
+      id: `run-${n}`, campaignId: id, kind, recipeId, label: "Run", status: "done", test: false, provider: "claude", model: "sonnet",
+      concurrency: 1, autoFill: false, rowIds: Object.keys(rows), rows, total: 0, completed: 0, failed: 0, suggestions: 0, autoFilled: 0,
+      startedAt: n, finishedAt: n, error: null, costUsd: null,
+    });
+    store.saveRun(run(0, "enrich", "a", { r1: { state: "done" }, r2: { state: "error" } }));
+    store.saveRun(run(1, "enrich", "b", { r1: { state: "done" } }));
+    store.saveRun(run(2, "intro", null, { r3: { state: "done" } }));
+    // The first runs drop out of the latest twenty.
+    for (let n = 3; n < 25; n++) store.saveRun(run(n, "enrich", "a", { r2: { state: "done" }, r4: { state: "pending" } }));
+    expect(store.listRuns(id).some((r) => r.id === "run-0")).toBe(false);
+    const finished = store.finishedRows(id);
+    expect(Object.keys(finished).sort()).toEqual(["a", "b"]);
+    expect(finished.a!.sort()).toEqual(["r1", "r2"]);
+    expect(finished.b).toEqual(["r1"]);
   });
 });
 

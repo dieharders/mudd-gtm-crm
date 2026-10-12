@@ -40,19 +40,19 @@ export function AiSettingsDialog() {
       width="max-w-2xl"
       locked={locked}
       title="AI settings"
-      subtitle="Mudd runs research on your own Claude Code or Codex sign-in, so it bills your plan. No API keys are stored here."
+      subtitle="Mudd runs research on your own Claude Code or Codex sign-in. No API keys are stored here."
       footer={
         <>
-          {locked && <p className="mr-auto self-center text-xs text-ink-faint">Finish or cancel the {working.map((id) => PROVIDERS[id].label).join(" and ")} setup to close this.</p>}
+          {locked && <p className="mr-auto self-center text-[13px] text-mud-faint">Finish or cancel the {working.map((id) => PROVIDERS[id].label).join(" and ")} setup to close this.</p>}
           <Button variant="ghost" onClick={() => fire(check())} disabled={checking}>
-            {checking ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Check again
+            {checking ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Check again
           </Button>
           <Button variant="primary" onClick={() => ai.setOpen(false)} disabled={locked}>Done</Button>
         </>
       }
     >
-      {!s.provider && <p className="mb-3 text-sm text-ink-soft">No AI provider chosen yet. Pick the one whose plan you already pay for.</p>}
-      <div className="space-y-3">
+      {!s.provider && <p className="mb-4 text-[15px] text-mud-soft">No AI provider chosen yet. Pick the one whose plan you already pay for.</p>}
+      <div className="space-y-4">
         {PROVIDER_IDS.map((id) => (
           <ProviderCard key={id} id={id} status={ai.providers.find((p) => p.id === id)} active={s.provider === id} onPick={() => fire(ai.update({ provider: id }))} onRefresh={() => ai.refresh(true)} onWorking={onWorking} />
         ))}
@@ -68,7 +68,7 @@ function ModelSettings({ provider }: { provider: ProviderId }) {
   const ai = useAi();
   const s = ai.settings!;
   return (
-    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+    <div className="mt-6 grid gap-4 sm:grid-cols-2">
       <div>
         <label className="label" htmlFor="ai-model">Model for {PROVIDERS[provider].label}</label>
         {provider === "codex" ? (
@@ -188,65 +188,63 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
   };
 
   return (
-    <div className={cn("rounded-2xl border p-4 transition", active ? "border-brand-300 bg-brand-50/50 shadow-[0_0_0_3px_var(--color-brand-100)]" : "border-line bg-white")}>
-      <div className="flex items-start gap-3">
+    <div className={cn("rounded-2xl border-2 p-5 transition", active ? "border-clay bg-clay-soft/40 shadow-hard-sm-clay" : "border-rim/50 bg-paper")}>
+      <div className="flex items-start gap-4">
         <ProviderMark id={id} className="h-10 w-10 rounded-xl" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold">{info.label}</h3>
-            <span className="text-xs text-ink-faint">{info.vendor} · {info.plan}</span>
+            <h3 className="text-[16px] font-extrabold">{info.label}</h3>
+            <span className="font-label text-[13px] text-mud-faint">{info.vendor} · {info.plan}</span>
           </div>
           {!status ? (
-            <p className="mt-1 text-xs text-ink-faint"><Loader2 size={12} className="inline animate-spin" /> Checking…</p>
+            <p className="mt-1.5 text-[13px] text-mud-faint"><Loader2 size={13} className="inline animate-spin" /> Checking…</p>
           ) : busy === "install" ? (
-            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-soft" role="status">
-              <Loader2 size={12} className="animate-spin" /> Installing {info.label}{progress ? ` · ${progress}` : "…"}
+            <p className="mt-2 flex items-center gap-1.5 text-[13px] text-mud-soft" role="status">
+              <Loader2 size={13} className="animate-spin" /> Installing {info.label}{progress ? ` · ${progress}` : "…"}
             </p>
           ) : busy === "signin" ? (
-            <div className="mt-1.5 text-xs text-ink-soft">
-              <p className="flex items-center gap-1.5" role="status"><Loader2 size={12} className="animate-spin" /> Finish signing in in your browser…</p>
+            <div className="mt-2 text-[13px] text-mud-soft">
+              <p className="flex items-center gap-1.5" role="status"><Loader2 size={13} className="animate-spin" /> Finish signing in in your browser…</p>
               {canReopen && (
-                <p className="mt-1.5 text-ink-faint">
+                <p className="mt-1.5 text-mud-faint">
                   Closed the page? <LinkButton onClick={() => fire(api.aiSignInOpen(id))}>Open it again</LinkButton>
                 </p>
               )}
             </div>
           ) : !status.installed ? (
-            <p className="mt-1.5 text-xs text-ink-soft">
+            <p className="mt-2 text-[13px] leading-snug text-mud-soft">
               {status.outdated
                 ? `Version ${status.outdated} is too old for Mudd. Mudd can download a current copy from ${info.vendor} for you.`
                 : `Not installed yet. Mudd can download it from ${info.vendor} for you, then you sign in with your ${info.plan} account.`}
             </p>
           ) : (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="tag bg-zinc-100 text-zinc-600">v{status.version ?? "?"}</span>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <span className="tag bg-paper-deep text-mud-soft">v{status.version ?? "?"}</span>
               {auth?.state === "ok" ? (
                 <>
-                  <span className="tag bg-emerald-100 text-emerald-800"><Check size={11} /> {auth.account ?? "Signed in"}</span>
-                  {auth.plan && <span className="tag bg-violet-100 text-violet-800 capitalize">{auth.plan}</span>}
-                  {auth.subscription ? (
-                    <span className="tag bg-emerald-50 text-emerald-700">Bills your subscription</span>
-                  ) : (
-                    <span className="tag bg-yellow-100 text-yellow-800"><TriangleAlert size={11} /> Per-token billing{auth.keySource ? ` (${auth.keySource})` : ""}</span>
+                  <span className="tag bg-note-mint text-mud"><Check size={13} strokeWidth={3} /> {auth.account ?? "Signed in"}</span>
+                  {auth.plan && <span className="tag bg-lake-soft text-lake-deep capitalize">{auth.plan}</span>}
+                  {!auth.subscription && (
+                    <span className="tag bg-note text-mud"><TriangleAlert size={13} /> Per-token billing{auth.keySource ? ` (${auth.keySource})` : ""}</span>
                   )}
                 </>
               ) : auth?.state === "logged_out" ? (
-                <span className="tag bg-yellow-100 text-yellow-800">Not signed in</span>
+                <span className="tag bg-note text-mud">Not signed in</span>
               ) : (
-                <span className="tag bg-zinc-100 text-zinc-600">Couldn't read the sign-in status</span>
+                <span className="tag bg-paper-deep text-mud-soft">Couldn't read the sign-in status</span>
               )}
             </div>
           )}
-          {note && <p className="mt-1.5 text-xs text-yellow-800">{note}</p>}
+          {note && <p className="mt-2 text-[13px] font-semibold text-clay-deep">{note}</p>}
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <div className="flex shrink-0 flex-col items-end gap-2">
           {!active ? (
             <Button size="sm" onClick={onPick}>Use {info.label}</Button>
           ) : ready ? (
-            <span className="tag bg-brand-500 text-white"><Check size={11} /> In use</span>
+            <span className="tag border-clay-deep bg-clay font-bold text-paper"><Check size={13} strokeWidth={3} /> In use</span>
           ) : (
             // Picked, but it can't run yet: the step to take is the button below.
-            <span className="tag bg-zinc-100 text-zinc-600">Selected</span>
+            <span className="tag bg-paper-deep text-mud-soft">Selected</span>
           )}
           {busy === "install" || busy === "signin" ? (
             <Button size="sm" variant="ghost" onClick={() => abortRef.current?.abort()}><X size={13} /> Cancel</Button>
@@ -267,5 +265,5 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
 
 /** A secondary action that reads as a link, for the paths most people never need. */
 function LinkButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return <button type="button" onClick={onClick} className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800">{children}</button>;
+  return <button type="button" onClick={onClick} className="font-bold text-lake-deep underline underline-offset-2 hover:text-lake">{children}</button>;
 }

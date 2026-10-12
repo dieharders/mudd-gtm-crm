@@ -10,7 +10,7 @@ import { exportCampaign } from "../xlsx/export";
 import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook, type LoadedBook } from "../xlsx/import";
 import * as db from "./db";
 import { registerAiRoutes } from "./ai-routes";
-import { dialogsSupported, downloadsDir, openDialog, openExternal } from "./dialogs";
+import { dialogsSupported, downloadsDir, openDialog, openExternal, revealInFolder } from "./dialogs";
 import { stopAllAiWork, stopCampaignRuns } from "./enrich/runner";
 import { markInterruptedRuns } from "./enrich/store";
 import { registerDiscoveryRoutes } from "./sourcing/routes";
@@ -301,6 +301,11 @@ on("DELETE", "/api/templates/:id", (_req, [id]) => {
 on("POST", "/api/import/inspect", async (req) => json(await inspect(req)));
 on("POST", "/api/import", async (req) => json(await doImport(req)));
 on("POST", "/api/campaigns/:id/save", async (req, [id]) => saveFile(id!, req));
+// Only the campaign's own linked file, never a path from the request.
+on("POST", "/api/campaigns/:id/reveal", (_req, [id]) => {
+  const c = mustCampaign(id!);
+  return c.sourcePath && revealInFolder(c.sourcePath) ? json({ ok: true }) : fail(404, "The file is no longer where it was saved.");
+});
 
 on("POST", "/api/dialog/open", async () => json(await openDialog()));
 on("POST", "/api/open-url", async (req) => {

@@ -1,10 +1,15 @@
-/** The sidebar's "new version" card: update in place and restart, or download it by hand. */
+/**
+ * The sidebar's "new version" card: update in place and restart, or download it by hand. When the
+ * sidebar is folded to its icon rail, the same notice is one note-coloured icon button whose title
+ * carries the words, and whose click puts them in a heads-up toast with the card's first button.
+ */
 import { ArrowUpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import type { UpdateInfo } from "../../../shared/types";
 import { api } from "../../lib/api";
 import { Button } from "./Button";
+import { attentionToast } from "./Toaster";
 
 const CHECK_EVERY = 6 * 60 * 60_000;
 
@@ -44,29 +49,48 @@ export function UpdateNotice({ info }: { info: UpdateInfo | null }) {
     }
   };
 
+  const headline = `Mudd ${version} is ${done ? "installed" : "available"}`;
+  const detail = done ? (installed && nativeRestart() ? "Restarting…" : "Restart Mudd to finish.")
+    : info.blocked ?? "Mudd restarts to finish, and stops any AI research in progress.";
+  // What the rail's one button offers: restart when a restart is all that is left, otherwise
+  // install (or, when installing here is blocked, open the download page). It only says so, in a
+  // toast whose own button does it: the bare icon is easily clicked just to see what it is. The
+  // restart is called with no arguments: the webview binding serialises them, and a click event cannot be.
+  const restart = nativeRestart();
+  const compact = done ? restart && { label: "Restart", onClick: () => restart() }
+    : info.blocked ? { label: "Download", onClick: openRelease } : { label: "Update & restart", onClick: () => void install() };
+  const offer = compact && (() => attentionToast(<><b>{headline}.</b> {detail}</>, compact, "update"));
+
   return (
-    <div className="mx-3 mb-2 rounded-xl border border-brand-200 bg-brand-50 px-2.5 py-2">
-      <p className="flex items-center gap-2 text-[12.5px] font-medium">
-        <ArrowUpCircle size={14} className="shrink-0 text-brand-600" /> Mudd {version} is {done ? "installed" : "available"}
-      </p>
-      {done ? (
-        <p className="mt-1 text-[11px] text-ink-soft">{installed && nativeRestart() ? "Restarting…" : "Restart Mudd to finish."}</p>
-      ) : info.blocked ? (
-        <>
-          <p className="mt-1 text-[11px] text-ink-soft">{info.blocked}</p>
+    <>
+      <div className="mx-3 mb-3 hidden rounded-xl border-2 border-rim bg-note px-3 py-2.5 shadow-hard-sm wide:block">
+        <p className="flex items-center gap-2 text-[14px] font-bold">
+          <ArrowUpCircle size={16} className="shrink-0 text-clay-deep" /> {headline}
+        </p>
+        <p className="mt-1 font-label text-[12px] text-mud-soft">{detail}</p>
+        {done ? null : info.blocked ? (
           <Button size="sm" variant="primary" className="mt-2" onClick={openRelease}>Download</Button>
-        </>
-      ) : (
-        <>
-          <p className="mt-1 text-[11px] text-ink-soft">Mudd restarts to finish, and stops any AI research in progress.</p>
-          <div className="mt-2 flex gap-1.5">
+        ) : (
+          <div className="mt-2.5 flex gap-2">
             <Button size="sm" variant="primary" disabled={installing} onClick={() => void install()}>
               {installing ? "Updating…" : "Update & restart"}
             </Button>
             <Button size="sm" variant="ghost" onClick={openRelease}>What's new</Button>
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </div>
+      <div className="mx-2.5 mb-2.5 wide:hidden">
+        <Button
+          size="icon"
+          className="w-full bg-note hover:bg-note/70"
+          title={`${headline}. ${detail}`}
+          aria-label={`${headline}. ${detail}`}
+          disabled={installing || !offer}
+          onClick={offer || undefined}
+        >
+          <ArrowUpCircle size={18} className="text-clay-deep" />
+        </Button>
+      </div>
+    </>
   );
 }

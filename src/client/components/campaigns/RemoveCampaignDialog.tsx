@@ -38,7 +38,7 @@ export function RemoveCampaignDialog({ campaign, onClose, beforeRemove, onRemove
     try {
       await beforeRemove?.();
       await api.deleteCampaign(campaign.id);
-      toast.success(`Removed ${campaign.name} from Mudd`);
+      toast.success(`Removed ${campaign.name} from the app`);
       onClose();
       onRemoved?.();
       refresh();
@@ -58,22 +58,22 @@ export function RemoveCampaignDialog({ campaign, onClose, beforeRemove, onRemove
     <Modal
       open={!!campaign}
       onClose={close}
-      title={`Remove ${campaign?.name ?? ""} from Mudd?`}
+      title={`Remove ${campaign?.name ?? ""} from the app?`}
       subtitle="No file is deleted: only Mudd's copy of the campaign goes."
       footer={
         <>
           <Button variant="ghost" disabled={busy} onClick={close}>Cancel</Button>
-          <Button variant="danger" disabled={busy} onClick={() => fire(remove())}><Trash2 size={15} /> Remove from Mudd</Button>
+          <Button variant="danger" disabled={busy} onClick={() => fire(remove())}><Trash2 size={15} /> Remove from App</Button>
         </>
       }
     >
-      <div className="space-y-2 text-sm text-ink-soft">
+      <div className="space-y-2.5 text-[15px] text-mud-soft">
         {file ? (
-          <p><strong className="text-ink">{file}</strong> stays where it is. Import it again any time to bring the campaign back as it was last saved.</p>
+          <p><strong className="text-mud">{file}</strong> stays where it is. Import it again any time to bring the campaign back as it was last saved.</p>
         ) : campaign?.sourceName ? (
-          <p>The file it came from, <strong className="text-ink">{campaign.sourceName}</strong>, isn't touched.</p>
+          <p>The file it came from, <strong className="text-mud">{campaign.sourceName}</strong>, isn't touched.</p>
         ) : (
-          <p className="text-rose-700">It has never been saved to a file, so this removes it for good.</p>
+          <p className="font-semibold text-rose-700">It has never been saved to a file, so this removes it for good.</p>
         )}
         <p>Edits not yet saved with Save file go with it, as do its AI recipes and suggestions.</p>
       </div>

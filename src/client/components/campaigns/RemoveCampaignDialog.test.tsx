@@ -34,9 +34,9 @@ test("the dialog names the file that stays, sends waiting edits, then removes", 
       <RemoveCampaignDialog campaign={linked} onClose={() => calls.push("close")}
         beforeRemove={async () => { calls.push("flush"); }} onRemoved={() => calls.push("removed")} />,
     ));
-    expect(text()).toContain("Remove Base tracker from Mudd?");
+    expect(text()).toContain("Remove Base tracker from the app?");
     expect(text()).toContain("base-tracker.xlsx stays where it is");
-    const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Remove from Mudd"))!;
+    const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Remove from App"))!;
     await act(async () => {
       button.click();
       await new Promise((r) => setTimeout(r, 0));

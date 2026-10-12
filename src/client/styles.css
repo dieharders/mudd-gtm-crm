@@ -1,39 +1,121 @@
 @import 'tailwindcss';
 
+/* Bundled fonts (see fonts/README.md). Bun inlines them into the stylesheet as data: URLs, which the
+   CSP in index.html allows for fonts. Only the faces the app uses ship: Libron is always bold and
+   nothing is set in italic. */
+@font-face {
+  font-family: "Libron";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/Libron-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("./fonts/Nunito-Latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Comic Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/ComicMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Comic Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/ComicMono-Bold.woff2") format("woff2");
+}
+
 @theme {
-  --font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  /* Three bundled faces: Nunito for the UI, Libron for titles, Comic Mono for labels and tags. */
+  --font-sans: "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Libron", Georgia, "Times New Roman", serif;
+  --font-label: "Comic Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  /* Canvas and ink: cool, clean greys. */
-  --color-canvas: #f5f5f8;
-  --color-sidebar: #eeeef3;
-  --color-panel: #ffffff;
-  --color-line: #e4e4eb;
-  --color-line-strong: #d2d2dc;
-  --color-ink: #17161d;
-  --color-ink-soft: #55536a;
-  --color-ink-faint: #8e8ca3;
+  /* The paper look: a warm board, cream paper, mud ink, a brown rim, clay and lake accents. */
 
-  /* Brand: electric violet. */
-  --color-brand-50: #f4f1ff;
-  --color-brand-100: #ebe5ff;
-  --color-brand-200: #d8ccff;
-  --color-brand-300: #bba8ff;
-  --color-brand-400: #9c80ff;
-  --color-brand-500: #7c5cff;
-  --color-brand-600: #6744f5;
-  --color-brand-700: #5633d8;
-  --color-brand-800: #4528ad;
-  --color-brand-900: #36218a;
+  --color-board: #efe3cf;
+  --color-paper: #fbf5e8;
+  --color-paper-deep: #e9dcc3;
+  --color-mud: #2b1e16;
+  --color-mud-soft: #6a594b;
+  --color-mud-faint: #9a8a79;
+  /* Outlines and ledges: a softer brown than the ink. */
+  --color-rim: #7b5c48;
+  /* Dialog outlines: a deeper brown so modals stand off the dimmed board. */
+  --color-rim-deep: #4e392d;
+  --color-clay: #d97757;
+  --color-clay-deep: #b85c3c;
+  --color-clay-soft: #f7dacb;
+  --color-lake: #2e86de;
+  --color-lake-deep: #1b5fa8;
+  --color-lake-soft: #d7e8fa;
+  --color-note: #ffe68c;
+  --color-note-pink: #ffcbd5;
+  --color-note-mint: #cdefd9;
+  --color-leaf: #2f9e5b;
+  --color-rose: #e0405e;
+  --color-sun: #ffc533;
 
-  --animate-slide-in: slide-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-fade-in: fade-in 140ms ease-out both;
-  --animate-pop: pop 160ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  /* A ledge straight below the element, plus a soft drop shadow for depth. */
+  --shadow-hard-sm: 0 2px 0 0 var(--color-rim), 0 4px 10px -4px rgba(43, 30, 22, 0.22);
+  --shadow-hard-sm-clay: 0 2px 0 0 var(--color-clay), 0 4px 10px -4px rgba(43, 30, 22, 0.22);
+  --shadow-hard: 0 3px 0 0 var(--color-rim), 0 10px 22px -10px rgba(43, 30, 22, 0.3);
+  --shadow-hard-lg: 0 5px 0 0 var(--color-rim), 0 18px 30px -12px rgba(43, 30, 22, 0.35);
+  --shadow-dialog: 0 5px 0 0 var(--color-rim-deep), 0 18px 30px -12px rgba(43, 30, 22, 0.35);
+
+  /* The sidebar folds to an icon rail below this. */
+  --breakpoint-wide: 56.25rem;
+
+  /* The ways in fill `backwards` only: they end where the element rests anyway, and a transform
+     held after the end would keep the element a stacking context and the containing block of any
+     `fixed` dialog or menu inside it. The ways out fill `both`, holding their end until unmount. */
+  --animate-slide-in: slide-in 200ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  /* As long as RowDrawer's DRAWER_LEAVE_MS, which unmounts it once this is done. */
+  --animate-slide-out: slide-out 160ms cubic-bezier(0.55, 0, 1, 0.45) both;
+  --animate-drawer-in: drawer-in 260ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  /* Both kept as long as Pinboard's LEAVE_MS, which unmounts it once these are done. */
+  --animate-drawer-out: drawer-out 200ms cubic-bezier(0.55, 0, 1, 0.45) both;
+  --animate-fade-out: fade-out 200ms ease-in both;
+  --animate-fade-in: fade-in 140ms ease-out backwards;
+  --animate-pop: pop 160ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  /* Inside Modal's backdrop, which fades out alongside over its LEAVE_MS. */
+  --animate-pop-out: pop-out 160ms cubic-bezier(0.55, 0, 1, 0.45) both;
   --animate-float: float 6s ease-in-out infinite;
+  /* A page coming in: home, meetings, a campaign. Enter only; the old page is already gone. */
+  --animate-page-in: page-in 350ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  /* The sheet coming in on a new tab or view, under the toolbar that stays put. */
+  --animate-sheet-in: sheet-in 250ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  /* Toasts sit at the bottom of the window, so they rise from below it and sink back. */
+  --animate-toast-in: toast-in 380ms cubic-bezier(0.22, 1.2, 0.36, 1) backwards;
+  --animate-toast-out: toast-out 260ms cubic-bezier(0.55, 0, 1, 0.45) both;
 
+  @keyframes drawer-in {
+    from { transform: translateX(100%); }
+    to { transform: none; }
+  }
+  @keyframes drawer-out {
+    from { transform: none; }
+    to { transform: translateX(100%); }
+  }
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
   @keyframes slide-in {
     from { transform: translateX(24px); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes slide-out {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(24px); opacity: 0; }
   }
   @keyframes fade-in {
     from { opacity: 0; }
@@ -41,6 +123,26 @@
   }
   @keyframes pop {
     from { transform: translateY(6px) scale(0.97); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes pop-out {
+    from { transform: none; opacity: 1; }
+    to { transform: translateY(6px) scale(0.97); opacity: 0; }
+  }
+  @keyframes toast-in {
+    from { transform: translateY(160%); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes toast-out {
+    from { transform: none; opacity: 1; }
+    to { transform: translateY(160%); opacity: 0; }
+  }
+  @keyframes page-in {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes sheet-in {
+    from { transform: translateY(6px); opacity: 0; }
     to { transform: none; opacity: 1; }
   }
   @keyframes float {
@@ -52,43 +154,63 @@
 @layer base {
   html, body, #root { height: 100%; }
   body {
-    @apply bg-canvas text-ink font-sans antialiased;
-    font-size: 14px;
+    @apply bg-board font-sans text-mud antialiased;
+    font-size: 15px;
   }
-  ::selection { background: var(--color-brand-200); }
+  ::selection { background: var(--color-clay-soft); }
   button { cursor: pointer; }
   button:disabled { cursor: not-allowed; }
   input, textarea, select { font: inherit; color: inherit; }
-  :focus-visible { outline: 2px solid var(--color-brand-400); outline-offset: 1px; }
+  :focus-visible { outline: 2px solid var(--color-clay); outline-offset: 2px; }
 }
 
 @layer components {
   .field {
-    @apply w-full rounded-lg border border-line-strong bg-white px-3 py-2 text-sm text-ink outline-none transition
-      placeholder:text-ink-faint focus:border-brand-400 focus:ring-3 focus:ring-brand-100;
+    @apply w-full rounded-xl border-2 border-rim bg-paper px-4 py-2.5 font-sans text-[15px] text-mud outline-none transition
+      placeholder:text-mud-faint focus:border-clay focus:ring-3 focus:ring-clay-soft;
   }
   /* A dropdown in the app's own look, not WebKit's glossy macOS control: flat, with a chevron. */
   select.field {
     -webkit-appearance: none;
     appearance: none;
-    padding-right: 2rem;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8ca3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    padding-right: 2.5rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237b5c48' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 0.6rem center;
-    background-size: 14px 14px;
+    background-position: right 0.8rem center;
+    background-size: 16px 16px;
   }
   .label {
-    @apply mb-1 block text-xs font-medium text-ink-soft;
+    @apply mb-1.5 block font-label text-[13px] font-bold text-mud-soft;
   }
   .eyebrow {
-    @apply text-[11px] font-semibold tracking-wider text-ink-faint uppercase;
+    @apply font-label text-[13px] font-bold tracking-wide text-mud-faint uppercase;
   }
-  /* Clay-style tag: pastel fill, darker text. */
+  /* A pastel tag with a thin rim; the fill and text colour come from the caller. */
   .tag {
-    @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-rim/70 px-2 py-0.5 font-label text-[13px] leading-tight;
   }
   .card {
-    @apply rounded-2xl border border-line bg-panel shadow-[0_1px_2px_rgba(23,22,29,0.04),0_4px_16px_-8px_rgba(23,22,29,0.08)];
+    @apply rounded-2xl border-2 border-rim bg-paper shadow-hard;
   }
-  .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
+  .scroll-thin { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--color-rim) 45%, transparent) transparent; }
+
+  /* Buttons: a rimmed card on a ledge that presses down (see ui/Button.tsx for the variants). A
+     disabled one keeps its pointer events, so its title still explains why, but neither tints on
+     hover nor presses down. */
+  .btn {
+    @apply inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl border-2 border-rim bg-paper px-5 font-sans text-[15px]
+      font-extrabold whitespace-nowrap text-mud shadow-hard-sm transition select-none hover:bg-paper-deep active:translate-y-0.5
+      active:shadow-none disabled:opacity-50 disabled:hover:bg-paper disabled:active:translate-y-0 disabled:active:shadow-hard-sm;
+  }
+  .btn-primary {
+    @apply bg-clay text-paper hover:bg-clay-deep disabled:hover:bg-clay;
+  }
+  /* A sticky note: paper square with a push-pin through the top edge. */
+  .note {
+    @apply relative rounded-xl border-2 border-rim bg-note p-5 shadow-hard;
+  }
+  .pin {
+    @apply absolute -top-3 left-1/2 h-6 w-6 -translate-x-1/2 rounded-full border-2 border-rim bg-clay
+      shadow-[inset_-2px_-2px_0_0_rgba(0,0,0,0.25),inset_2px_2px_0_0_rgba(255,255,255,0.35),0_3px_5px_rgba(43,30,22,0.35)];
+  }
 }

@@ -8,7 +8,7 @@ import { api } from "../../lib/api";
 import { useCampaignList } from "../../lib/campaignList";
 import { cn } from "../../lib/cn";
 import { formatDateTime, isSameDay, parseLocal, relative, timeAgo } from "../../lib/format";
-import { tileFor, toneFor } from "../../lib/stages";
+import { campaignTileFor, toneFor } from "../../lib/stages";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
@@ -21,6 +21,17 @@ function greeting(): string {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
+/** A small sticky note pinned above a page title. */
+function PinnedNote({ children }: { children: ReactNode }) {
+  return (
+    <span className="relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-[15px] shadow-hard-sm">
+      <span className="pin scale-75" />
+      {children}
+    </span>
+  );
+}
+
+/** The home screen: a board with pinned cards. */
 export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
   const { campaigns, meetings } = useCampaignList();
   const [removing, setRemoving] = useState<CampaignSummary | null>(null);
@@ -32,36 +43,37 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
   );
 
   return (
-    <div className="h-full overflow-y-auto scroll-thin">
-      <div className="mx-auto max-w-6xl px-8 py-8">
-        <div className="mb-7 flex flex-wrap items-end gap-3">
+    <div className="h-full overflow-y-auto bg-board scroll-thin">
+      {/* The content rises in, not the page: a transform would pin the dialogs below to it while it runs. */}
+      <div className="mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
+        <div className="mb-10 flex flex-wrap items-end gap-4">
           <div className="mr-auto">
-            <p className="eyebrow mb-1">{greeting()} 👋</p>
-            <h1 className="text-[26px] font-bold tracking-tight">Your campaigns</h1>
+            <PinnedNote>{greeting()} 👋</PinnedNote>
+            <h1 className="font-display text-[40px] leading-none font-bold tracking-tight">Your campaigns</h1>
           </div>
           <Button onClick={startImport} disabled={busy}>
-            <FolderOpen size={16} /> {busy ? "Opening…" : "Import sheet"}
+            <FolderOpen size={18} /> {busy ? "Opening…" : "Import sheet"}
           </Button>
           <Button variant="primary" onClick={onNewCampaign}>
-            <Plus size={16} /> New campaign
+            <Plus size={18} /> New campaign
           </Button>
         </div>
 
         {campaigns === null ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {[0, 1].map((i) => <div key={i} className="h-44 animate-pulse rounded-2xl bg-zinc-200/60" />)}
+          <div className="grid gap-6 sm:grid-cols-2">
+            {[0, 1].map((i) => <div key={i} className="h-48 animate-pulse rounded-2xl border-2 border-dashed border-rim/50 bg-paper-deep" />)}
           </div>
         ) : campaigns.length === 0 ? (
           <Onboarding />
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-            <div className="min-w-0 space-y-5">
-              <div className="grid grid-cols-3 gap-3">
-                <StatCard tile="bg-violet-100 text-violet-700" icon={<Sparkles size={16} />} value={totals.prospects} label="prospects" />
-                <StatCard tile="bg-yellow-100 text-yellow-700" icon={<CalendarClock size={16} />} value={totals.meetings} label="meetings booked" />
-                <StatCard tile="bg-emerald-100 text-emerald-700" icon={<Workflow size={16} />} value={totals.signed} label="signed" />
+          <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
+            <div className="min-w-0 space-y-6">
+              <div className="grid gap-5 sm:grid-cols-3">
+                <StatCard tile="bg-clay-soft" icon={<Sparkles size={18} />} value={totals.prospects} label="total prospects" />
+                <StatCard tile="bg-note" icon={<CalendarClock size={18} />} value={totals.meetings} label="meetings booked" />
+                <StatCard tile="bg-note-mint" icon={<Workflow size={18} />} value={totals.signed} label="signed" />
               </div>
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-6 xl:grid-cols-2">
                 {campaigns.map((c) => <CampaignCard key={c.id} c={c} onRemove={() => setRemoving(c)} />)}
               </div>
             </div>
@@ -80,10 +92,10 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
 export function MeetingsPage() {
   const { meetings } = useCampaignList();
   return (
-    <div className="h-full overflow-y-auto scroll-thin">
-      <div className="mx-auto max-w-3xl px-8 py-8">
-        <p className="eyebrow mb-1">Calendar</p>
-        <h1 className="mb-6 text-[26px] font-bold tracking-tight">Meetings</h1>
+    <div className="h-full overflow-y-auto bg-board scroll-thin">
+      <div className="mx-auto max-w-3xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
+        <PinnedNote>Calendar</PinnedNote>
+        <h1 className="mb-8 font-display text-[40px] leading-none font-bold tracking-tight">Meetings</h1>
         <MeetingsCard meetings={meetings} />
       </div>
     </div>
@@ -92,43 +104,42 @@ export function MeetingsPage() {
 
 function StatCard({ tile, icon, value, label }: { tile: string; icon: ReactNode; value: number; label: string }) {
   return (
-    <div className="card flex items-center gap-3 px-4 py-3.5">
-      <Tile className={tile}>{icon}</Tile>
+    <div className="card flex items-center gap-4 px-5 py-4">
+      <Tile size="lg" className={cn("border-2 border-rim text-mud", tile)}>{icon}</Tile>
       <div>
-        <div className="text-xl leading-tight font-bold tabular-nums">{value}</div>
-        <div className="text-xs text-ink-faint">{label}</div>
+        <div className="font-display text-[30px] leading-none font-bold tabular-nums">{value}</div>
+        <div className="mt-1.5 font-label text-sm text-mud-soft">{label}</div>
       </div>
     </div>
   );
 }
 
-/** First run: the three steps, drawn like Clay's flow diagram. The page header has the buttons. */
+/** First run: the three steps as sticky notes pinned to a card. The page header has the buttons. */
 function Onboarding() {
   const steps = [
-    { tile: "bg-violet-100 text-violet-700", icon: <FileSpreadsheet size={18} />, title: "Bring your sheet", tags: [["Excel", "bg-violet-100 text-violet-800"], ["CSV", "bg-violet-100 text-violet-800"]], body: "Import a tracker, or start from a blank layout." },
-    { tile: "bg-sky-100 text-sky-700", icon: <Workflow size={18} />, title: "Work the pipeline", tags: [["Status", "bg-sky-100 text-sky-800"], ["Meetings", "bg-sky-100 text-sky-800"], ["Intro msgs", "bg-sky-100 text-sky-800"]], body: "Edit like a spreadsheet, track every touch." },
-    { tile: "bg-yellow-100 text-yellow-700", icon: <Download size={18} />, title: "Export it back", tags: [["Same formatting", "bg-yellow-100 text-yellow-800"], ["Formulas intact", "bg-yellow-100 text-yellow-800"]], body: "Your sheet, with every edit, exactly as it looked." },
+    { note: "bg-note -rotate-1", icon: <FileSpreadsheet size={18} />, title: "Bring your sheet", tags: ["Excel", "CSV"], body: "Import a tracker, or start from a blank layout." },
+    { note: "bg-note-pink rotate-1", icon: <Workflow size={18} />, title: "Work the pipeline", tags: ["Status", "Meetings", "Intro msgs"], body: "Edit like a spreadsheet, track every touch." },
+    { note: "bg-note-mint -rotate-1", icon: <Download size={18} />, title: "Export it back", tags: ["Same formatting", "Formulas intact"], body: "Your sheet, with every edit, exactly as it looked." },
   ];
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-500 via-violet-500 to-fuchsia-400 p-8 text-white shadow-lg">
-      <div className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full bg-white/10 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-yellow-300/20 blur-3xl" />
-      <h2 className="relative text-2xl font-bold tracking-tight">Start with a spreadsheet you already have.</h2>
-      <p className="relative mt-1 max-w-xl text-sm text-white/80">Everything stays on this computer. Drop a file anywhere on this window, or use Import sheet above.</p>
-      <div className="relative mt-7 grid items-stretch gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
+    <div className="card p-8 md:p-10">
+      <h2 className="font-display text-[28px] leading-tight font-bold tracking-tight">Start with a spreadsheet you already have.</h2>
+      <p className="mt-2 max-w-xl text-[15px] text-mud-soft">Everything stays on this computer. Drop a file anywhere on this window, or use Import sheet above.</p>
+      <div className="mt-10 grid items-stretch gap-8 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:gap-5">
         {steps.map((s, i) => (
           <div key={s.title} className="contents">
-            <div className="rounded-2xl bg-white p-4 text-ink shadow-md" style={{ animationDelay: `${i * 0.6}s` }}>
-              <div className="flex items-center gap-2.5">
-                <Tile className={s.tile}>{s.icon}</Tile>
-                <span className="font-semibold">{s.title}</span>
+            <div className={cn("note", s.note)}>
+              <span className="pin" />
+              <div className="flex items-center gap-3">
+                <Tile size="lg" className="border-2 border-rim bg-paper text-mud">{s.icon}</Tile>
+                <span className="font-display text-lg font-bold">{s.title}</span>
               </div>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {s.tags.map(([t, c]) => <span key={t} className={cn("tag", c)}>{t}</span>)}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {s.tags.map((t) => <span key={t} className="tag bg-paper/70 font-bold">{t}</span>)}
               </div>
-              <p className="mt-2.5 text-xs text-ink-soft">{s.body}</p>
+              <p className="mt-3 font-label text-sm text-mud-soft">{s.body}</p>
             </div>
-            {i < steps.length - 1 && <ArrowRight className="hidden self-center text-white/80 md:block" size={20} />}
+            {i < steps.length - 1 && <ArrowRight className="hidden self-center text-rim md:block" size={26} strokeWidth={2.5} />}
           </div>
         ))}
       </div>
@@ -146,43 +157,40 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
       tabIndex={0}
       onClick={() => void navigate(`/c/${c.id}`)}
       onKeyDown={(e) => { if (e.key === "Enter") void navigate(`/c/${c.id}`); }}
-      className="card group cursor-pointer p-5 transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-[0_8px_30px_-12px_rgba(103,68,245,0.35)]"
+      className="card group cursor-pointer p-6 transition hover:-translate-y-0.5 hover:shadow-hard-lg"
     >
-      <div className="flex items-start gap-3">
-        <Tile size="lg" className={tileFor(c.id)}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
+      <div className="flex items-start gap-4">
+        <Tile size="lg" className={cn("text-lg", campaignTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[15px] font-semibold group-hover:text-brand-700">{c.name}</h3>
-          <p className="truncate text-xs text-ink-faint">
+          <h3 className="truncate font-display text-[21px] leading-tight font-bold group-hover:text-clay-deep">{c.name}</h3>
+          <p className="mt-0.5 truncate text-[13px] text-mud-faint">
             {c.sourceName ? <>From {c.sourceName}</> : "Created in Mudd"} · {timeAgo(c.updatedAt)}
           </p>
         </div>
         <div onClick={(e) => e.stopPropagation()}>
           <Popover align="right" trigger={({ toggle }) => (
-            <button className="rounded-md p-1 text-ink-faint hover:bg-zinc-100 hover:text-ink" onClick={toggle} aria-label="Campaign menu">
-              <MoreHorizontal size={18} />
-            </button>
+            <Button size="icon" variant="ghost" className="-mt-2 -mr-2" onClick={toggle} aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
           )}>
-            {(close) => <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); onRemove(); }} hint="The file stays">Remove from Mudd</MenuItem>}
+            {(close) => <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); onRemove(); }} hint="The file stays">Remove from App</MenuItem>}
           </Popover>
         </div>
       </div>
 
-      <div className="mt-4 flex items-baseline gap-5">
-        <div><span className="text-2xl font-bold tabular-nums">{c.prospects}</span> <span className="text-xs text-ink-faint">prospects</span></div>
-        <div className="text-xs text-ink-faint"><span className="font-semibold text-ink-soft tabular-nums">{c.screened}</span> screened out</div>
+      <div className="mt-5">
+        <span className="font-display text-[30px] font-bold tabular-nums">{c.prospects}</span> <span className="font-label text-sm text-mud-faint">prospects</span>
       </div>
 
-      <div className="mt-3 flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-zinc-100">
+      <div className="mt-4 flex h-4 gap-0.5 overflow-hidden rounded-full border-2 border-rim bg-paper-deep p-px">
         {stages.map((s) => {
           const n = c.byStatus[s] ?? 0;
           if (!n) return null;
           return <div key={s} title={`${s}: ${n}`} className={cn("rounded-full", toneFor(s, c.stages).bar)} style={{ width: `${(n / total) * 100}%` }} />;
         })}
       </div>
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-4 flex flex-wrap gap-2">
         {stages.filter((s) => c.byStatus[s]).map((s) => (
           <span key={s} className={cn("tag", toneFor(s, c.stages).pill)}>
-            {s} <span className="opacity-60 tabular-nums">{c.byStatus[s]}</span>
+            <span className="font-bold">{s}</span> <span className="tabular-nums">{c.byStatus[s]}</span>
           </span>
         ))}
       </div>
@@ -190,6 +198,7 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
   );
 }
 
+/** Upcoming meetings across every campaign, and those still marked booked after their time. */
 function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number }) {
   const now = new Date();
   const soon = meetings.filter((m) => {
@@ -201,24 +210,24 @@ function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number
     return d && d < now && !isSameDay(d, now) && m.status === MEETING_STAGE;
   });
   return (
-    <div className="card p-4">
-      <h2 className="flex items-center gap-2.5 text-sm font-semibold">
-        <Tile size="sm" className="bg-yellow-100 text-yellow-700"><CalendarClock size={13} /></Tile> Upcoming meetings
+    <div className="card p-5">
+      <h2 className="flex items-center gap-3 font-display text-lg font-bold">
+        <Tile className="border-2 border-rim bg-note text-mud"><CalendarClock size={16} /></Tile> Upcoming meetings
       </h2>
       {soon.length === 0 ? (
-        <div className="mt-3 rounded-xl bg-zinc-50 px-3 py-4 text-center text-xs text-ink-faint">
-          Nothing booked yet. Set a prospect to <span className="tag bg-yellow-100 text-yellow-800">Meeting booked</span> and add the link and time.
+        <div className="mt-4 rounded-xl border-2 border-dashed border-rim/50 px-4 py-5 text-center font-label text-[13px] leading-relaxed text-mud-soft">
+          Nothing booked yet. Set a prospect to <span className="tag bg-note">Meeting booked</span> and add the link and time.
         </div>
       ) : (
-        <ul className="mt-3 space-y-2">
-          {soon.slice(0, limit ?? 100).map((m) => <MeetingItem key={m.rowId} m={m} />)}
+        <ul className="mt-6 space-y-5 px-1">
+          {soon.slice(0, limit ?? 100).map((m, i) => <MeetingItem key={m.rowId} m={m} tilt={i} />)}
         </ul>
       )}
       {stale.length > 0 && (
         <>
-          <h3 className="eyebrow mt-5">Past · still “Meeting booked”</h3>
-          <ul className="mt-2 space-y-2">
-            {stale.slice(-(limit ?? 100)).reverse().map((m) => <MeetingItem key={m.rowId} m={m} past />)}
+          <h3 className="mt-6 font-label text-[13px] text-mud-faint">Past · still “Meeting booked”</h3>
+          <ul className="mt-5 space-y-5 px-1">
+            {stale.slice(-(limit ?? 100)).reverse().map((m, i) => <MeetingItem key={m.rowId} m={m} past tilt={i} />)}
           </ul>
         </>
       )}
@@ -226,26 +235,29 @@ function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number
   );
 }
 
-function MeetingItem({ m, past }: { m: Meeting; past?: boolean }) {
+/**
+ * One meeting, pinned to the card like a note; `tilt` alternates the lean down the list. Today's
+ * is a yellow note, so the one to join today stands out from the blue ones still to come.
+ */
+function MeetingItem({ m, past, tilt = 0 }: { m: Meeting; past?: boolean; tilt?: number }) {
   const d = parseLocal(m.at);
-  const today = d && isSameDay(d, new Date());
+  const today = !past && !!d && isSameDay(d, new Date());
+  const ink = past ? "text-mud-faint" : today ? "text-mud-soft" : "text-lake-deep";
   return (
-    <li className={cn("rounded-xl border p-2.5 transition hover:border-brand-200", today ? "border-yellow-300 bg-yellow-50" : "border-line bg-white")}>
+    <li className={cn("relative rounded-xl border-2 border-rim p-3.5 pt-4 shadow-hard transition", past ? "bg-paper" : today ? "bg-note" : "bg-lake-soft", tilt % 2 ? "rotate-[0.8deg]" : "-rotate-[0.8deg]")}>
+      <span className="pin scale-75" />
       <Link to={`/c/${m.campaignId}?row=${m.rowId}`} className="block">
-        <div className="truncate text-sm font-medium">{m.title}</div>
-        <div className="truncate text-xs text-ink-faint">{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
+        <div className="truncate text-[15px] font-extrabold">{m.title}</div>
+        <div className={cn("truncate text-[13px]", ink)}>{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
       </Link>
-      <div className="mt-1.5 flex items-center gap-2">
-        <span className={cn("text-xs", past ? "text-ink-faint" : "text-ink-soft")}>
-          {formatDateTime(m.at)} · <span className={today ? "font-semibold text-yellow-800" : ""}>{relative(m.at)}</span>
+      <div className="mt-2.5 flex items-center gap-2">
+        <span className={cn("text-[13px]", ink)}>
+          {formatDateTime(m.at)} · <span className={past ? "" : today ? "font-bold text-clay-deep" : "font-bold"}>{relative(m.at)}</span>
         </span>
         {m.url && !past && (
-          <button
-            className="ml-auto inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-0.5 text-xs font-medium text-white shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)] hover:bg-brand-600"
-            onClick={() => fire(api.openUrl(m.url!))}
-          >
-            <Video size={12} /> Join
-          </button>
+          <Button size="xs" variant="primary" className="ml-auto" onClick={() => fire(api.openUrl(m.url!))}>
+            <Video size={14} /> Join
+          </Button>
         )}
       </div>
     </li>

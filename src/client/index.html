@@ -3,16 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Nothing leaves this machine: every script, style, image and request is same-origin. -->
+    <!-- Nothing leaves this machine: every script, style, image and request is same-origin. Fonts are
+         data: URLs because Bun inlines the bundled files (src/client/fonts) into the stylesheet. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; font-src 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; font-src 'self' data:"
     />
     <title>Mudd</title>
     <!-- The GENERATED stylesheet (bun run build:css), not styles.css: Tailwind v4 needs its own CLI. -->
     <link rel="stylesheet" href="./generated.css" />
     <style>
-      html { background-color: #f7f5f2; }
+      html { background-color: #efe3cf; }
     </style>
   </head>
   <body>

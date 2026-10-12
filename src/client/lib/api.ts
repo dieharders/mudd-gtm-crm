@@ -152,6 +152,8 @@ export const api = {
    */
   saveFile: (id: string, opts: { force?: boolean; copy?: boolean } = {}) =>
     call<SaveResult>("POST", `/api/campaigns/${id}/save`, opts),
+  /** Show the campaign's linked file in its folder. */
+  revealFile: (id: string) => call<{ ok: true }>("POST", `/api/campaigns/${id}/reveal`),
 
   openDialog: () => call<DialogResult>("POST", "/api/dialog/open"),
   openUrl: (url: string) => call<{ ok: true }>("POST", "/api/open-url", { url }),
@@ -179,6 +181,8 @@ export const api = {
   deleteRecipe: (rid: string) => call<{ ok: true }>("DELETE", `/api/recipes/${rid}`),
 
   runs: (id: string) => call<EnrichRun[]>("GET", `/api/campaigns/${id}/runs`),
+  /** The rows each recipe's runs finished, over every run kept (runs lists only the latest): recipe id → row ids. */
+  finishedRows: (id: string) => call<Record<string, string[]>>("GET", `/api/campaigns/${id}/runs/finished`),
   startRun: (id: string, body: { kind: RunKind; recipeId?: string; rowIds: string[]; test?: boolean; autoFill?: boolean; concurrency?: number; intro?: IntroOptions }) =>
     call<EnrichRun>("POST", `/api/campaigns/${id}/runs`, body),
   runAction: (rid: string, action: "pause" | "resume" | "stop") => call<EnrichRun>("POST", `/api/runs/${rid}/${action}`),

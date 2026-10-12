@@ -67,6 +67,7 @@ export function registerAiRoutes(on: On, { json, body, fail }: { json: Json; bod
 
   // ----- runs -----
   on("GET", "/api/campaigns/:id/runs", (_req, [id]) => json(recentRuns(id!)));
+  on("GET", "/api/campaigns/:id/runs/finished", (_req, [id]) => json(store.finishedRows(id!)));
   on("POST", "/api/campaigns/:id/runs", async (req, [id]) => {
     mustCampaign(id!);
     const b = await body<{ kind: RunKind; recipeId?: string; rowIds: string[]; test?: boolean; autoFill?: boolean; concurrency?: number; intro?: IntroOptions }>(req);
