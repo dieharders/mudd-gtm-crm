@@ -22,6 +22,16 @@ function greeting(): string {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
+/** A small sticky note pinned above a page title. */
+function PinnedNote({ children }: { children: ReactNode }) {
+  return (
+    <span className="relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-[15px] shadow-hard-sm">
+      <span className="pin scale-75" />
+      {children}
+    </span>
+  );
+}
+
 /** The home screen: a board with pinned cards. */
 export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
   const { campaigns, meetings } = useCampaignList();
@@ -38,10 +48,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
       <div className="mx-auto max-w-6xl px-6 py-8 md:px-10 md:py-10">
         <div className="mb-10 flex flex-wrap items-end gap-4">
           <div className="mr-auto">
-            <span className="relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-[15px] shadow-hard-sm">
-              <span className="pin scale-75" />
-              {greeting()} 👋
-            </span>
+            <PinnedNote>{greeting()} 👋</PinnedNote>
             <h1 className="font-display text-[40px] leading-none font-bold tracking-tight">Your campaigns</h1>
           </div>
           <Button onClick={startImport} disabled={busy}>
@@ -87,7 +94,7 @@ export function MeetingsPage() {
   return (
     <div className="h-full overflow-y-auto bg-board scroll-thin">
       <div className="mx-auto max-w-3xl px-6 py-8 md:px-10 md:py-10">
-        <p className="eyebrow mb-2">Calendar</p>
+        <PinnedNote>Calendar</PinnedNote>
         <h1 className="mb-8 font-display text-[40px] leading-none font-bold tracking-tight">Meetings</h1>
         <MeetingsCard meetings={meetings} />
       </div>
