@@ -822,7 +822,6 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
   return (
     <>
       <SelectionCount n={rows.length} />
-      {activeIds.length > 0 && screenedIds.length > 0 && <span className="font-label text-[13px] text-mud-faint">({screenedIds.length} screened out)</span>}
       {activeIds.length > 0 && (
         <>
           <ScreenOutButton count={activeIds.length} onConfirm={(reason) => {

@@ -175,9 +175,8 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
         </div>
       </div>
 
-      <div className="mt-5 flex items-baseline gap-6">
-        <div><span className="font-display text-[30px] font-bold tabular-nums">{c.prospects}</span> <span className="font-label text-sm text-mud-faint">prospects</span></div>
-        <div className="font-label text-sm text-mud-faint"><span className="font-bold text-mud-soft tabular-nums">{c.screened}</span> screened out</div>
+      <div className="mt-5">
+        <span className="font-display text-[30px] font-bold tabular-nums">{c.prospects}</span> <span className="font-label text-sm text-mud-faint">prospects</span>
       </div>
 
       <div className="mt-4 flex h-4 gap-0.5 overflow-hidden rounded-full border-2 border-rim bg-paper-deep p-px">
