@@ -62,7 +62,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
           <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
             <div className="min-w-0 space-y-6">
               <div className="grid gap-5 sm:grid-cols-3">
-                <StatCard tile="bg-clay-soft" icon={<Sparkles size={18} />} value={totals.prospects} label="prospects" />
+                <StatCard tile="bg-clay-soft" icon={<Sparkles size={18} />} value={totals.prospects} label="total prospects" />
                 <StatCard tile="bg-note" icon={<CalendarClock size={18} />} value={totals.meetings} label="meetings booked" />
                 <StatCard tile="bg-note-mint" icon={<Workflow size={18} />} value={totals.signed} label="signed" />
               </div>
@@ -170,7 +170,7 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
       </div>
 
       <div className="mt-5 flex items-baseline gap-6">
-        <div><span className="font-display text-[30px] font-bold tabular-nums">{c.prospects}</span> <span className="font-label text-sm text-mud-faint">total prospects</span></div>
+        <div><span className="font-display text-[30px] font-bold tabular-nums">{c.prospects}</span> <span className="font-label text-sm text-mud-faint">prospects</span></div>
         <div className="font-label text-sm text-mud-faint"><span className="font-bold text-mud-soft tabular-nums">{c.screened}</span> screened out</div>
       </div>
 
