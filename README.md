@@ -11,7 +11,7 @@ Open your Excel or CSV lead tracker in Mudd and edit it like a CRM. Track each c
 - **Private by design**: your data stays on your computer. There's no account, no cloud service and no API key. The AI runs through your own Claude Code or Codex sign-in and bills the plan you already pay for.
 - **Free**: for Windows, macOS and Linux.
 
-![Mudd home: start from a spreadsheet you already have](docs/screenshots/home.webp)
+![Mudd home: your campaigns, pipeline totals and upcoming meetings](docs/screenshots/home.webp)
 
 <table>
   <tr>

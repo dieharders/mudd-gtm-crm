@@ -238,18 +238,16 @@ function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number
 
 /** One meeting, pinned to the card like a note; `tilt` alternates the lean down the list. */
 function MeetingItem({ m, past, tilt = 0 }: { m: Meeting; past?: boolean; tilt?: number }) {
-  const d = parseLocal(m.at);
-  const today = d && isSameDay(d, new Date());
   return (
-    <li className={cn("relative rounded-xl border-2 border-rim p-3.5 pt-4 shadow-hard transition", today ? "bg-lake-soft" : "bg-paper", tilt % 2 ? "rotate-[0.8deg]" : "-rotate-[0.8deg]")}>
+    <li className={cn("relative rounded-xl border-2 border-rim p-3.5 pt-4 shadow-hard transition", past ? "bg-paper" : "bg-lake-soft", tilt % 2 ? "rotate-[0.8deg]" : "-rotate-[0.8deg]")}>
       <span className="pin scale-75" />
       <Link to={`/c/${m.campaignId}?row=${m.rowId}`} className="block">
         <div className="truncate text-[15px] font-extrabold">{m.title}</div>
-        <div className="truncate text-[13px] text-mud-faint">{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
+        <div className={cn("truncate text-[13px]", past ? "text-mud-faint" : "text-lake-deep")}>{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
       </Link>
       <div className="mt-2.5 flex items-center gap-2">
-        <span className={cn("text-[13px]", past ? "text-mud-faint" : "text-mud-soft")}>
-          {formatDateTime(m.at)} · <span className={today ? "font-bold text-lake-deep" : ""}>{relative(m.at)}</span>
+        <span className={cn("text-[13px]", past ? "text-mud-faint" : "text-lake-deep")}>
+          {formatDateTime(m.at)} · <span className={past ? "" : "font-bold"}>{relative(m.at)}</span>
         </span>
         {m.url && !past && (
           <Button size="xs" variant="primary" className="ml-auto" onClick={() => fire(api.openUrl(m.url!))}>
