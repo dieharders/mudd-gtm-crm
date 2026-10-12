@@ -1,5 +1,5 @@
 import {
-  ArchiveRestore, Building2, Columns3, FileSpreadsheet, FolderOpen, Inbox, Loader2, MessageSquareText, MoreHorizontal, Plus,
+  ArchiveRestore, Building2, Columns3, FileSpreadsheet, FolderOpen, Inbox, ListChecks, Loader2, MessageSquareText, MoreHorizontal, Plus,
   Loader2 as Spinner, MessageSquarePlus, Radar, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -31,7 +31,8 @@ import { RowDrawer } from "../row/RowDrawer";
 import { cardLayout, groupableColumns, pinnedCount } from "../../lib/listLayout";
 import { TemplatesPanel } from "../templates/TemplatesPanel";
 import { Button } from "../ui/Button";
-import { MenuItem, MenuSeparator, Popover } from "../ui/Menu";
+import { MenuItem, Popover } from "../ui/Menu";
+import { PinCard, Pinboard, PinGroup, type PinCardProps } from "../ui/Pinboard";
 import { undoToast } from "../ui/Toaster";
 import { RemoveCampaignDialog } from "../campaigns/RemoveCampaignDialog";
 import { ColumnsDialog } from "./ColumnsDialog";
@@ -126,6 +127,9 @@ function CampaignView({ state }: { state: CampaignState }) {
   // The Discover panel, open on one of its sections.
   const [showDiscover, setShowDiscover] = useState<DiscoverSection | null>(null);
   const [removing, setRemoving] = useState(false);
+  // The overflow drawer: the campaign's workspaces and file actions, pinned up as cards.
+  const [showMore, setShowMore] = useState(false);
+  const closeMore = useCallback(() => setShowMore(false), []);
   const navigate = useNavigate();
   // One consent dialog for both: enrichment and Discovery each ask the same thing once.
   const consent = useConsentGate();
@@ -138,6 +142,8 @@ function CampaignView({ state }: { state: CampaignState }) {
     return m;
   }, [enrich.suggestions]);
   const liveRun = enrich.activeRuns[0];
+  // Suggestions to review and companies in the inbox: badged on the overflow button, which holds them.
+  const waiting = enrich.suggestions.length + (discovery.enabled ? discovery.inbox.length : 0);
   const grid = useRef<GridHandle>(null);
   const { refresh: refreshList } = useCampaignList();
   const [view, setView] = useStoredState<"table" | "reading">(`mudd:view:${campaign.id}`, "table");
@@ -347,53 +353,45 @@ function CampaignView({ state }: { state: CampaignState }) {
             {liveRun.label}: {liveRun.completed + liveRun.failed}/{liveRun.total}{liveRun.status === "paused" ? " · paused" : ""}
           </button>
         )}
-        {enrich.suggestions.length > 0 && (
-          <Button onClick={() => setShowReview(true)} className="bg-note hover:bg-note/70">
-            Review <span className="rounded-md border border-rim/60 bg-paper px-1.5 font-label text-[12px] font-bold">{enrich.suggestions.length}</span>
-          </Button>
-        )}
-        {discovery.enabled && (
-          <>
-            {liveDiscovery && (
-              <button onClick={() => setShowDiscover("find")} className="tag h-9 rounded-lg bg-note-mint px-3 font-bold text-mud hover:bg-note-mint/70" title="Open the running Discovery">
-                <Spinner size={12} className={liveDiscovery.status === "running" ? "animate-spin" : ""} />
-                {liveDiscovery.kind === "find" ? `Discovery: ${liveDiscovery.found}/${liveDiscovery.target} found` : liveDiscovery.kind === "map" ? "Mapping…" : "Drafting thesis…"}{liveDiscovery.status === "paused" ? " · paused" : ""}
-              </button>
-            )}
-            {discovery.inbox.length > 0 && (
-              <Button onClick={() => setShowDiscover("inbox")} className="bg-note-mint hover:bg-note-mint/70">
-                <Inbox size={16} /> Inbox <span className="rounded-md border border-rim/60 bg-paper px-1.5 font-label text-[12px] font-bold">{discovery.inbox.length}</span>
-              </Button>
-            )}
-            <Button variant="subtle" onClick={() => setShowDiscover(discovery.inbox.length ? "inbox" : "find")}>
-              <Radar size={16} /> Discover
-            </Button>
-          </>
+        {discovery.enabled && liveDiscovery && (
+          <button onClick={() => setShowDiscover("find")} className="tag h-9 rounded-lg bg-note-mint px-3 font-bold text-mud hover:bg-note-mint/70" title="Open the running Discovery">
+            <Spinner size={12} className={liveDiscovery.status === "running" ? "animate-spin" : ""} />
+            {liveDiscovery.kind === "find" ? `Discovery: ${liveDiscovery.found}/${liveDiscovery.target} found` : liveDiscovery.kind === "map" ? "Mapping…" : "Drafting thesis…"}{liveDiscovery.status === "paused" ? " · paused" : ""}
+          </button>
         )}
         <ExportMenu campaign={campaign} state={state} />
-        <Popover align="right" trigger={({ toggle }) => (
-          <Button size="icon" variant="ghost" onClick={toggle} title="More" aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
-        )}>
-          {(close) => (
-            <>
-              <MenuItem icon={<MessageSquareText size={15} />} onClick={() => { close(); setShowTemplates(true); }}>
-                <span className="flex items-center justify-between gap-3">
-                  Templates
-                  {state.templates.length > 0 && <span className="rounded-md border border-rim/60 bg-paper-deep px-1.5 font-label text-[12px] font-bold text-mud-soft">{state.templates.length}</span>}
-                </span>
-              </MenuItem>
-              <MenuItem icon={<Columns3 size={15} />} onClick={() => { close(); setShowColumns(true); }}>Columns</MenuItem>
-              <MenuSeparator />
-              {campaign.sourcePath && (
-                <MenuItem icon={<FolderOpen size={15} />} onClick={() => { close(); fire(api.revealFile(campaign.id)); }} hint={<span className="block max-w-72 whitespace-normal break-all">{campaign.sourcePath}</span>}>
-                  Show in folder
-                </MenuItem>
-              )}
-              <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); setRemoving(true); }} hint="The file stays">Remove from Mudd</MenuItem>
-            </>
+        <span className="relative inline-flex">
+          <Button size="icon" variant="ghost" onClick={() => setShowMore(true)} title="More" aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
+          {waiting > 0 && (
+            <span className="pointer-events-none absolute -top-1 -right-1 rounded-full border border-rim bg-clay px-1.5 font-label text-[11px] leading-5 font-bold text-paper tabular-nums" title={`${waiting} waiting for you`}>
+              {waiting}
+            </span>
           )}
-        </Popover>
+        </span>
       </div>
+      <Pinboard open={showMore} title={campaign.name} onClose={closeMore}>
+          {/* Numbered across both groups, so no two neighbours lean the same way. */}
+          {(() => {
+            const pick = (open: () => void) => () => { closeMore(); open(); };
+            const work: Omit<PinCardProps, "index">[] = [
+              ...(enrich.suggestions.length ? [{ tone: "bg-note", icon: <ListChecks size={18} />, label: "Review", count: enrich.suggestions.length, hint: "AI suggestions to accept", onClick: pick(() => setShowReview(true)) }] : []),
+              ...(discovery.enabled && discovery.inbox.length ? [{ tone: "bg-note-mint", icon: <Inbox size={18} />, label: "Inbox", count: discovery.inbox.length, hint: "Companies found for you", onClick: pick(() => setShowDiscover("inbox")) }] : []),
+              ...(discovery.enabled ? [{ tone: "bg-clay-soft", icon: <Radar size={18} />, label: "Discover", hint: "Find new prospects", onClick: pick(() => setShowDiscover(discovery.inbox.length ? "inbox" : "find")) }] : []),
+              { tone: "bg-paper", icon: <MessageSquareText size={18} />, label: "Templates", count: state.templates.length, hint: "Intro/outreach messages", onClick: pick(() => setShowTemplates(true)) },
+              { tone: "bg-paper", icon: <Columns3 size={18} />, label: "Columns", hint: onContacts ? "Of the contacts list" : "Of the prospects list", onClick: pick(() => setShowColumns(true)) },
+            ];
+            const file: Omit<PinCardProps, "index">[] = [
+              ...(campaign.sourcePath ? [{ icon: <FolderOpen size={18} />, label: "Show in folder", hint: campaign.sourcePath, title: campaign.sourcePath, onClick: pick(() => fire(api.revealFile(campaign.id))) }] : []),
+              { tone: "bg-note-pink", danger: true, icon: <Trash2 size={18} />, label: "Remove from App", hint: "The file stays", onClick: pick(() => setRemoving(true)) },
+            ];
+            return (
+              <>
+                <PinGroup label="Work">{work.map((c, i) => <PinCard key={c.label} index={i} {...c} />)}</PinGroup>
+                <PinGroup label="File">{file.map((c, i) => <PinCard key={c.label} index={work.length + i} {...c} />)}</PinGroup>
+              </>
+            );
+          })()}
+      </Pinboard>
 
       {/* toolbar: what the sheet shows */}
       <div className="flex min-h-16 flex-wrap items-center gap-3 px-6 pt-3 pb-16">

@@ -1,6 +1,6 @@
 /**
- * The campaign page's toolbar: the Discover button is there for a Discovery campaign (one with
- * a thesis) and not for any other. The page is rendered whole, so its hooks run as they do in
+ * The campaign page's overflow drawer: its Discover card is there for a Discovery campaign (one
+ * with a thesis) and not for any other. The page is rendered whole, so its hooks run as they do in
  * the app, with the API, the AI status and the event stream faked.
  */
 import { afterAll, expect, mock, test } from "bun:test";
@@ -60,25 +60,34 @@ async function mount(id: string) {
     await new Promise((r) => setTimeout(r, 10));
   });
   const button = (text: string) => [...el.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
-  return { el, button, unmount: async () => { await act(() => root.unmount()); el.remove(); } };
+  // The overflow drawer's cards: a label, then a hint under it.
+  const card = (label: string) => [...el.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.startsWith(label));
+  const openMore = () => act(() => (el.querySelector('[aria-label="Campaign menu"]') as HTMLButtonElement).click());
+  return { el, button, card, openMore, unmount: async () => { await act(() => root.unmount()); el.remove(); } };
 }
 
-test("the Discover button shows only on a Discovery campaign, whose empty list points at the inbox", async () => {
+test("the Discover card shows only on a Discovery campaign, whose empty list points at the inbox", async () => {
   const restoreConsole = failOnConsoleError();
   const plain = await mount("plain");
   try {
     expect((plain.el.querySelector('input[aria-label="Campaign name"]') as HTMLInputElement).value).toBe("Plain");
-    expect(plain.button("Enrich")).toBeDefined();
-    expect(plain.button("Discover")).toBeUndefined();
     expect(plain.el.textContent).toContain("Add your first prospect");
+    await plain.openMore();
+    expect(plain.card("Templates")).toBeDefined();
+    expect(plain.card("Discover")).toBeUndefined();
   } finally {
     await plain.unmount();
   }
   const disco = await mount("disco");
   try {
     expect((disco.el.querySelector('input[aria-label="Campaign name"]') as HTMLInputElement).value).toBe("Disco");
-    expect(disco.button("Discover")).toBeDefined();
     expect(disco.el.textContent).toContain("once you accept them from the Discovery inbox");
+    await disco.openMore();
+    expect(disco.card("Discover")).toBeDefined();
+    await act(() => (disco.el.querySelector('[role="dialog"] [aria-label="Close"]') as HTMLButtonElement).click());
+    // It slides out before it goes.
+    await act(() => new Promise((r) => setTimeout(r, 250)));
+    expect(disco.el.querySelector('[role="dialog"]')).toBeNull();
     // Opens the panel on the thesis, the first thing to do before any run.
     await act(() => disco.button("Open Discover")!.click());
     expect(disco.el.textContent).toContain("Discover prospects");
