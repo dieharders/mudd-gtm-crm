@@ -5,7 +5,7 @@
  * opening that contact in the prospect panel.
  */
 import { AlertTriangle, Ban, CalendarClock, ExternalLink, Mail, MessageSquareText, Phone, Star, Users } from "lucide-react";
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { contactSchema } from "../../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Column, type Row } from "../../../shared/types";
 import { contactLabel, orderedContacts, primaryOf, toNumber } from "../../../shared/values";
@@ -41,8 +41,9 @@ export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenR
   const groupCol = schema.columns.find((c) => c.key === groupBy);
 
   return (
-    <div className="h-full overflow-y-auto scroll-thin">
-      <div className="mx-auto max-w-4xl px-6 py-5">
+    // A container, so the cards tile into more columns as the view (not the window) widens.
+    <div className="@container h-full overflow-y-auto scroll-thin">
+      <div className="mx-auto max-w-4xl px-6 py-5 @[75rem]:max-w-[120rem]">
         {groups.map((g) => (
           <section key={g.label} className="mb-8 last:mb-2">
             {groupCol && (
@@ -56,7 +57,7 @@ export function ProspectList({ rows, schema, stages, groupBy, openRowId, onOpenR
                 <span className="eyebrow ml-auto normal-case tabular-nums">Count: {g.rows.length}</span>
               </div>
             )}
-            <div className="space-y-3">
+            <div className="grid gap-3 @[75rem]:grid-cols-2 @[112rem]:grid-cols-3">
               {g.rows.map((row) => {
                 const contacts = contactsOf(row.id);
                 const pendingCount = [row, ...contacts].reduce((n, r) => n + (pending?.get(r.id)?.size ?? 0), 0);
@@ -142,12 +143,12 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
       onKeyDown={(e) => e.target === e.currentTarget && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 220px" }}
       className={cn(
-        "group grid cursor-pointer gap-5 rounded-2xl border-2 bg-paper p-5 transition sm:grid-cols-[124px_1fr]",
+        "group grid cursor-pointer gap-3 rounded-2xl border-2 bg-paper p-5 transition",
         active ? "border-clay shadow-hard-sm-clay" : "border-rim/40 hover:border-clay hover:shadow-hard-sm-clay",
         screened ? "bg-paper-deep/40 opacity-60 hover:opacity-80" : dead && "opacity-70",
       )}
     >
-      <div className="flex flex-row flex-wrap items-start gap-2 sm:flex-col">
+      <div className="flex flex-wrap items-start gap-2 empty:hidden">
         {screened && <span className="tag bg-paper-deep text-mud-soft"><Ban size={12} /> Screened out</span>}
         {schema.statusKey && <StatusPill value={status || "No status"} stages={stages} />}
         {tier && !hideTier && <span className="tag bg-paper-deep text-mud-soft">{schema.columns.find((x) => x.key === layout.tierKey)?.header ?? "Tier"} {tier}</span>}
@@ -174,14 +175,14 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
         )}
 
         {paragraphs.length > 0 && (
-          <div className="mt-3 space-y-2.5">
+          <ScrollText className="mt-3 space-y-2.5">
             {paragraphs.map((p, i) => (
               <p key={p.col.key} className={cn("max-w-prose text-[13.5px] leading-relaxed whitespace-pre-line", i === 0 ? "text-mud" : "text-mud-soft")}>
-                {paragraphs.length > 1 && <span className="mr-1.5 text-[10.5px] font-semibold tracking-wider text-mud-faint uppercase">{p.col.header}</span>}
+                {paragraphs.length > 1 && <span className="mr-1.5 text-[10.5px] font-bold tracking-wider text-mud uppercase">{p.col.header}</span>}
                 {p.v}
               </p>
             ))}
-          </div>
+          </ScrollText>
         )}
 
         {contacts.length > 0 && <ContactChips contacts={contacts} schema={schema} onOpenContact={onOpenContact} onMore={onOpen} />}
@@ -234,6 +235,38 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
     </article>
   );
 });
+
+/**
+ * A card's long text, capped in height so one prospect's notes don't stretch its row. The rest
+ * scrolls in place, and a fade at the bottom says there is more while there is.
+ */
+function ScrollText({ className, children }: { className?: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  const measure = () => {
+    const el = ref.current;
+    if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+  };
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [children]);
+  return (
+    <div
+      ref={ref}
+      onScroll={measure}
+      tabIndex={more ? 0 : -1}
+      className={cn("max-h-64 overflow-y-auto overscroll-contain scroll-thin pr-1", className)}
+      style={more ? { maskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)" } : undefined}
+    >
+      {children}
+    </div>
+  );
+}
 
 /** The prospect's people as chips, primary first: each opens that contact. */
 function ContactChips({ contacts, schema, onOpenContact, onMore }: { contacts: Row[]; schema: CampaignSchema; onOpenContact: (id: string) => void; onMore: () => void }) {
