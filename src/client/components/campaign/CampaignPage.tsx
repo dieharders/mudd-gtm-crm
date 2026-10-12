@@ -395,8 +395,8 @@ function CampaignView({ state }: { state: CampaignState }) {
         </Popover>
       </div>
 
-      {/* toolbar */}
-      <div className="flex min-h-16 flex-wrap items-center gap-3 px-6 py-3">
+      {/* toolbar: what the sheet shows */}
+      <div className="flex min-h-16 flex-wrap items-center gap-3 px-6 pt-3 pb-16">
         {onContacts && selectedContactRows.length > 0 ? (
           <ContactBulkBar rows={selectedContactRows} state={state} onDone={() => setSelectedContacts(new Set())} />
         ) : !onContacts && selectedRows.length > 0 ? (
@@ -439,113 +439,117 @@ function CampaignView({ state }: { state: CampaignState }) {
                 {screenedCount} screened out
               </span>
             )}
-            <div className="ml-auto flex items-center gap-2">
-              {!onContacts && view === "reading" && groupable.length > 0 && (
-                <label className="flex items-center gap-2 font-label text-[13px] text-mud-faint">
-                  Group by
-                  <select className="field h-9 w-auto py-0 pr-8 text-[13px]" value={groupKey ?? ""} onChange={(e) => setGroupBy(e.target.value)}>
-                    <option value="">Nothing</option>
-                    {groupable.map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
-                  </select>
-                </label>
-              )}
-              {!onContacts && <ViewToggle view={view} onChange={setView} />}
-              <Button size="sm" variant="ghost" disabled={!state.canUndo} onClick={() => { const l = state.undo(); if (l) toast(`Undid: ${l}`, { id: "undo" }); }} title="Undo (Ctrl+Z)">
-                <Undo2 size={15} /> Undo
-              </Button>
-              {!onContacts && <Button size="sm" variant="primary" onClick={addRow}><Plus size={15} /> Add prospect</Button>}
-            </div>
           </>
         )}
       </div>
 
-      {/* grid + drawer */}
-      <div className="relative mx-6 mb-6 min-h-0 flex-1 overflow-hidden rounded-2xl border-2 border-rim bg-paper shadow-hard">
-        {onContacts ? (
-          state.contacts.length === 0 ? (
-            <EmptyContacts />
+      {/* the sheet: one card, its view controls on top and the grid below */}
+      <div className="card mx-6 mb-6 flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-2 rounded-t-[14px] border-b-2 border-rim/40 bg-paper-deep/40 px-4 py-2.5">
+          {!onContacts && <ViewToggle view={view} onChange={setView} />}
+          {!onContacts && view === "reading" && groupable.length > 0 && (
+            <label className="ml-2 flex items-center gap-2 font-label text-[13px] text-mud-faint">
+              Group by
+              <select className="field h-9 w-auto py-0 pr-8 text-[13px]" value={groupKey ?? ""} onChange={(e) => setGroupBy(e.target.value)}>
+                <option value="">Nothing</option>
+                {groupable.map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+              </select>
+            </label>
+          )}
+          <Button size="sm" variant="ghost" className="ml-auto" disabled={!state.canUndo} onClick={() => { const l = state.undo(); if (l) toast(`Undid: ${l}`, { id: "undo" }); }} title="Undo (Ctrl+Z)">
+            <Undo2 size={15} /> Undo
+          </Button>
+          {!onContacts && <Button size="sm" variant="primary" onClick={addRow}><Plus size={15} /> Add prospect</Button>}
+        </div>
+
+        {/* grid + drawer; the card stays unclipped so the toolbar's menus can overhang */}
+        <div className="relative min-h-0 flex-1 overflow-hidden rounded-b-[14px]">
+          {onContacts ? (
+            state.contacts.length === 0 ? (
+              <EmptyContacts />
+            ) : (
+              <>
+                {/* Keyed apart from the Prospects grid: its active cell and scroll are about other rows. */}
+                <Grid
+                  key="contacts"
+                  columns={contactColumns}
+                  rows={filteredContacts}
+                  schema={contactGridSchema}
+                  stages={stages}
+                  pinned={Math.min(2, contactColumns.length)}
+                  selected={selectedContacts}
+                  onSelect={setSelectedContacts}
+                  onEdit={state.editContacts}
+                  onOpenRow={openContact}
+                  onResize={(key, width) => {
+                    const cs = contactSchema(schema);
+                    if (key !== ORG_KEY) state.setSchema({ ...schema, contacts: { ...cs, columns: cs.columns.map((c) => (c.key === key ? { ...c, width } : c)) } }, "Resize column", false);
+                  }}
+                  sort={contactSort}
+                  onSort={setContactSort}
+                  openRowId={openContactId}
+                  isLocked={isContactLocked}
+                  pending={pendingKeys}
+                  readOnlyKeys={CONTACT_FIXED}
+                  openLabel="Open contact"
+                />
+                {filteredContacts.length === 0 && (
+                  <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-[15px] text-mud-faint">No contacts match.</div>
+                )}
+              </>
+            )
+          ) : state.rows.length === 0 ? (
+            <EmptyList onAdd={addRow} discovery={discovery.enabled ? { waiting: discovery.inbox.length, open: () => setShowDiscover(discovery.inbox.length ? "inbox" : discovery.runs.length ? "find" : "thesis") } : null} />
           ) : (
             <>
-              {/* Keyed apart from the Prospects grid: its active cell and scroll are about other rows. */}
+              {view === "reading" ? (
+                <ProspectList rows={filtered} schema={schema} stages={stages} groupBy={groupKey} openRowId={openRowId} onOpenRow={showRow}
+                  contactsOf={contactsOf} onOpenContact={openContact} pending={pendingKeys} />
+              ) : (
               <Grid
-                key="contacts"
-                columns={contactColumns}
-                rows={filteredContacts}
-                schema={contactGridSchema}
+                key="prospects"
+                ref={grid}
+                columns={columns}
+                rows={filtered}
+                schema={schema}
                 stages={stages}
-                pinned={Math.min(2, contactColumns.length)}
-                selected={selectedContacts}
-                onSelect={setSelectedContacts}
-                onEdit={state.editContacts}
-                onOpenRow={openContact}
-                onResize={(key, width) => {
-                  const cs = contactSchema(schema);
-                  if (key !== ORG_KEY) state.setSchema({ ...schema, contacts: { ...cs, columns: cs.columns.map((c) => (c.key === key ? { ...c, width } : c)) } }, "Resize column", false);
-                }}
-                sort={contactSort}
-                onSort={setContactSort}
-                openRowId={openContactId}
-                isLocked={isContactLocked}
+                pinned={pinnedCount(columns, schema)}
+                selected={selected}
+                onSelect={setSelected}
+                onEdit={gridEdit}
+                onOpenRow={showRow}
+                onResize={(key, width) => state.setSchema({ ...schema, columns: schema.columns.map((c) => (c.key === key ? { ...c, width } : c)) }, "Resize column", false)}
+                sort={sort}
+                onSort={setSort}
+                openRowId={openRowId}
+                isLocked={isLocked}
                 pending={pendingKeys}
-                readOnlyKeys={CONTACT_FIXED}
-                openLabel="Open contact"
+                readOnlyKeys={idFixed}
               />
-              {filteredContacts.length === 0 && (
-                <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-[15px] text-mud-faint">No contacts match.</div>
+              )}
+              {filtered.length === 0 && (
+                <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-[15px] text-mud-faint">No rows match.</div>
               )}
             </>
-          )
-        ) : state.rows.length === 0 ? (
-          <EmptyList onAdd={addRow} discovery={discovery.enabled ? { waiting: discovery.inbox.length, open: () => setShowDiscover(discovery.inbox.length ? "inbox" : discovery.runs.length ? "find" : "thesis") } : null} />
-        ) : (
-          <>
-            {view === "reading" ? (
-              <ProspectList rows={filtered} schema={schema} stages={stages} groupBy={groupKey} openRowId={openRowId} onOpenRow={showRow}
-                contactsOf={contactsOf} onOpenContact={openContact} pending={pendingKeys} />
-            ) : (
-            <Grid
-              key="prospects"
-              ref={grid}
-              columns={columns}
-              rows={filtered}
+          )}
+          {openRow && (
+            <RowDrawer
+              row={openRow}
               schema={schema}
               stages={stages}
-              pinned={pinnedCount(columns, schema)}
-              selected={selected}
-              onSelect={setSelected}
-              onEdit={gridEdit}
-              onOpenRow={showRow}
-              onResize={(key, width) => state.setSchema({ ...schema, columns: schema.columns.map((c) => (c.key === key ? { ...c, width } : c)) }, "Resize column", false)}
-              sort={sort}
-              onSort={setSort}
-              openRowId={openRowId}
-              isLocked={isLocked}
-              pending={pendingKeys}
-              readOnlyKeys={idFixed}
+              templates={state.templates}
+              state={state}
+              contacts={contactsOf(openRow.id)}
+              openContactId={openContactId}
+              onOpenContact={setOpenContactId}
+              onClose={closeDrawer}
+              onPrev={openIdx > 0 ? () => showRow(filtered[openIdx - 1]!.id) : undefined}
+              onNext={openIdx >= 0 && openIdx < filtered.length - 1 ? () => showRow(filtered[openIdx + 1]!.id) : undefined}
+              onOpenTemplates={() => setShowTemplates(true)}
+              enrich={enrich}
             />
-            )}
-            {filtered.length === 0 && (
-              <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-[15px] text-mud-faint">No rows match.</div>
-            )}
-          </>
-        )}
-        {openRow && (
-          <RowDrawer
-            row={openRow}
-            schema={schema}
-            stages={stages}
-            templates={state.templates}
-            state={state}
-            contacts={contactsOf(openRow.id)}
-            openContactId={openContactId}
-            onOpenContact={setOpenContactId}
-            onClose={closeDrawer}
-            onPrev={openIdx > 0 ? () => showRow(filtered[openIdx - 1]!.id) : undefined}
-            onNext={openIdx >= 0 && openIdx < filtered.length - 1 ? () => showRow(filtered[openIdx + 1]!.id) : undefined}
-            onOpenTemplates={() => setShowTemplates(true)}
-            enrich={enrich}
-          />
-        )}
+          )}
+        </div>
       </div>
 
       {showTemplates && (
@@ -599,7 +603,7 @@ function Segmented<T extends string>({ value, onChange, options, tabs }: {
   tabs?: boolean;
 }) {
   return (
-    <div role={tabs ? "tablist" : undefined} className="flex gap-1 rounded-xl border-2 border-rim bg-paper-deep/60 p-1.5">
+    <div role={tabs ? "tablist" : undefined} className="flex gap-1 rounded-xl border-2 border-transparent bg-paper-deep/60 p-1.5">
       {options.map((o) => (
         <button
           key={o.value}
