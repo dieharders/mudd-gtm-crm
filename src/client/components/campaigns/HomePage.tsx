@@ -44,7 +44,8 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
 
   return (
     <div className="h-full overflow-y-auto bg-board scroll-thin">
-      <div className="mx-auto max-w-6xl px-6 py-8 md:px-10 md:py-10">
+      {/* The content rises in, not the page: a transform would pin the dialogs below to it while it runs. */}
+      <div className="mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
         <div className="mb-10 flex flex-wrap items-end gap-4">
           <div className="mr-auto">
             <PinnedNote>{greeting()} 👋</PinnedNote>
@@ -92,7 +93,7 @@ export function MeetingsPage() {
   const { meetings } = useCampaignList();
   return (
     <div className="h-full overflow-y-auto bg-board scroll-thin">
-      <div className="mx-auto max-w-3xl px-6 py-8 md:px-10 md:py-10">
+      <div className="mx-auto max-w-3xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
         <PinnedNote>Calendar</PinnedNote>
         <h1 className="mb-8 font-display text-[40px] leading-none font-bold tracking-tight">Meetings</h1>
         <MeetingsCard meetings={meetings} />

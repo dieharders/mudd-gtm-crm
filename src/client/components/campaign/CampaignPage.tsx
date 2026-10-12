@@ -206,6 +206,11 @@ function CampaignView({ state }: { state: CampaignState }) {
   const groupable = useMemo(() => groupableColumns(schema), [schema]);
   const [groupBy, setGroupBy] = useStoredState<string>(`mudd:group:${campaign.id}`, cardLayout(schema).tierKey ?? "");
   const groupKey = groupable.some((c) => c.key === groupBy) ? groupBy : null;
+  // What the sheet shows. It rises in on each switch, but not on arriving, as the page already does.
+  const sheet = onContacts ? "contacts" : view;
+  const firstSheet = useRef(sheet);
+  const sheetMoved = useRef(false);
+  if (sheet !== firstSheet.current) sheetMoved.current = true;
 
   // A link to one prospect (?row=, from a meeting on the home page) opens it, then leaves the URL.
   useEffect(() => {
@@ -446,8 +451,9 @@ function CampaignView({ state }: { state: CampaignState }) {
 
   return (
     <div className="flex h-full flex-col bg-board">
-      {/* header */}
-      <div className="flex flex-wrap items-center gap-3 px-6 pt-6 pb-3">
+      {/* header. It, the toolbar and the sheet each rise in, not the page: a transform on the page
+          would pin the panels and dialogs below to it while it runs. */}
+      <div className="flex flex-wrap items-center gap-3 px-6 pt-6 pb-3 motion-safe:animate-page-in">
         <Tile size="lg" className={cn("text-lg", campaignTileFor(campaign.id))}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
           <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />
@@ -499,7 +505,7 @@ function CampaignView({ state }: { state: CampaignState }) {
       </Pinboard>
 
       {/* toolbar: what the sheet shows */}
-      <div className="flex min-h-16 flex-wrap items-center gap-3 px-6 pt-3 pb-16">
+      <div className="flex min-h-16 flex-wrap items-center gap-3 px-6 pt-3 pb-16 motion-safe:animate-page-in">
         {onContacts && selectedContactRows.length > 0 ? (
           <ContactBulkBar rows={selectedContactRows} state={state} onDone={() => setSelectedContacts(new Set())} />
         ) : !onContacts && selectedRows.length > 0 ? (
@@ -557,7 +563,7 @@ function CampaignView({ state }: { state: CampaignState }) {
       </div>
 
       {/* the sheet: one card, its view controls on top and the grid below */}
-      <div className="card mx-6 mb-6 flex min-h-0 flex-1 flex-col">
+      <div className="card mx-6 mb-6 flex min-h-0 flex-1 flex-col motion-safe:animate-page-in">
         <div className="flex flex-wrap items-center gap-2 rounded-t-[14px] border-b-2 border-rim/40 bg-paper-deep/40 px-4 py-2.5">
           {!onContacts && <ViewToggle view={view} onChange={setView} />}
           {!onContacts && view === "reading" && groupable.length > 0 && (
@@ -577,6 +583,8 @@ function CampaignView({ state }: { state: CampaignState }) {
 
         {/* grid + drawer; the card stays unclipped so the toolbar's menus can overhang */}
         <div className="relative min-h-0 flex-1 overflow-hidden rounded-b-[14px]">
+          {/* Keyed by what it shows, so a new tab or view rises in; the prospect panel stays outside it. */}
+          <div key={sheet} className={cn("h-full", sheetMoved.current && "motion-safe:animate-sheet-in")}>
           {onContacts ? (
             state.contacts.length === 0 ? (
               <EmptyContacts />
@@ -645,6 +653,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               )}
             </>
           )}
+          </div>
           {drawer.shown && lastOpen.current && (
             <RowDrawer
               row={lastOpen.current.row}
