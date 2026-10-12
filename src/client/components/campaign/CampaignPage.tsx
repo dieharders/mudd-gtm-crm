@@ -424,7 +424,7 @@ function CampaignView({ state }: { state: CampaignState }) {
             </div>
             {!onContacts && statusKey && (
               <div className="flex flex-wrap items-center gap-2">
-                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} tone="bg-clay-soft text-clay-deep" />
+                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} tone="bg-paper-deep text-mud-soft" />
                 {[...stages, DEAD].map((s) => (counts.byStatus[s] ? (
                   <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts.byStatus[s]!} tone={toneFor(s, stages).pill} />
                 ) : null))}
