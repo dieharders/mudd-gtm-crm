@@ -140,7 +140,7 @@ function Choice({ active, onClick, icon, title, desc, disabled }: { active: bool
       onClick={onClick}
       className={cn(
         "relative rounded-xl border-2 p-4 text-left transition",
-        active ? "border-clay bg-clay-soft shadow-hard-sm" : "border-rim/50 bg-paper hover:border-rim hover:bg-paper-deep",
+        active ? "border-clay bg-clay-soft shadow-hard-sm-clay" : "border-rim/50 bg-paper hover:border-rim hover:bg-paper-deep",
         disabled && "opacity-50",
       )}
     >

@@ -188,7 +188,7 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
   };
 
   return (
-    <div className={cn("rounded-2xl border-2 p-5 transition", active ? "border-clay bg-clay-soft/40 shadow-hard-sm" : "border-rim/50 bg-paper")}>
+    <div className={cn("rounded-2xl border-2 p-5 transition", active ? "border-clay bg-clay-soft/40 shadow-hard-sm-clay" : "border-rim/50 bg-paper")}>
       <div className="flex items-start gap-4">
         <ProviderMark id={id} className="h-10 w-10 rounded-xl" />
         <div className="min-w-0 flex-1">
