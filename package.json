@@ -13,6 +13,7 @@
     "build:css": "bunx @tailwindcss/cli -i ./src/client/styles.css -o ./src/client/generated.css --minify",
     "build": "bun run build:css && bun run build.ts",
     "icon": "bun run scripts/make-icon.ts",
+    "screenshots": "bun run build:css && bun run scripts/screenshots/index.ts",
     "fixture": "bun run scripts/make-fixture.ts",
     "test": "bun test ./src/",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",

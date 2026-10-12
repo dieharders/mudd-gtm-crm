@@ -33,15 +33,16 @@ bun run start        # opens the Mudd window
 
 ## Quickstart
 
-| Command             | What it does                                                                                |
-| ------------------- | ------------------------------------------------------------------------------------------- |
-| `bun run start`     | The app in its own window (webview-bun).                                                    |
-| `bun run headless`  | Server only. Open the printed `http://127.0.0.1:24871` in a browser.                        |
-| `bun run dev`       | Browser dev server with hot reload on `http://127.0.0.1:3000`.                              |
-| `bun run build`     | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS).                                         |
-| `bun run icon`      | Rebuild `assets/icon.ico` from `assets/icon.png` (needs Edge or Chrome). Commit the result. |
-| `bun run typecheck` | TypeScript check.                                                                           |
-| `bun test`          | Unit and round-trip tests (see below).                                                      |
+| Command               | What it does                                                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `bun run start`       | The app in its own window (webview-bun).                                                                          |
+| `bun run headless`    | Server only. Open the printed `http://127.0.0.1:24871` in a browser.                                              |
+| `bun run dev`         | Browser dev server with hot reload on `http://127.0.0.1:3000`.                                                    |
+| `bun run build`       | Standalone `dist/Mudd.exe` (a `Mudd.app` on macOS).                                                               |
+| `bun run icon`        | Rebuild `assets/icon.ico` from `assets/icon.png` (needs Edge or Chrome). Commit the result.                       |
+| `bun run screenshots` | Retake the README images in `docs/screenshots/` from made-up demo data (needs Edge or Chrome). Commit the result. |
+| `bun run typecheck`   | TypeScript check.                                                                                                 |
+| `bun test`            | Unit and round-trip tests (see below).                                                                            |
 
 App data is stored in `%APPDATA%\Mudd\mudd.sqlite`. Set `MUDD_DATA_DIR` to use a different folder.
 
@@ -90,10 +91,15 @@ Open **AI settings** from the bottom of the sidebar to pick the provider, model 
   - Presets: Company snapshot, Recent news & trigger, Decision-maker, Published email (the domain's mail server is checked), Personalization hook.
   - **Test on 3 rows**, then **Run** on the selection, on rows missing the fields, or on everything.
   - Runs have pause, resume and stop, choose how many rows run at once, and retry failed rows automatically.
+
+![Enrich with AI: the Company snapshot preset, the columns it fills, and a run on three selected rows](docs/screenshots/enrich.webp)
+
 - **Review**: every finding is a suggestion, with its source link and a confidence level.
   - Accepting writes the cell (with undo) and adds the link to an `Enrichment sources` column.
   - "Fill empty cells automatically" skips review only for cells that are empty.
   - A violet dot on a cell means it has a suggestion waiting.
+
+![Review suggestions: what an enrichment run found for each prospect, with its source and confidence, waiting to be accepted or rejected](docs/screenshots/enrich-review.webp)
 
 ### Outbound templates
 
@@ -112,6 +118,8 @@ Start a campaign with **Discover prospects** and Mudd finds companies that fit y
 - **Thesis**: sixteen questions about who you sell to. The first two are required; **Fill blanks with AI** drafts the rest.
 - **Find**: pick how many companies and contacts per company, add a focus for this run, and choose which enrichments run on each company you accept. The run plans a few search angles, searches them two at a time, then maps each company's buying committee.
 - **Inbox**: each candidate shows why it fits, why now, and the page it was found on. Accept adds it (and its contacts) as prospects; dismiss with a reason, and later runs avoid that kind.
+
+![Discover inbox: candidate companies with why they fit, why now, their sources and who to approach first](docs/screenshots/discover-inbox.webp)
 
 ## License
 
