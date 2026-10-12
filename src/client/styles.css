@@ -75,6 +75,8 @@
   --breakpoint-wide: 56.25rem;
 
   --animate-slide-in: slide-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* As long as RowDrawer's DRAWER_LEAVE_MS, which unmounts it once this is done. */
+  --animate-slide-out: slide-out 160ms cubic-bezier(0.55, 0, 1, 0.45) both;
   --animate-drawer-in: drawer-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   /* Both kept as long as Pinboard's LEAVE_MS, which unmounts it once these are done. */
   --animate-drawer-out: drawer-out 200ms cubic-bezier(0.55, 0, 1, 0.45) both;
@@ -101,6 +103,10 @@
   @keyframes slide-in {
     from { transform: translateX(24px); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes slide-out {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(24px); opacity: 0; }
   }
   @keyframes fade-in {
     from { opacity: 0; }

@@ -45,9 +45,14 @@ interface Props {
   onNext?: () => void;
   onOpenTemplates: () => void;
   enrich: EnrichmentState;
+  /** Closed and sliding away: shown as it was, but no longer answering keys or clicks. */
+  leaving?: boolean;
 }
 
-export function RowDrawer({ row, schema, stages, templates, state, contacts, openContactId, onOpenContact, onClose, onPrev, onNext, onOpenTemplates, enrich }: Props) {
+/** How long the panel takes to slide back out: it stays mounted until then. Matches `slide-out`. */
+export const DRAWER_LEAVE_MS = 160;
+
+export function RowDrawer({ row, schema, stages, templates, state, contacts, openContactId, onOpenContact, onClose, onPrev, onNext, onOpenTemplates, enrich, leaving }: Props) {
   const primary = primaryOf(contacts, schema);
   const { title, subtitle } = prospectTitle(row, primary, schema);
   const screened = isScreened(row, schema);
@@ -63,6 +68,7 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
   };
 
   useEffect(() => {
+    if (leaving) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, select")) return;
@@ -76,10 +82,16 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [inContact, onOpenContact, onClose, onNext, onPrev]);
+  }, [leaving, inContact, onOpenContact, onClose, onNext, onPrev]);
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(480px,100%)] flex-col border-l-2 border-rim bg-paper shadow-[-8px_0_24px_-12px_rgba(43,30,22,0.35)] animate-slide-in">
+    <aside
+      aria-hidden={leaving || undefined}
+      className={cn(
+        "absolute inset-y-0 right-0 z-30 flex w-[min(480px,100%)] flex-col border-l-2 border-rim bg-paper shadow-[-8px_0_24px_-12px_rgba(43,30,22,0.35)]",
+        leaving ? "pointer-events-none animate-slide-out" : "animate-slide-in",
+      )}
+    >
       <div className="flex items-start gap-2 border-b-2 border-rim/40 px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-base font-semibold">{title}</h2>

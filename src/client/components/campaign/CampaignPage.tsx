@@ -14,6 +14,7 @@ import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
 import { useConsentGate } from "../../hooks/useConsentGate";
 import { useDiscovery } from "../../hooks/useDiscovery";
 import { useEnrichment, type EnrichmentState } from "../../hooks/useEnrichment";
+import { useLeaving } from "../../hooks/useLeaving";
 import { useToday } from "../../hooks/useToday";
 import { DiscoverPanel, type DiscoverSection } from "../discover/DiscoverPanel";
 import { ConsentDialog } from "../enrich/ConsentDialog";
@@ -28,7 +29,7 @@ import { Tile } from "../ui/Logo";
 import { display } from "../grid/cells";
 import { Grid, type GridHandle, type SortState } from "../grid/Grid";
 import { ProspectList } from "../list/ProspectList";
-import { RowDrawer } from "../row/RowDrawer";
+import { DRAWER_LEAVE_MS, RowDrawer } from "../row/RowDrawer";
 import { cardLayout, groupableColumns, pinnedCount } from "../../lib/listLayout";
 import { TemplatesPanel } from "../templates/TemplatesPanel";
 import { Button } from "../ui/Button";
@@ -368,6 +369,10 @@ function CampaignView({ state }: { state: CampaignState }) {
     setOpenContactId(null);
   }, []);
   const closeDrawer = useCallback(() => showRow(null), [showRow]);
+  // The panel slides out after it closes, still showing what it last had open.
+  const drawer = useLeaving(!!openRow, DRAWER_LEAVE_MS);
+  const lastOpen = useRef<{ row: Row; contacts: Row[]; contactId: string | null } | null>(null);
+  if (openRow) lastOpen.current = { row: openRow, contacts: contactsOf(openRow.id), contactId: openContactId };
   // Read through a ref: a stable callback keeps every card from re-rendering on each edit.
   const rowByIdRef = useRef(rowById);
   rowByIdRef.current = rowById;
@@ -639,15 +644,16 @@ function CampaignView({ state }: { state: CampaignState }) {
               )}
             </>
           )}
-          {openRow && (
+          {drawer.shown && lastOpen.current && (
             <RowDrawer
-              row={openRow}
+              row={lastOpen.current.row}
               schema={schema}
               stages={stages}
               templates={state.templates}
               state={state}
-              contacts={contactsOf(openRow.id)}
-              openContactId={openContactId}
+              contacts={lastOpen.current.contacts}
+              openContactId={lastOpen.current.contactId}
+              leaving={drawer.leaving}
               onOpenContact={setOpenContactId}
               onClose={closeDrawer}
               onPrev={prevRow ? () => showRow(prevRow.id) : undefined}

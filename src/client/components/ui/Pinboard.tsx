@@ -1,6 +1,7 @@
 /** A drawer that slides in from the right: a strip of board with its actions pinned on as tilted cards. */
 import { X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
@@ -9,15 +10,7 @@ const LEAVE_MS = 200;
 
 export function Pinboard({ open, title, onClose, children }: { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode }) {
   const closeRef = useRef<HTMLButtonElement>(null);
-  // Still on screen: true from opening until the slide-out has finished.
-  const [shown, setShown] = useState(open);
-  if (open && !shown) setShown(true);
-  const leaving = shown && !open;
-  useEffect(() => {
-    if (!leaving) return;
-    const t = setTimeout(() => setShown(false), LEAVE_MS);
-    return () => clearTimeout(t);
-  }, [leaving]);
+  const { shown, leaving } = useLeaving(open, LEAVE_MS);
   useEffect(() => {
     if (!open) return;
     closeRef.current?.focus();
@@ -31,9 +24,10 @@ export function Pinboard({ open, title, onClose, children }: { open: boolean; ti
   }, [open, onClose]);
   if (!shown) return null;
   return (
-    // Click-through while leaving, so the page is usable as soon as it is asked to close; the dim
-    // fades out as the drawer slides away, as it faded in.
-    <div className={cn("fixed inset-0 z-40 bg-mud/25", leaving ? "pointer-events-none animate-fade-out" : "animate-fade-in")} onMouseDown={onClose}>
+    // Click-through while leaving, so the page is usable as soon as it is asked to close.
+    <div className={cn("fixed inset-0 z-40", leaving && "pointer-events-none")} onMouseDown={onClose}>
+      {/* The dim fades on a layer of its own: on the drawer's parent it would fade the drawer too. */}
+      <div className={cn("absolute inset-0 bg-mud/25", leaving ? "animate-fade-out" : "animate-fade-in")} />
       <aside
         role="dialog"
         aria-modal="true"
