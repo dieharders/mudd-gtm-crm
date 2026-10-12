@@ -480,7 +480,7 @@ function CampaignView({ state }: { state: CampaignState }) {
             const work: Omit<PinCardProps, "index">[] = [
               ...(enrich.suggestions.length ? [{ tone: "bg-note", icon: <ListChecks size={18} />, label: "Review", count: enrich.suggestions.length, hint: "AI suggestions to accept", onClick: pick(() => setShowReview(true)) }] : []),
               ...(discovery.enabled && discovery.inbox.length ? [{ tone: "bg-note-mint", icon: <Inbox size={18} />, label: "Inbox", count: discovery.inbox.length, hint: "Companies found for you", onClick: pick(() => setShowDiscover("inbox")) }] : []),
-              ...(discovery.enabled ? [{ tone: "bg-clay-soft", icon: <Radar size={18} />, label: "Discover", hint: "Find new prospects", onClick: pick(() => setShowDiscover(discovery.inbox.length ? "inbox" : "find")) }] : []),
+              ...(discovery.enabled ? [{ tone: "bg-lake-soft", icon: <Radar size={18} />, label: "Discover", hint: "Find new prospects", onClick: pick(() => setShowDiscover(discovery.inbox.length ? "inbox" : "find")) }] : []),
               { tone: "bg-paper", icon: <MessageSquareText size={18} />, label: "Templates", count: state.templates.length, hint: "Intro/outreach messages", onClick: pick(() => setShowTemplates(true)) },
               { tone: "bg-paper", icon: <Columns3 size={18} />, label: "Columns", hint: onContacts ? "Of the contacts list" : "Of the prospects list", onClick: pick(() => setShowColumns(true)) },
             ];
