@@ -292,6 +292,9 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
               ref={(el) => { if (el) el.indeterminate = someSelected; }}
               onChange={toggleAll}
             />
+            <span className="truncate font-sans text-sm font-normal tracking-normal normal-case tabular-nums" title={`${p.rows.length} rows`}>
+              {p.rows.length.toLocaleString()}
+            </span>
           </div>
           {p.columns.map((col, i) => {
             const s = p.sort?.key === col.key ? p.sort.dir : null;
