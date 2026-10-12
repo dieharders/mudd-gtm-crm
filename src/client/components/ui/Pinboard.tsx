@@ -1,7 +1,7 @@
 /** A drawer that slides in from the right: a strip of board with its actions pinned on as tilted cards. */
 import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
-import { useLeaving } from "../../hooks/useLeaving";
+import { useInert, useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
@@ -11,6 +11,7 @@ const LEAVE_MS = 200;
 export function Pinboard({ open, title, onClose, children }: { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const { shown, leaving } = useLeaving(open, LEAVE_MS);
+  const layer = useInert<HTMLDivElement>(leaving);
   useEffect(() => {
     if (!open) return;
     closeRef.current?.focus();
@@ -24,8 +25,8 @@ export function Pinboard({ open, title, onClose, children }: { open: boolean; ti
   }, [open, onClose]);
   if (!shown) return null;
   return (
-    // Click-through while leaving, so the page is usable as soon as it is asked to close.
-    <div className={cn("fixed inset-0 z-40", leaving && "pointer-events-none")} onMouseDown={onClose}>
+    // Click-through (and inert) while leaving, so the page is usable as soon as it is asked to close.
+    <div ref={layer} className={cn("fixed inset-0 z-40", leaving && "pointer-events-none")} onMouseDown={onClose}>
       {/* The dim fades on a layer of its own: on the drawer's parent it would fade the drawer too. */}
       <div className={cn("absolute inset-0 bg-mud/25", leaving ? "animate-fade-out" : "animate-fade-in")} />
       <aside

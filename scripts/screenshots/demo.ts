@@ -1,14 +1,18 @@
 /**
  * The made-up data the README screenshots show: a tracker workbook to import, two intro templates,
  * a finished enrichment run with its findings waiting in Review, and a Discover campaign with a finished Find run (its candidates in the inbox) and one still
- * running. Every company and person is invented, and every website is a .example domain.
+ * running; and the AI sign-in the settings show. Every company, person and account is invented,
+ * and every website and address is a .example domain.
  */
 import ExcelJS from "exceljs";
-import type { EnrichRun, Recipe, Suggestion } from "../../src/shared/ai";
+import type { EnrichRun, ProviderStatus, Recipe, Suggestion } from "../../src/shared/ai";
 import type { Candidate, DiscoveryRun, SearchAngle } from "../../src/shared/sourcing";
 import type { Row } from "../../src/shared/types";
 
-const d = (m: number, day: number, h = 0, min = 0) => new Date(Date.UTC(2026, m - 1, day, h, min));
+// Dates are days from today (the shots were first taken on 11 Oct 2026), so a retake shows the
+// same upcoming meetings and the same ages of last touch. At h:min UTC, as Excel keeps no zone.
+const today = new Date();
+const d = (days: number, h = 0, min = 0) => new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() + days, h, min));
 const site = (company: string) => company.toLowerCase().split(" ").slice(0, 2).join("").replace(/[^a-z]+/g, "") + ".example";
 
 // ---------- tracker workbook ----------
@@ -17,24 +21,24 @@ const PROSPECT_HEADERS = ["ID", "Company", "Tier", "Industry", "Location", "Webs
 /** Company, tier, industry, location, staff, status, last touch, next step, meeting URL, meeting at, hook, notes, source. */
 type Prospect = [string, string, string, string, number, string, Date | null, string | null, string | null, Date | null, string | null, string | null, string];
 const PROSPECTS: Prospect[] = [
-  ["Northwind Fabrication", "A", "Metal fabrication", "Dayton, OH", 420, "Meeting booked", d(10, 8), "Walk through the insurance checklist", "https://meet.example/northwind", d(10, 14, 15), "Hiring a security lead after a phishing scare", "Plant manager owns the IT budget", "Trade show"],
-  ["Harbor Lights Logistics", "A", "3PL", "Tacoma, WA", 1100, "Replied", d(10, 9), "Send the one-pager", null, null, "Opened a second warehouse in July", "Asked for pricing by email", "Referral"],
-  ["Copperline Foods", "A", "Food processing", "Fresno, CA", 260, "Contacted", d(10, 6), "Follow up Thursday", null, null, "New CFO started in August", null, "Association list"],
-  ["Bluestem Dental Group", "B", "Dental group", "Omaha, NE", 85, "Meeting booked", d(10, 7), "Prep for the call", "https://meet.example/bluestem", d(10, 16, 18), "Adding two locations this year", "Office manager is the champion", "Trade show"],
-  ["Granite Peak Credit Union", "B", "Credit union", "Boise, ID", 190, "Proposal", d(10, 2), "Revise pricing for 3 branches", null, null, "Exam findings due by year end", null, "Conference"],
-  ["Saltmarsh Marine Supply", "C", "Distribution", "Mobile, AL", 60, "Contacted", d(9, 30), "Call after the spring push", null, null, "Seasonal hiring wave", null, "Trade show"],
+  ["Northwind Fabrication", "A", "Metal fabrication", "Dayton, OH", 420, "Meeting booked", d(-3), "Walk through the insurance checklist", "https://meet.example/northwind", d(3, 15), "Hiring a security lead after a phishing scare", "Plant manager owns the IT budget", "Trade show"],
+  ["Harbor Lights Logistics", "A", "3PL", "Tacoma, WA", 1100, "Replied", d(-2), "Send the one-pager", null, null, "Opened a second warehouse in July", "Asked for pricing by email", "Referral"],
+  ["Copperline Foods", "A", "Food processing", "Fresno, CA", 260, "Contacted", d(-5), "Follow up Thursday", null, null, "New CFO started in August", null, "Association list"],
+  ["Bluestem Dental Group", "B", "Dental group", "Omaha, NE", 85, "Meeting booked", d(-4), "Prep for the call", "https://meet.example/bluestem", d(5, 18), "Adding two locations this year", "Office manager is the champion", "Trade show"],
+  ["Granite Peak Credit Union", "B", "Credit union", "Boise, ID", 190, "Proposal", d(-9), "Revise pricing for 3 branches", null, null, "Exam findings due by year end", null, "Conference"],
+  ["Saltmarsh Marine Supply", "C", "Distribution", "Mobile, AL", 60, "Contacted", d(-11), "Call after the spring push", null, null, "Seasonal hiring wave", null, "Trade show"],
   ["Ironleaf Plastics", "A", "Injection molding", "Grand Rapids, MI", 640, "Not contacted", null, null, null, null, "Insurer now requires 24/7 monitoring", null, "Insurance broker"],
   ["Cedar Ridge Millwork", "B", "Wood products", "Asheville, NC", 150, "Not contacted", null, null, null, null, "Moving to a cloud ERP", null, "Association list"],
-  ["Prairie Wind Components", "A", "Wind turbine parts", "Sioux Falls, SD", 880, "Contacted", d(10, 3), "Ask for the IT director", null, null, "Third plant opening in 2027", "Gatekeeper screens calls", "News"],
-  ["Lakeshore Precision", "B", "CNC machining", "Kenosha, WI", 210, "Replied", d(10, 9), "Book a demo", null, null, "Two-person IT team", "Wants to see a sample report", "Referral"],
+  ["Prairie Wind Components", "A", "Wind turbine parts", "Sioux Falls, SD", 880, "Contacted", d(-8), "Ask for the IT director", null, null, "Third plant opening in 2027", "Gatekeeper screens calls", "News"],
+  ["Lakeshore Precision", "B", "CNC machining", "Kenosha, WI", 210, "Replied", d(-2), "Book a demo", null, null, "Two-person IT team", "Wants to see a sample report", "Referral"],
   ["Redstone Brewing Co.", "C", "Beverage", "Fort Collins, CO", 95, "Not contacted", null, null, null, null, null, null, "Trade show"],
-  ["Silverpine Medical Devices", "A", "Medical devices", "Minneapolis, MN", 1500, "Contacted", d(10, 1), "Send the FDA cyber guidance note", null, null, "New FDA premarket cyber rules", null, "News"],
-  ["Oakhaven Textiles", "C", "Textiles", "Greenville, SC", 320, "Dead", d(9, 12), null, null, null, null, "Signed with an incumbent", "Association list"],
+  ["Silverpine Medical Devices", "A", "Medical devices", "Minneapolis, MN", 1500, "Contacted", d(-10), "Send the FDA cyber guidance note", null, null, "New FDA premarket cyber rules", null, "News"],
+  ["Oakhaven Textiles", "C", "Textiles", "Greenville, SC", 320, "Dead", d(-29), null, null, null, null, "Signed with an incumbent", "Association list"],
   ["Bayfront Cold Storage", "B", "Cold chain", "Savannah, GA", 140, "Not contacted", null, null, null, null, "Ransomware hit a peer in June", null, "News"],
   ["Summit Ridge Packaging", "A", "Packaging", "Allentown, PA", 510, "Not contacted", null, null, null, null, "Cyber-insurance renewal in Q1", null, "Insurance broker"],
-  ["Riverbend Castings", "B", "Foundry", "Peoria, IL", 275, "Contacted", d(10, 5), "Second email", null, null, null, null, "Trade show"],
+  ["Riverbend Castings", "B", "Foundry", "Peoria, IL", 275, "Contacted", d(-6), "Second email", null, null, null, null, "Trade show"],
   ["Westgate Industrial Coatings", "C", "Chemicals", "Houston, TX", 180, "Not contacted", null, null, null, null, null, null, "Association list"],
-  ["Thornbury Electronics", "A", "Electronics assembly", "Austin, TX", 730, "Replied", d(10, 8), "Loop in the CFO", null, null, "SOC 2 asked for by a big customer", "Technical buyer is keen", "Referral"],
+  ["Thornbury Electronics", "A", "Electronics assembly", "Austin, TX", 730, "Replied", d(-3), "Loop in the CFO", null, null, "SOC 2 asked for by a big customer", "Technical buyer is keen", "Referral"],
 ];
 
 const CONTACT_HEADERS = ["Prospect ID", "Company", "Name", "Contact type", "Primary", "Role", "Email", "Phone", "LinkedIn"];
@@ -73,6 +77,20 @@ export async function writeDemoWorkbook(file: string): Promise<void> {
   }
   await wb.xlsx.writeFile(file);
 }
+
+// ---------- AI sign-in ----------
+
+/** Claude Code signed in on a Max plan, under a made-up account; Codex not installed. */
+export const DEMO_PROVIDERS: ProviderStatus[] = [
+  {
+    id: "claude", installed: true, path: "/usr/local/bin/claude", version: "2.1.0", outdated: null,
+    auth: { state: "ok", plan: "max", account: "alex@fieldops.example", subscription: true },
+  },
+  {
+    id: "codex", installed: false, path: null, version: null, outdated: null,
+    auth: { state: "cli_missing", plan: null, account: null, subscription: false },
+  },
+];
 
 // ---------- templates and thesis ----------
 

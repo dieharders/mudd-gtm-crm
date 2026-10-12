@@ -15,6 +15,7 @@ import { columnOf } from "../../shared/schema";
 import { contactLabel, isEmptyContact } from "../../shared/values";
 import type { CellEdit } from "../../shared/types";
 import { api } from "../lib/api";
+import type { FinishedRows } from "../lib/quickFilters";
 import { useCampaignEvents } from "../lib/campaignEvents";
 import { useLoadOnce } from "../lib/loadOnce";
 import type { CampaignState } from "./useCampaign";
@@ -27,11 +28,14 @@ export function useEnrichment(state: CampaignState, consent: ConsentGate) {
   const id = campaign?.id ?? "";
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [runs, setRuns] = useState<EnrichRun[]>([]);
+  // The rows every kept run finished, by recipe: `runs` holds only the latest, and those since.
+  const [finished, setFinished] = useState<FinishedRows>(new Map());
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
   useLoadOnce(id, (current) => {
     api.recipes(id).then((list) => current() && setRecipes(list)).catch(() => {});
     api.runs(id).then((list) => current() && setRuns((prev) => list.reduce(withRun, prev.filter((r) => r.campaignId === id)))).catch(() => {});
+    api.finishedRows(id).then((byRecipe) => current() && setFinished(new Map(Object.entries(byRecipe).map(([recipe, rows]) => [recipe, new Set(rows)])))).catch(() => {});
     api.suggestions(id).then((list) => current() && setSuggestions(list)).catch(() => {});
   });
 
@@ -157,7 +161,7 @@ export function useEnrichment(state: CampaignState, consent: ConsentGate) {
   const activeRuns = runs.filter((r) => isLiveStatus(r.status));
 
   return {
-    recipes, runs, activeRuns, suggestions, pendingByRow, accept, reject, saveRecipe, deleteRecipe, start, action,
+    recipes, runs, finished, activeRuns, suggestions, pendingByRow, accept, reject, saveRecipe, deleteRecipe, start, action,
   };
 }
 

@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
-import { useLeaving } from "../../hooks/useLeaving";
+import { useEffect, type ReactNode } from "react";
+import { useInert, useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
@@ -27,11 +27,9 @@ export function Modal({
   width?: string;
   locked?: boolean;
 }) {
-  const { shown, leaving } = useLeaving(open, LEAVE_MS);
   // While leaving it shows what it last had open: callers often clear the data it was showing as they close it.
-  const last = useRef<Content>({ title, subtitle, children, footer });
-  if (open) last.current = { title, subtitle, children, footer };
-  const c = last.current;
+  const { shown, leaving, last: c } = useLeaving<Content>(open, LEAVE_MS, { title, subtitle, children, footer });
+  const layer = useInert<HTMLDivElement>(leaving);
 
   useEffect(() => {
     if (!open) return;
@@ -47,8 +45,9 @@ export function Modal({
 
   if (!shown) return null;
   return (
-    // Click-through while leaving, so the page is usable as soon as it is asked to close.
+    // Click-through (and inert) while leaving, so the page is usable as soon as it is asked to close.
     <div
+      ref={layer}
       className={cn(
         "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-mud/35 p-6 pt-[8vh]",
         leaving ? "pointer-events-none animate-fade-out" : "animate-fade-in",

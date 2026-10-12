@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
-import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
-import { useLeaving } from "../../hooks/useLeaving";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { useInert, useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
@@ -14,26 +14,24 @@ const Leaving = createContext(false);
  * so it can animate out.
  */
 export function PanelGate({ open, children }: { open: boolean; children: ReactNode }) {
-  const { shown, leaving } = useLeaving(open, LEAVE_MS);
-  const last = useRef(children);
-  if (open) last.current = children;
+  const { shown, leaving, last } = useLeaving(open, LEAVE_MS, children);
   if (!shown) return null;
-  return <Leaving.Provider value={leaving}>{last.current}</Leaving.Provider>;
+  return <Leaving.Provider value={leaving}>{last}</Leaving.Provider>;
 }
 
 /**
  * A large centred dialog for the campaign's workspaces (Discover, Enrich, Review, Templates):
  * a paper card over a dimmed board, with a header row and a body the caller lays out
  * (usually a rail and a main column). Closes on the backdrop; nested dialogs stop the click.
- * Escape closes it too, except from a field, where it belongs to the field; a Modal open on top
- * takes the key first and stops it.
+ * Escape closes it too, except from a field, where it belongs to the field. A Modal or menu open
+ * on top takes the key first (on the window, as it comes down) and stops it; this panel takes it
+ * on the document, on the way back up, and stops it there, before the prospect panel under it
+ * (on the window) would close too.
  */
-export function Panel({ title, subtitle, icon, actions, onClose, closeLabel = "Close", width = "max-w-[1080px]", children }: {
+export function Panel({ title, subtitle, icon, onClose, closeLabel = "Close", width = "max-w-[1080px]", children }: {
   title: ReactNode;
   subtitle?: ReactNode;
   icon?: ReactNode;
-  /** Extra header controls, left of the close button. */
-  actions?: ReactNode;
   onClose: () => void;
   closeLabel?: string;
   /** A max-width class; the panel is as wide as the window allows below it. */
@@ -41,16 +39,22 @@ export function Panel({ title, subtitle, icon, actions, onClose, closeLabel = "C
   children: ReactNode;
 }) {
   const leaving = useContext(Leaving);
+  const layer = useInert<HTMLDivElement>(leaving);
   useEffect(() => {
     if (leaving) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !(e.target as HTMLElement).closest("input, textarea, select") && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || (e.target as HTMLElement).closest("input, textarea, select")) return;
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, [onClose, leaving]);
 
   return (
-    // Click-through while leaving, so the page is usable as soon as it is asked to close.
+    // Click-through (and inert) while leaving, so the page is usable as soon as it is asked to close.
     <div
+      ref={layer}
       className={cn(
         "fixed inset-0 z-40 flex items-center justify-center bg-mud/35 p-4 md:p-8",
         leaving ? "pointer-events-none animate-fade-out" : "animate-fade-in",
@@ -69,7 +73,6 @@ export function Panel({ title, subtitle, icon, actions, onClose, closeLabel = "C
             <h2 className="font-display text-[22px] leading-tight font-bold text-mud">{title}</h2>
             {subtitle && <p className="mt-0.5 truncate text-[14px] text-mud-soft">{subtitle}</p>}
           </div>
-          {actions}
           <Button size="icon" variant="ghost" onClick={onClose} aria-label={closeLabel}><X size={20} /></Button>
         </div>
         {children}

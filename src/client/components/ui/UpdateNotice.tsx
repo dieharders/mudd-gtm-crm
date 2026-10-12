@@ -1,7 +1,7 @@
 /**
  * The sidebar's "new version" card: update in place and restart, or download it by hand. When the
  * sidebar is folded to its icon rail, the same notice is one note-coloured icon button whose title
- * carries the words and whose click does what the card's first button would.
+ * carries the words, and whose click puts them in a heads-up toast with the card's first button.
  */
 import { ArrowUpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -9,6 +9,7 @@ import toast from "react-hot-toast";
 import type { UpdateInfo } from "../../../shared/types";
 import { api } from "../../lib/api";
 import { Button } from "./Button";
+import { attentionToast } from "./Toaster";
 
 const CHECK_EVERY = 6 * 60 * 60_000;
 
@@ -51,11 +52,14 @@ export function UpdateNotice({ info }: { info: UpdateInfo | null }) {
   const headline = `Mudd ${version} is ${done ? "installed" : "available"}`;
   const detail = done ? (installed && nativeRestart() ? "Restarting…" : "Restart Mudd to finish.")
     : info.blocked ?? "Mudd restarts to finish, and stops any AI research in progress.";
-  // What the rail's one button does: restart when a restart is all that is left, otherwise install
-  // (or, when installing here is blocked, open the download page). The restart is called with no
-  // arguments: the webview binding serialises them, and a click event cannot be.
+  // What the rail's one button offers: restart when a restart is all that is left, otherwise
+  // install (or, when installing here is blocked, open the download page). It only says so, in a
+  // toast whose own button does it: the bare icon is easily clicked just to see what it is. The
+  // restart is called with no arguments: the webview binding serialises them, and a click event cannot be.
   const restart = nativeRestart();
-  const compactAction = done ? restart && (() => restart()) : info.blocked ? openRelease : () => void install();
+  const compact = done ? restart && { label: "Restart", onClick: () => restart() }
+    : info.blocked ? { label: "Download", onClick: openRelease } : { label: "Update & restart", onClick: () => void install() };
+  const offer = compact && (() => attentionToast(<><b>{headline}.</b> {detail}</>, compact, "update"));
 
   return (
     <>
@@ -81,8 +85,8 @@ export function UpdateNotice({ info }: { info: UpdateInfo | null }) {
           className="w-full bg-note hover:bg-note/70"
           title={`${headline}. ${detail}`}
           aria-label={`${headline}. ${detail}`}
-          disabled={installing || !compactAction}
-          onClick={compactAction}
+          disabled={installing || !offer}
+          onClick={offer || undefined}
         >
           <ArrowUpCircle size={18} className="text-clay-deep" />
         </Button>

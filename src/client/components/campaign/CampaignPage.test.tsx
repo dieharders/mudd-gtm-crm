@@ -32,6 +32,7 @@ void mock.module("../../lib/api", () => ({
     campaign: (id: string) => Promise.resolve(bundles[id]),
     recipes: () => Promise.resolve([]),
     runs: () => Promise.resolve([]),
+    finishedRows: () => Promise.resolve({}),
     suggestions: () => Promise.resolve([]),
     discovery: () => Promise.resolve({ runs: [], candidates: [] }),
     env: () => Promise.resolve({ platform: "darwin", dialogs: false, dataDir: "" }),
@@ -97,6 +98,36 @@ test("the selection is let go once a change takes rows off the list, or a bulk s
     expect(page.el.textContent).not.toContain("selected");
     expect(page.chip("Contacted")?.getAttribute("aria-pressed")).toBe("true");
     expect(page.el.textContent).toContain("No rows match");
+  } finally {
+    await page.unmount();
+    restoreConsole();
+  }
+});
+
+test("only the selected rows that leave the list are let go; a switch of view lets go of all", async () => {
+  const restoreConsole = failOnConsoleError();
+  const page = await mount("pipeline");
+  try {
+    const undo = () => page.click(page.el.querySelector('[title="Undo (Ctrl+Z)"]'));
+    // A row joining the list keeps the selection.
+    await page.selectAll();
+    await page.click(page.button("Add prospect"));
+    expect(page.el.textContent).toContain("3 selected");
+    // Reading has no checkboxes to untick them with.
+    await page.click(page.button("Reading"));
+    expect(page.el.textContent).not.toContain("selected");
+    await page.click(page.button("Table"));
+    await undo();
+
+    // Under Not contacted: a, b and a new one, all selected. Undoing the add takes it off the list, and only it.
+    await page.click(page.chip("Not contacted"));
+    await page.click(page.button("Add prospect"));
+    await page.selectAll();
+    expect(page.el.textContent).toContain("3 selected");
+    await undo();
+    expect(page.el.textContent).toContain("2 selected");
+    await page.click(page.button("Reading"));
+    await page.click(page.button("Table"));
   } finally {
     await page.unmount();
     restoreConsole();

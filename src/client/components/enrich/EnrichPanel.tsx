@@ -449,13 +449,15 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
       return targets.some((k) => blank(contactKeys.has(k) ? primary?.cells[k] : r.cells[k]));
     });
   }, [people, prospects, hasNew, targetList, schema, contactsOf]);
+  const [scope, setScope] = useState(selected.length ? "selected" : "missing");
+  // The selection can shrink while this is open (a test's rows leaving the view). Its scope then
+  // stays while it is the one chosen, down to none, rather than the run widening to another unasked.
   const scopes = [
-    ...(selected.length ? [{ id: "selected", label: `Selected rows`, ids: selected }] : []),
+    ...(selected.length || scope === "selected" ? [{ id: "selected", label: `Selected rows`, ids: selected }] : []),
     { id: "missing", label: "Prospects missing these fields", ids: missing.map((r) => r.id) },
     ...(filtered.length !== prospects.length ? [{ id: "filtered", label: "Rows in the current view", ids: filtered }] : []),
     { id: "all", label: "All prospects", ids: prospects.map((r) => r.id) },
   ];
-  const [scope, setScope] = useState(scopes[0]!.id);
   const [autoFill, setAutoFill] = useState(false);
   const [concurrency, setConcurrency] = useState(2);
   const [starting, setStarting] = useState(false);

@@ -75,22 +75,25 @@ function keepOffered(picked: ReadonlySet<string>, offered: QuickFilter[]): Reado
 }
 
 /**
- * Let go of the selection whenever rows join or leave the list (an edit moving them past the
- * chips, a delete, an add), so none of it is left out of sight and out of the header checkbox's
- * reach. A new order, or a run filling in cells, keeps it.
+ * Let go of the selected rows that leave the list (an edit moving them past the chips, a delete),
+ * so none of the selection is left out of sight and out of the header checkbox's reach. The rest
+ * stays selected, through rows joining the list, a new order, or a run filling in cells.
  */
-function useClearOnNewRows(rows: Row[], setSelected: (update: (s: Set<string>) => Set<string>) => void) {
-  const shown = useRef<Set<string> | null>(null);
+function usePruneSelection(rows: Row[], setSelected: (update: (s: Set<string>) => Set<string>) => void) {
   useEffect(() => {
-    const was = shown.current;
-    shown.current = new Set(rows.map((r) => r.id));
-    if (was && (was.size !== rows.length || rows.some((r) => !was.has(r.id)))) setSelected((s) => (s.size ? new Set() : s));
+    setSelected((s) => {
+      if (!s.size) return s;
+      const shown = new Set(rows.map((r) => r.id));
+      const kept = [...s].filter((id) => shown.has(id));
+      return kept.length === s.size ? s : new Set(kept);
+    });
   }, [rows, setSelected]);
 }
 // Sorting compares every pair of rows: one collator for all of them, not new options per call.
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const NO_KEYS = new Set<string>();
 const NO_ROWS: Row[] = [];
+const NO_IDS: string[] = [];
 /** What a chip that reads no context is tested with: it never looks. */
 const NO_CONTEXT: FilterContext = { contactsOf: () => NO_ROWS, ran: () => false };
 /** The Contacts grid's Company column comes from the prospect: read-only there. */
@@ -199,7 +202,12 @@ function CampaignView({ state }: { state: CampaignState }) {
   const waiting = enrich.suggestions.length + (discovery.enabled ? discovery.inbox.length : 0);
   const grid = useRef<GridHandle>(null);
   const { refresh: refreshList } = useCampaignList();
-  const [view, setView] = useStoredState<"table" | "reading">(`mudd:view:${campaign.id}`, "table");
+  const [view, storeView] = useStoredState<"table" | "reading">(`mudd:view:${campaign.id}`, "table");
+  // Reading has no checkboxes to untick a selection with: a switch of view lets go of it.
+  const setView = (v: "table" | "reading") => {
+    if (v !== view) setSelected(new Set());
+    storeView(v);
+  };
   const [stored, setTab] = useStoredState<Tab>(`mudd:tab:${campaign.id}`, "prospects");
   const tab: Tab = stored === "contacts" ? "contacts" : "prospects";
   const onContacts = tab === "contacts";
@@ -260,9 +268,9 @@ function CampaignView({ state }: { state: CampaignState }) {
   }, [counts, picked, stages]);
 
   const { contactsOf } = state;
-  const { recipes, runs } = enrich;
+  const { recipes, runs, finished } = enrich;
   const today = useToday();
-  const ran = useMemo(() => runsThrough(runs), [runs]);
+  const ran = useMemo(() => runsThrough(runs, finished), [runs, finished]);
   const filterContext = useMemo<FilterContext>(() => ({ contactsOf, ran }), [contactsOf, ran]);
   const q = query.trim().toLowerCase();
   // Read only while searching: a contact's edit then leaves the prospect list (and its sort) be.
@@ -325,8 +333,8 @@ function CampaignView({ state }: { state: CampaignState }) {
   // A chip no longer offered can't stay on unseen, filtering by nothing while All shows off.
   useEffect(() => setPicked((p) => keepOffered(p, quick)), [quick]);
   useEffect(() => setContactPicked((p) => keepOffered(p, contactQuick)), [contactQuick]);
-  useClearOnNewRows(filtered, setSelected);
-  useClearOnNewRows(filteredContacts, setSelectedContacts);
+  usePruneSelection(filtered, setSelected);
+  usePruneSelection(filteredContacts, setSelectedContacts);
   // A screened-out prospect's people are greyed out and read-only, as it is.
   const isContactLocked = useCallback((r: Row) => {
     const org = r.parentId ? rowById.get(r.parentId) : undefined;
@@ -344,6 +352,11 @@ function CampaignView({ state }: { state: CampaignState }) {
   const selectedActiveIds = useMemo(
     () => selectedRows.filter((r) => !isScreened(r, schema)).map((r) => r.id),
     [selectedRows, schema],
+  );
+  // The prospects in play in the view, for Enrich's scopes: worked out only while it is open.
+  const filteredActiveIds = useMemo(
+    () => (showEnrich ? filtered.filter((r) => !isScreened(r, schema)).map((r) => r.id) : NO_IDS),
+    [showEnrich, filtered, schema],
   );
 
   // Ctrl+Z anywhere outside a text field.
@@ -376,9 +389,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   }, []);
   const closeDrawer = useCallback(() => showRow(null), [showRow]);
   // The panel slides out after it closes, still showing what it last had open.
-  const drawer = useLeaving(!!openRow, DRAWER_LEAVE_MS);
-  const lastOpen = useRef<{ row: Row; contacts: Row[]; contactId: string | null } | null>(null);
-  if (openRow) lastOpen.current = { row: openRow, contacts: contactsOf(openRow.id), contactId: openContactId };
+  const drawer = useLeaving(!!openRow, DRAWER_LEAVE_MS, openRow && { row: openRow, contacts: contactsOf(openRow.id), contactId: openContactId });
   // Read through a ref: a stable callback keeps every card from re-rendering on each edit.
   const rowByIdRef = useRef(rowById);
   rowByIdRef.current = rowById;
@@ -654,15 +665,15 @@ function CampaignView({ state }: { state: CampaignState }) {
             </>
           )}
           </div>
-          {drawer.shown && lastOpen.current && (
+          {drawer.shown && drawer.last && (
             <RowDrawer
-              row={lastOpen.current.row}
+              row={drawer.last.row}
               schema={schema}
               stages={stages}
               templates={state.templates}
               state={state}
-              contacts={lastOpen.current.contacts}
-              openContactId={lastOpen.current.contactId}
+              contacts={drawer.last.contacts}
+              openContactId={drawer.last.contactId}
               leaving={drawer.leaving}
               onOpenContact={setOpenContactId}
               onClose={closeDrawer}
@@ -679,7 +690,7 @@ function CampaignView({ state }: { state: CampaignState }) {
         <TemplatesPanel schema={schema} rows={state.rows} contactsOf={contactsOf} templates={state.templates} thesis={state.thesis} consent={consent} state={state} previewRowId={openRowId} onClose={() => setShowTemplates(false)} />
       </PanelGate>
       <PanelGate open={showEnrich}>
-        <EnrichPanel state={state} enrich={enrich} selectedIds={selectedActiveIds} filteredIds={filtered.filter((r) => !isScreened(r, schema)).map((r) => r.id)}
+        <EnrichPanel state={state} enrich={enrich} selectedIds={selectedActiveIds} filteredIds={filteredActiveIds}
           onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }} onOpenRow={(id) => { setShowEnrich(false); showRow(id); }} />
       </PanelGate>
       <PanelGate open={showReview}>
@@ -813,12 +824,23 @@ function Chip({ active, onClick, label, count, title }: { active: boolean; onCli
 function QuickChips({ filters, rows, ctx, picked, onPick }: {
   filters: QuickFilter[]; rows: Row[]; ctx: FilterContext; picked: ReadonlySet<string>; onPick: (id: string) => void;
 }) {
-  const counts = useMemo(() => filters.map((f) => rows.reduce((n, r) => (f.test(r, ctx) ? n + 1 : n), 0)), [filters, rows, ctx]);
+  // Counted apart by what each filter reads beyond the row: a run's progress recounts only the
+  // chip that reads the runs, and a contact's edit only the one that reads the contacts.
+  const { contactsOf, ran } = ctx;
+  const byRow = useMemo(() => countPassing(filters, rows, undefined, NO_CONTEXT), [filters, rows]);
+  const byContacts = useMemo(() => countPassing(filters, rows, "contactsOf", { ...NO_CONTEXT, contactsOf }), [filters, rows, contactsOf]);
+  const byRuns = useMemo(() => countPassing(filters, rows, "ran", { ...NO_CONTEXT, ran }), [filters, rows, ran]);
   return filters.map((f, i) => {
     const id = QUICK + f.id;
-    if (!counts[i] && !picked.has(id)) return null;
-    return <Chip key={f.id} active={picked.has(id)} onClick={() => onPick(id)} label={f.label} count={counts[i]!} title={f.title} />;
+    const count = byRow[i]! + byContacts[i]! + byRuns[i]!;
+    if (!count && !picked.has(id)) return null;
+    return <Chip key={f.id} active={picked.has(id)} onClick={() => onPick(id)} label={f.label} count={count} title={f.title} />;
   });
+}
+
+/** How many rows pass each filter that reads `reads` (undefined: the row alone); 0 for the others. */
+function countPassing(filters: QuickFilter[], rows: Row[], reads: QuickFilter["reads"], ctx: FilterContext): number[] {
+  return filters.map((f) => (f.reads === reads ? rows.reduce((n, r) => (f.test(r, ctx) ? n + 1 : n), 0) : 0));
 }
 
 /** No prospects yet. A Discovery campaign's come from its inbox; any other's are typed or pasted. */

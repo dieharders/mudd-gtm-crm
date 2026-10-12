@@ -5,7 +5,7 @@
  * opening that contact in the prospect panel.
  */
 import { AlertTriangle, Ban, CalendarClock, ExternalLink, Mail, MessageSquareText, Phone, Star, Users } from "lucide-react";
-import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { contactSchema } from "../../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Column, type Row } from "../../../shared/types";
 import { contactLabel, orderedContacts, primaryOf, toNumber } from "../../../shared/values";
@@ -175,7 +175,7 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
         )}
 
         {paragraphs.length > 0 && (
-          <ScrollText className="mt-3 space-y-2.5">
+          <ScrollText className="mt-3" contentClassName="space-y-2.5">
             {paragraphs.map((p, i) => (
               <p key={p.col.key} className={cn("max-w-prose text-[13.5px] leading-relaxed whitespace-pre-line", i === 0 ? "text-mud" : "text-mud-soft")}>
                 {paragraphs.length > 1 && <span className="mr-1.5 text-[10.5px] font-bold tracking-wider text-mud uppercase">{p.col.header}</span>}
@@ -240,21 +240,22 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
  * A card's long text, capped in height so one prospect's notes don't stretch its row. The rest
  * scrolls in place, and a fade at the bottom says there is more while there is.
  */
-function ScrollText({ className, children }: { className?: string; children: ReactNode }) {
+function ScrollText({ className, contentClassName, children }: { className?: string; contentClassName?: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState(false);
-  const measure = () => {
+  const measure = useCallback(() => {
     const el = ref.current;
     if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
-  };
+  }, []);
+  // Watched once: the box resizing, or the text in it growing or shrinking, is all that moves the end.
   useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    ro.observe(ref.current!);
+    ro.observe(content.current!);
     return () => ro.disconnect();
-  }, [children]);
+  }, [measure]);
   return (
     <div
       ref={ref}
@@ -263,7 +264,7 @@ function ScrollText({ className, children }: { className?: string; children: Rea
       className={cn("max-h-64 overflow-y-auto overscroll-contain scroll-thin pr-1", className)}
       style={more ? { maskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)" } : undefined}
     >
-      {children}
+      <div ref={content} className={contentClassName}>{children}</div>
     </div>
   );
 }

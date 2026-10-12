@@ -148,6 +148,13 @@ describe("runsThrough", () => {
     expect(ran("a", "r3")).toBe(false);
     expect(ran("b", "r1")).toBe(false);
   });
+
+  test("and those of older runs the server kept, no longer among the runs listed", () => {
+    const ran = runsThrough([], new Map([["a", new Set(["r1"])]]));
+    expect(ran("a", "r1")).toBe(true);
+    expect(ran("a", "r2")).toBe(false);
+    expect(ran("b", "r1")).toBe(false);
+  });
 });
 
 describe("economic buyer", () => {

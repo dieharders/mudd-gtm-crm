@@ -22,6 +22,7 @@ import { newProspectId } from "../../shared/schema";
 import { CHECKED, isChecked, type Campaign, type CampaignSchema, type CellEdit, type CellValue, type Row, type Template, type Thesis } from "../../shared/types";
 import { applyCellEdits, sameValue } from "../../shared/values";
 import { api } from "../lib/api";
+import { saveNote, type SaveState } from "../components/ui/Toaster";
 
 type UndoEntry =
   | { kind: "edits"; label: string; before: CellEdit[] }
@@ -59,7 +60,26 @@ export function useCampaign(id: string) {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const pending = useRef<Map<string, CellEdit>>(new Map());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inflight = useRef(0);
   const undoStack = useRef<UndoEntry[]>([]);
+
+  // The save note in the corner (see saveNote): shown again only when what it says changes. Once
+  // the page is left, a "Not saved" still to come goes after a while instead of staying on others.
+  const saveId = `save:${id}`;
+  const note = useRef<SaveState | null>(null);
+  const here = useRef(true);
+  const showSave = useCallback((s: SaveState) => {
+    if (note.current === s && s === "saving") return;
+    note.current = s;
+    saveNote(s, saveId, here.current);
+  }, [saveId]);
+  useEffect(() => {
+    here.current = true;
+    return () => {
+      here.current = false;
+      if (note.current === "error") toast.dismiss(saveId);
+    };
+  }, [saveId]);
 
   const load = useCallback(async () => {
     try {
@@ -78,17 +98,24 @@ export function useCampaign(id: string) {
     void load();
   }, [load]);
 
-  /** Run a server write in order. A failed one says so in a toast. */
+  /** Run a server write in order, tracking the save note. A failed one also says why in a toast. */
   const enqueue = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+    inflight.current++;
+    showSave("saving");
     const p = queue.current.then(fn, fn);
     queue.current = p.then(
-      () => {},
+      () => {
+        // Not while edits still wait to be sent: they are on their way, and saving.
+        if (--inflight.current === 0 && !pending.current.size) showSave("saved");
+      },
       (err) => {
+        inflight.current--;
+        showSave("error");
         toast.error(`Not saved: ${(err as Error).message}`, { id: "save-error" });
       },
     );
     return p;
-  }, []);
+  }, [showSave]);
 
   const flushEdits = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -139,7 +166,8 @@ export function useCampaign(id: string) {
     for (const e of edits) pending.current.set(`${e.rowId}\u0000${e.key}`, e);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flushEdits, EDIT_DEBOUNCE);
-  }, [flushEdits]);
+    showSave("saving");
+  }, [flushEdits, showSave]);
 
   /** Change cells. One call is one undo step. Returns false when nothing actually changed. */
   const edit = useCallback((edits: CellEdit[], label = "Edit") => {

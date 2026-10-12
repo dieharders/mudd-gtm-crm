@@ -6,7 +6,7 @@
  *
  * The app runs in this process against a throwaway data folder, so your own campaigns are never
  * read or touched, and headless Edge or Chrome takes each shot at 1440x900, 2x. The AI settings
- * shot shows whichever Claude Code account this machine is signed in to.
+ * shot shows a made-up Claude Code sign-in (DEMO_PROVIDERS), not this machine's.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -14,7 +14,7 @@ import path from "node:path";
 import index from "../../src/client/index.html";
 import { withBrowser, type Send } from "../browser";
 import type { CampaignBundle } from "../../src/shared/types";
-import { DISCOVERY_CAMPAIGN, discoveryDemo, enrichDemo, TEMPLATES, THESIS_ANSWERS, writeDemoWorkbook } from "./demo";
+import { DEMO_PROVIDERS, DISCOVERY_CAMPAIGN, discoveryDemo, enrichDemo, TEMPLATES, THESIS_ANSWERS, writeDemoWorkbook } from "./demo";
 
 const OUT = path.join(import.meta.dir, "..", "..", "docs", "screenshots");
 const WIDTH = 1440;
@@ -25,11 +25,18 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-screenshots-"));
 process.env.MUDD_DATA_DIR = path.join(tmp, "data");
 const { createFetchHandler } = await import("../../src/server/index");
 const { closeDb } = await import("../../src/server/db");
+const { getAiSettings } = await import("../../src/server/ai/settings");
 const store = await import("../../src/server/sourcing/store");
 const enrichStore = await import("../../src/server/enrich/store");
 const { recipeForPreset } = await import("../../src/server/enrich/recipes");
 
-const handler = createFetchHandler();
+// The AI settings dialog and the sidebar show this made-up sign-in, never the CLIs or the account
+// of the machine taking the shots: the status is answered here, without asking the CLIs at all.
+const appHandler = createFetchHandler();
+const handler = (req: Request) =>
+  req.method === "GET" && new URL(req.url).pathname === "/api/ai/status"
+    ? Response.json({ settings: getAiSettings(), providers: DEMO_PROVIDERS })
+    : appHandler(req);
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
@@ -130,8 +137,8 @@ const SHOTS: Record<string, (p: Page) => Promise<void>> = {
   "ai-settings": async (p) => {
     await p.goto("/", "Upcoming meetings");
     await p.click('button[title^="Claude Code"]');
-    // The sign-in check asks the CLI, which takes a moment.
-    await Bun.sleep(1500);
+    // The status is stubbed (DEMO_PROVIDERS), but the dialog still loads it after it opens.
+    await Bun.sleep(500);
   },
   "outbound-templates": async (p) => {
     await p.goto(`/c/${tracker.id}`, "Northwind Fabrication");

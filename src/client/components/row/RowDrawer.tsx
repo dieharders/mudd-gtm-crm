@@ -20,6 +20,7 @@ import { contactedStage, shouldAdvanceToMeeting, stageEdits, stageIndex } from "
 import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
+import { useInert } from "../../hooks/useLeaving";
 import { AiIntro, RowSuggestions } from "./AiSections";
 import { hrefOf, openLink } from "../grid/cells";
 import { Button } from "../ui/Button";
@@ -45,7 +46,7 @@ interface Props {
   onNext?: () => void;
   onOpenTemplates: () => void;
   enrich: EnrichmentState;
-  /** Closed and sliding away: shown as it was, but no longer answering keys or clicks. */
+  /** Closed and sliding away: shown as it was, but inert, no longer answering keys or clicks. */
   leaving?: boolean;
 }
 
@@ -67,6 +68,7 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
     if (toastMsg) undoToast(toastMsg, () => state.undo());
   };
 
+  const layer = useInert<HTMLElement>(!!leaving);
   useEffect(() => {
     if (leaving) return;
     const onKey = (e: KeyboardEvent) => {
@@ -86,7 +88,7 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
 
   return (
     <aside
-      aria-hidden={leaving || undefined}
+      ref={layer}
       className={cn(
         "absolute inset-y-0 right-0 z-30 flex w-[min(480px,100%)] flex-col border-l-2 border-rim bg-paper shadow-[-8px_0_24px_-12px_rgba(43,30,22,0.35)]",
         leaving ? "pointer-events-none animate-slide-out" : "animate-slide-in",

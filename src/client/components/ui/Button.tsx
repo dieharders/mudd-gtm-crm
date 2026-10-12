@@ -23,8 +23,7 @@ const SIZES: Record<Size, string> = {
   icon: "h-11 w-11 justify-center px-0",
 };
 
-/** The classes of a button, for elements that look like one but are not (a router Link, say). */
-export function buttonClass(variant: Variant = "secondary", size: Size = "md", className?: string): string {
+function buttonClass(variant: Variant = "secondary", size: Size = "md", className?: string): string {
   // A ghost icon button is a plain glyph until hovered, when its rim shows it is a control.
   return cn(VARIANTS[variant], SIZES[size], variant === "ghost" && size === "icon" && "text-mud-faint hover:border-rim disabled:hover:border-transparent disabled:hover:text-mud-faint", className);
 }

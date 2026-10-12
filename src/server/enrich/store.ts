@@ -46,6 +46,21 @@ export function listRuns(campaignId: string, limit = 20): EnrichRun[] {
     .map((r) => JSON.parse(r.json) as EnrichRun);
 }
 
+/**
+ * The rows each recipe's runs finished, over every run the campaign kept (listRuns has only the
+ * latest): recipe id → row ids. A row a run finished keeps its answer, even when that was a blank.
+ */
+export function finishedRows(campaignId: string): Record<string, string[]> {
+  const rows = getDb()
+    .query(`SELECT DISTINCT json_extract(r.json, '$.recipeId') AS recipe, j.key AS row FROM runs r, json_each(r.json, '$.rows') j
+      WHERE r.campaign_id = ? AND json_extract(r.json, '$.kind') = 'enrich' AND json_extract(r.json, '$.recipeId') IS NOT NULL
+        AND json_extract(j.value, '$.state') = 'done'`)
+    .all(campaignId) as { recipe: string; row: string }[];
+  const out: Record<string, string[]> = {};
+  for (const { recipe, row } of rows) (out[recipe] ??= []).push(row);
+  return out;
+}
+
 /** Runs that were live when the app last closed can't be resumed; say so instead of "running". */
 export function markInterruptedRuns(): void {
   const rows = getDb().query("SELECT json FROM runs").all() as { json: string }[];

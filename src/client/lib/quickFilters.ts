@@ -39,8 +39,15 @@ const statusOf = (row: Row, schema: CampaignSchema) => (schema.statusKey ? Strin
 const isDead = (row: Row, schema: CampaignSchema) => statusOf(row, schema).toLowerCase() === DEAD.toLowerCase();
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-/** The rows each recipe's runs finished, whether or not they found anything there. */
-export function runsThrough(runs: readonly EnrichRun[]): FilterContext["ran"] {
+/** Recipe id → the rows its runs finished. */
+export type FinishedRows = ReadonlyMap<string, ReadonlySet<string>>;
+
+/**
+ * The rows each recipe's runs finished, whether or not they found anything there: those of the
+ * runs the page holds, and those `stored` (every run the server kept, as the page holds only
+ * the latest few).
+ */
+export function runsThrough(runs: readonly EnrichRun[], stored: FinishedRows = new Map()): FilterContext["ran"] {
   const done = new Map<string, Set<string>>();
   for (const run of runs) {
     if (run.kind !== "enrich" || !run.recipeId) continue;
@@ -48,7 +55,7 @@ export function runsThrough(runs: readonly EnrichRun[]): FilterContext["ran"] {
     for (const [rowId, r] of Object.entries(run.rows)) if (r.state === "done") ids.add(rowId);
     done.set(run.recipeId, ids);
   }
-  return (recipeId, rowId) => !!done.get(recipeId)?.has(rowId);
+  return (recipeId, rowId) => !!done.get(recipeId)?.has(rowId) || !!stored.get(recipeId)?.has(rowId);
 }
 
 /** `today` is the date the follow-up's week counts back from ("2026-10-11"). */
