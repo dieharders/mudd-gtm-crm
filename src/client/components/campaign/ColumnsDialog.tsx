@@ -96,7 +96,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
       <div className="overflow-hidden border-b border-rim/40 pr-1 [scrollbar-gutter:stable] scroll-thin">
         <table className="w-full table-fixed text-sm">
           {colgroup}
-          <thead className="text-left text-xs text-mud-faint">
+          <thead className="text-left text-xs text-mud">
             <tr>
               <th className="py-1.5" />
               <th className="py-1.5 font-medium">Header</th>
@@ -115,11 +115,13 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
               const locked = inSheet.has(c.key) || roleKeys.has(c.key);
               const dup = dupes.has(tidy(c).header.toLowerCase());
               return (
-                <tr key={c.key} className={cn("border-t border-rim/40", c.hidden && "opacity-55")}>
+                <tr key={c.key} className={cn("border-t border-rim/40 align-top", c.hidden && "opacity-55")}>
                   <td className="py-1.5">
-                    <button className="rounded-sm p-1 text-mud-faint hover:bg-paper-deep hover:text-mud" onClick={() => patch(c.key, { hidden: !c.hidden })} title={c.hidden ? "Show in grid" : "Hide in grid"}>
-                      {c.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
+                    <div className="flex h-8 items-center">
+                      <button className="rounded-sm p-1 text-mud-faint hover:bg-paper-deep hover:text-mud" onClick={() => patch(c.key, { hidden: !c.hidden })} title={c.hidden ? "Show in grid" : "Hide in grid"}>
+                        {c.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
                   </td>
                   <td className="py-1.5 pr-2">
                     <input className={cn("field h-8 py-0", dup && "border-rose-300")} value={c.header} onChange={(e) => patch(c.key, { header: e.target.value })} />
@@ -135,16 +137,18 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
                     {c.type === "select" ? (
                       <input className="field h-8 py-0 text-xs" placeholder="Comma-separated" value={(c.options ?? []).join(", ")}
                         onChange={(e) => patch(c.key, { options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
-                    ) : <span className="text-xs text-mud-faint">—</span>}
+                    ) : <span className="flex h-8 items-center text-xs text-mud-faint">—</span>}
                   </td>
                   <td className="py-1.5">
-                    {locked ? (
-                      <span className="flex justify-center text-mud-faint" title={inSheet.has(c.key) ? "In your spreadsheet — hide it instead" : "Used by Mudd — hide it instead"}><Lock size={13} /></span>
-                    ) : (
-                      <button className="rounded-sm p-1 text-mud-faint hover:bg-rose-50 hover:text-rose-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
-                        <Trash2 size={14} />
-                      </button>
-                    )}
+                    <div className="flex h-8 items-center justify-center">
+                      {locked ? (
+                        <span className="p-1 text-mud-faint" title={inSheet.has(c.key) ? "In your spreadsheet — hide it instead" : "Used by Mudd — hide it instead"}><Lock size={14} /></span>
+                      ) : (
+                        <button className="rounded-sm p-1 text-mud-faint hover:bg-rose-50 hover:text-rose-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
