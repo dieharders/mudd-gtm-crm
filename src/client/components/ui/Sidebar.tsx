@@ -104,7 +104,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
       </div>
       <nav className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto px-2.5 pb-3 scroll-thin wide:mt-0 wide:px-3">
         {campaigns?.map((c) => (
-          <NavLink key={c.id} to={`/c/${c.id}`} className={(s) => cn(item(s), "h-14")} title={c.name}>
+          <NavLink key={c.id} to={`/c/${c.id}`} className={(s) => cn(item(s), "wide:h-14")} title={c.name}>
             <Tile size="md" className={cn("text-[13px]", campaignTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
             <span className="hidden min-w-0 flex-1 truncate wide:inline">{c.name}</span>
             <span className="hidden font-label text-[13px] text-mud-faint tabular-nums wide:inline">{c.prospects}</span>
@@ -119,7 +119,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
         <button
           onClick={() => ai.setOpen(true)}
           title={`${aiLabel} · ${aiState}`}
-          className="relative flex w-full items-center justify-center gap-3 rounded-xl border-2 border-rim bg-paper p-1.5 text-left shadow-hard-sm transition hover:bg-paper-deep wide:justify-start wide:px-3 wide:py-2.5"
+          className="relative flex w-full items-center justify-center gap-3 rounded-xl border-2 border-rim bg-paper p-1 text-left shadow-hard-sm transition hover:bg-paper-deep wide:justify-start wide:px-3 wide:py-2.5"
         >
           {ai.settings?.provider ? (
             <ProviderMark id={ai.settings.provider} className="h-8 w-8" />
