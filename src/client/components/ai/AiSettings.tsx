@@ -40,7 +40,7 @@ export function AiSettingsDialog() {
       width="max-w-2xl"
       locked={locked}
       title="AI settings"
-      subtitle="Mudd runs research on your own Claude Code or Codex sign-in, so it bills your plan. No API keys are stored here."
+      subtitle="Mudd runs research on your own Claude Code or Codex sign-in. No API keys are stored here."
       footer={
         <>
           {locked && <p className="mr-auto self-center text-[13px] text-mud-faint">Finish or cancel the {working.map((id) => PROVIDERS[id].label).join(" and ")} setup to close this.</p>}
@@ -224,9 +224,7 @@ function ProviderCard({ id, status, active, onPick, onRefresh, onWorking }: {
                 <>
                   <span className="tag bg-note-mint text-mud"><Check size={13} strokeWidth={3} /> {auth.account ?? "Signed in"}</span>
                   {auth.plan && <span className="tag bg-lake-soft text-lake-deep capitalize">{auth.plan}</span>}
-                  {auth.subscription ? (
-                    <span className="tag bg-note-mint text-mud-soft">Bills your subscription</span>
-                  ) : (
+                  {!auth.subscription && (
                     <span className="tag bg-note text-mud"><TriangleAlert size={13} /> Per-token billing{auth.keySource ? ` (${auth.keySource})` : ""}</span>
                   )}
                 </>
