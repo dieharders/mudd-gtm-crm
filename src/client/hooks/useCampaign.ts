@@ -23,8 +23,6 @@ import { CHECKED, isChecked, type Campaign, type CampaignSchema, type CellEdit, 
 import { applyCellEdits, sameValue } from "../../shared/values";
 import { api } from "../lib/api";
 
-export type SaveState = "idle" | "saving" | "saved" | "error";
-
 type UndoEntry =
   | { kind: "edits"; label: string; before: CellEdit[] }
   | { kind: "insert"; label: string; ids: string[] }
@@ -52,7 +50,6 @@ export function useCampaign(id: string) {
   /** The ICP thesis; null for a campaign that is not a Discovery campaign. */
   const [thesis, setThesis] = useState<Thesis | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [save, setSave] = useState<{ state: SaveState; at: number | null }>({ state: "idle", at: null });
   const [undoCount, setUndoCount] = useState(0);
 
   const rowsRef = useRef<Row[]>([]);
@@ -62,7 +59,6 @@ export function useCampaign(id: string) {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const pending = useRef<Map<string, CellEdit>>(new Map());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inflight = useRef(0);
   const undoStack = useRef<UndoEntry[]>([]);
 
   const load = useCallback(async () => {
@@ -82,18 +78,12 @@ export function useCampaign(id: string) {
     void load();
   }, [load]);
 
-  /** Run a server write in order, tracking the Saved indicator. */
+  /** Run a server write in order. A failed one says so in a toast. */
   const enqueue = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
-    inflight.current++;
-    setSave((s) => ({ ...s, state: "saving" }));
     const p = queue.current.then(fn, fn);
     queue.current = p.then(
-      () => {
-        if (--inflight.current === 0) setSave({ state: "saved", at: Date.now() });
-      },
+      () => {},
       (err) => {
-        inflight.current--;
-        setSave((s) => ({ ...s, state: "error" }));
         toast.error(`Not saved: ${(err as Error).message}`, { id: "save-error" });
       },
     );
@@ -149,7 +139,6 @@ export function useCampaign(id: string) {
     for (const e of edits) pending.current.set(`${e.rowId}\u0000${e.key}`, e);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flushEdits, EDIT_DEBOUNCE);
-    setSave((s) => ({ ...s, state: "saving" }));
   }, [flushEdits]);
 
   /** Change cells. One call is one undo step. Returns false when nothing actually changed. */
@@ -419,7 +408,7 @@ export function useCampaign(id: string) {
   const contactsOf = useCallback((orgId: string) => views.contactsByOrg.get(orgId) ?? NO_CONTACTS, [views]);
 
   return {
-    campaign, rows: views.prospects, contacts: views.contacts, contactsOf, rowById: views.rowById, templates, thesis, error, save, canUndo: undoCount > 0,
+    campaign, rows: views.prospects, contacts: views.contacts, contactsOf, rowById: views.rowById, templates, thesis, error, canUndo: undoCount > 0,
     reload: load, edit, editContacts, addRow, addContact, duplicateRow, deleteRows, makePrimary, screenOut, restore, setSchema, rename, undo, flush,
     addTemplate, updateTemplate, removeTemplate, setSource, applyRemote, applyRemoteRows, replaceCampaign, setThesis,
   };

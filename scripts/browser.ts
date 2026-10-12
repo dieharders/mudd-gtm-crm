@@ -29,35 +29,46 @@ export function findBrowser(): string {
 export type Send = (method: string, params?: Record<string, unknown>) => Promise<unknown>;
 
 export async function withBrowser<T>(fn: (send: Send) => Promise<T>, opts: { name?: string; args?: string[] } = {}): Promise<T> {
-  const port = 9333;
   // Its own profile, so it cannot hand off to (or open a window in) a browser already running.
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), `mudd-${opts.name ?? "browser"}-`));
+  // Port 0: the browser picks a free port and writes it to DevToolsActivePort in that profile, so
+  // a browser left over from an earlier run, or one beside this, is never the one driven.
   const proc = Bun.spawn(
-    [findBrowser(), "--headless=new", "--disable-gpu", "--no-first-run", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, ...(opts.args ?? []), "about:blank"],
+    [findBrowser(), "--headless=new", "--disable-gpu", "--no-first-run", `--user-data-dir=${profile}`, "--remote-debugging-port=0", ...(opts.args ?? []), "about:blank"],
     { stdout: "ignore", stderr: "ignore" },
   );
   try {
-    // Polled until the page target is listed: the endpoint can answer `[]` before about:blank
-    // has registered.
+    // Polled until the port is written and the page target is listed: the endpoint can answer
+    // `[]` before about:blank has registered.
     type Target = { type: string; webSocketDebuggerUrl: string };
+    let port: number | undefined;
     let page: Target | undefined;
     for (let i = 0; i < 60 && !page; i++) {
       try {
-        const list = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as Target[];
-        page = list.find((t) => t.type === "page");
+        // The first line is the port; a file still being written reads as 0, and is read again.
+        port ||= Number(fs.readFileSync(path.join(profile, "DevToolsActivePort"), "utf8").split("\n")[0]);
+        if (port) {
+          const list = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as Target[];
+          page = list.find((t) => t.type === "page");
+        }
       } catch {
         // Not listening yet.
       }
       if (!page) await Bun.sleep(250);
     }
-    if (!page) throw new Error(`the headless browser exposed no page on port ${port} within 15s`);
+    if (!page) throw new Error(`the headless browser exposed no page ${port ? `on port ${port} ` : ""}within 15s`);
 
     const ws = new WebSocket(page.webSocketDebuggerUrl);
-    const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+    const pending = new Map<number, { method: string; resolve: (v: unknown) => void; reject: (e: Error) => void }>();
     let id = 0;
+    // A reply is a result or an error: an error fails that call, with what the browser said.
     ws.onmessage = (e) => {
-      const msg = JSON.parse(String(e.data)) as { id?: number; result?: unknown };
-      if (msg.id && pending.has(msg.id)) pending.get(msg.id)!.resolve(msg.result ?? {});
+      const msg = JSON.parse(String(e.data)) as { id?: number; result?: unknown; error?: { message?: string } };
+      const call = msg.id ? pending.get(msg.id) : undefined;
+      if (!call) return;
+      pending.delete(msg.id!);
+      if (msg.error) call.reject(new Error(`${call.method}: ${msg.error.message ?? "the browser returned an error"}`));
+      else call.resolve(msg.result ?? {});
     };
     // A socket that fails or drops fails the run, rather than leaving an await that never returns.
     let closed: Error | null = null;
@@ -75,7 +86,7 @@ export async function withBrowser<T>(fn: (send: Send) => Promise<T>, opts: { nam
       new Promise((resolve, reject) => {
         if (closed) return reject(closed);
         const n = ++id;
-        pending.set(n, { resolve, reject });
+        pending.set(n, { method, resolve, reject });
         ws.send(JSON.stringify({ id: n, method, params }));
       });
     try {

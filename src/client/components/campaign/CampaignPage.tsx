@@ -20,8 +20,7 @@ import { EnrichPanel } from "../enrich/EnrichPanel";
 import { ReviewPanel } from "../enrich/ReviewPanel";
 import { cn } from "../../lib/cn";
 import { stageEdits, stageIndex } from "../../lib/pipeline";
-import { paperTileFor } from "../../lib/paper";
-import { toneFor } from "../../lib/stages";
+import { campaignTileFor, toneFor } from "../../lib/stages";
 import { useCampaignList } from "../../lib/campaignList";
 import { Tile } from "../ui/Logo";
 import { display } from "../grid/cells";
@@ -42,6 +41,8 @@ import { api } from "../../lib/api";
 import { fire } from "../../lib/fire";
 
 const NOT_SET = "\u0000none";
+/** The status filter that shows only the screened-out prospects. */
+const SCREENED = "\u0000screened";
 // Sorting compares every pair of rows: one collator for all of them, not new options per call.
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const NO_KEYS = new Set<string>();
@@ -177,7 +178,8 @@ function CampaignView({ state }: { state: CampaignState }) {
       return s ? byLower.get(s.toLowerCase()) ?? s : NOT_SET;
     };
   }, [stages, statusKey]);
-  // Chips count the prospects still in play; the screened-out ones are only counted.
+  // All counts every prospect, as the list shows them; a status chip counts only those of its
+  // status still in play, and the screened-out ones have a chip of their own.
   const counts = useMemo(() => {
     const byStatus: Record<string, number> = {};
     let screened = 0;
@@ -192,8 +194,6 @@ function CampaignView({ state }: { state: CampaignState }) {
     }
     return { byStatus, screened };
   }, [state.rows, statusKey, screenedKey, chipOf]);
-  const screenedCount = counts.screened;
-  const prospectCount = state.rows.length - screenedCount;
 
   const { contactsOf } = state;
   const q = query.trim().toLowerCase();
@@ -203,7 +203,9 @@ function CampaignView({ state }: { state: CampaignState }) {
   const chip = onContacts ? null : statusFilter;
   const filtered = useMemo(() => {
     let list = state.rows;
-    if (chip && statusKey) {
+    if (chip === SCREENED) {
+      list = list.filter((r) => isScreened(r, schema));
+    } else if (chip && statusKey) {
       list = list.filter((r) => !isScreened(r, schema) && chipOf(r) === chip);
     }
     // A prospect matches on its own cells or any of its people's.
@@ -287,11 +289,13 @@ function CampaignView({ state }: { state: CampaignState }) {
 
   const addRow = () => {
     const cells: Row["cells"] = {};
-    if (statusFilter && statusFilter !== NOT_SET && statusKey) cells[statusKey] = statusFilter;
+    if (statusFilter && statusFilter !== NOT_SET && statusFilter !== SCREENED && statusKey) cells[statusKey] = statusFilter;
     else if (statusKey && stages[0]) cells[statusKey] = stages[0];
     const row = state.addRow(cells);
     setQuery("");
     setSort(null);
+    // A new prospect is in play: it would not be listed among the screened-out ones.
+    if (statusFilter === SCREENED) setStatusFilter(null);
     if (view === "reading") showRow(row.id);
     else setTimeout(() => grid.current?.focusCell(row.id), 50);
   };
@@ -343,7 +347,7 @@ function CampaignView({ state }: { state: CampaignState }) {
     <div className="flex h-full flex-col bg-board">
       {/* header */}
       <div className="flex flex-wrap items-center gap-3 px-6 pt-6 pb-3">
-        <Tile size="lg" className={cn("text-lg", paperTileFor(campaign.id))}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
+        <Tile size="lg" className={cn("text-lg", campaignTileFor(campaign.id))}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
           <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />
         </div>
@@ -421,9 +425,9 @@ function CampaignView({ state }: { state: CampaignState }) {
               />
               {query && <button className="absolute top-1/2 right-3 -translate-y-1/2 text-mud-faint hover:text-mud" onClick={() => setQuery("")}><X size={15} /></button>}
             </div>
-            {!onContacts && statusKey && (
+            {!onContacts && (statusKey || counts.screened > 0) && (
               <div className="flex flex-wrap items-center gap-2">
-                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={prospectCount} tone="bg-paper-deep text-mud-soft" />
+                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={state.rows.length} tone="bg-paper-deep text-mud-soft" />
                 {[...stages, DEAD].map((s) => (counts.byStatus[s] ? (
                   <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts.byStatus[s]!} tone={toneFor(s, stages).pill} />
                 ) : null))}
@@ -431,6 +435,10 @@ function CampaignView({ state }: { state: CampaignState }) {
                   <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts.byStatus[s]!} tone={toneFor(s, stages).pill} />
                 ))}
                 {counts.byStatus[NOT_SET] ? <Chip active={statusFilter === NOT_SET} onClick={() => setStatusFilter(statusFilter === NOT_SET ? null : NOT_SET)} label="No status" count={counts.byStatus[NOT_SET]!} tone="bg-paper-deep text-mud-soft" /> : null}
+                {/* Kept while it is the filter: restoring the last one leaves an empty list, still explained. */}
+                {counts.screened > 0 || statusFilter === SCREENED ? (
+                  <Chip active={statusFilter === SCREENED} onClick={() => setStatusFilter(statusFilter === SCREENED ? null : SCREENED)} label="Screened out" count={counts.screened} tone="bg-paper-deep text-mud-faint" />
+                ) : null}
               </div>
             )}
           </>

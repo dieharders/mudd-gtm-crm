@@ -25,7 +25,8 @@ function Bubble({ t, icon, message }: { t: Toast; icon: React.ReactNode; message
           {look.label}
         </span>
       )}
-      <div className="flex items-center justify-center gap-2 text-center">
+      {/* A line of text is centred under the pill; a caller's own layout (the release notes' list) is left as it is. */}
+      <div className={cn("flex items-center justify-center gap-2", typeof t.message === "string" && "text-center")}>
         {/* The pill already shows the type's icon; info keeps a caller's own icon, like ⚠️. */}
         {(!look || t.type === "blank") && icon}
         {message}

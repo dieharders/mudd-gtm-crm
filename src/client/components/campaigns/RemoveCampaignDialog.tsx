@@ -38,7 +38,7 @@ export function RemoveCampaignDialog({ campaign, onClose, beforeRemove, onRemove
     try {
       await beforeRemove?.();
       await api.deleteCampaign(campaign.id);
-      toast.success(`Removed ${campaign.name} from Mudd`);
+      toast.success(`Removed ${campaign.name} from the app`);
       onClose();
       onRemoved?.();
       refresh();
@@ -58,12 +58,12 @@ export function RemoveCampaignDialog({ campaign, onClose, beforeRemove, onRemove
     <Modal
       open={!!campaign}
       onClose={close}
-      title={`Remove ${campaign?.name ?? ""} from Mudd?`}
+      title={`Remove ${campaign?.name ?? ""} from the app?`}
       subtitle="No file is deleted: only Mudd's copy of the campaign goes."
       footer={
         <>
           <Button variant="ghost" disabled={busy} onClick={close}>Cancel</Button>
-          <Button variant="danger" disabled={busy} onClick={() => fire(remove())}><Trash2 size={15} /> Remove from Mudd</Button>
+          <Button variant="danger" disabled={busy} onClick={() => fire(remove())}><Trash2 size={15} /> Remove from App</Button>
         </>
       }
     >

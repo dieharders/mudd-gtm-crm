@@ -76,7 +76,7 @@
 
   --animate-slide-in: slide-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-drawer-in: drawer-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  /* Kept as long as Pinboard's LEAVE_MS, which unmounts it once this is done. */
+  /* Both kept as long as Pinboard's LEAVE_MS, which unmounts it once these are done. */
   --animate-drawer-out: drawer-out 200ms cubic-bezier(0.55, 0, 1, 0.45) both;
   --animate-fade-out: fade-out 200ms ease-in both;
   --animate-fade-in: fade-in 140ms ease-out both;
@@ -167,14 +167,16 @@
   }
   .scroll-thin { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--color-rim) 45%, transparent) transparent; }
 
-  /* Buttons: a rimmed card on a ledge that presses down (see ui/Button.tsx for the variants). */
+  /* Buttons: a rimmed card on a ledge that presses down (see ui/Button.tsx for the variants). A
+     disabled one keeps its pointer events, so its title still explains why, but neither tints on
+     hover nor presses down. */
   .btn {
     @apply inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl border-2 border-rim bg-paper px-5 font-sans text-[15px]
       font-extrabold whitespace-nowrap text-mud shadow-hard-sm transition select-none hover:bg-paper-deep active:translate-y-0.5
-      active:shadow-none disabled:pointer-events-none disabled:opacity-50;
+      active:shadow-none disabled:opacity-50 disabled:hover:bg-paper disabled:active:translate-y-0 disabled:active:shadow-hard-sm;
   }
   .btn-primary {
-    @apply bg-clay text-paper hover:bg-clay-deep;
+    @apply bg-clay text-paper hover:bg-clay-deep disabled:hover:bg-clay;
   }
   /* A sticky note: paper square with a push-pin through the top edge. */
   .note {

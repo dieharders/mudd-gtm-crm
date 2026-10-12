@@ -4,7 +4,7 @@
  * dismissed; nothing reaches the sheet on its own.
  */
 import { ArchiveRestore, Inbox, Radar, ScrollText } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { isLiveStatus } from "../../../shared/ai";
 import { answeredCount, THESIS_QUESTIONS } from "../../../shared/thesis";
 import type { CampaignState } from "../../hooks/useCampaign";
@@ -37,12 +37,6 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
   const { ready } = useActiveProvider();
   const [sel, setSel] = useState<Selection>({ kind: initial });
   const [busy, setBusy] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !(e.target as HTMLElement).closest("input, textarea, select") && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const { thesis, inbox, dismissed, runs } = discovery;
   const firstRun = !runs.some((r) => r.kind === "find");

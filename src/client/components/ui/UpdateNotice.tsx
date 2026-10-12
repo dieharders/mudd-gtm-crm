@@ -52,8 +52,10 @@ export function UpdateNotice({ info }: { info: UpdateInfo | null }) {
   const detail = done ? (installed && nativeRestart() ? "Restarting…" : "Restart Mudd to finish.")
     : info.blocked ?? "Mudd restarts to finish, and stops any AI research in progress.";
   // What the rail's one button does: restart when a restart is all that is left, otherwise install
-  // (or, when installing here is blocked, open the download page).
-  const compactAction = done ? nativeRestart() : info.blocked ? openRelease : () => void install();
+  // (or, when installing here is blocked, open the download page). The restart is called with no
+  // arguments: the webview binding serialises them, and a click event cannot be.
+  const restart = nativeRestart();
+  const compactAction = done ? restart && (() => restart()) : info.blocked ? openRelease : () => void install();
 
   return (
     <>

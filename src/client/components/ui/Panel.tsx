@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
@@ -7,6 +7,8 @@ import { Button } from "./Button";
  * A large centred dialog for the campaign's workspaces (Discover, Enrich, Review, Templates):
  * a paper card over a dimmed board, with a header row and a body the caller lays out
  * (usually a rail and a main column). Closes on the backdrop; nested dialogs stop the click.
+ * Escape closes it too, except from a field, where it belongs to the field; a Modal open on top
+ * takes the key first and stops it.
  */
 export function Panel({ title, subtitle, icon, actions, onClose, closeLabel = "Close", width = "max-w-[1080px]", children }: {
   title: ReactNode;
@@ -20,6 +22,12 @@ export function Panel({ title, subtitle, icon, actions, onClose, closeLabel = "C
   width?: string;
   children: ReactNode;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !(e.target as HTMLElement).closest("input, textarea, select") && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-mud/35 p-4 animate-fade-in md:p-8" onMouseDown={onClose}>
       <div

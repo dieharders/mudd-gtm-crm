@@ -24,6 +24,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-screenshots-"));
 // Before the server modules load: the database opens under whatever this says on first use.
 process.env.MUDD_DATA_DIR = path.join(tmp, "data");
 const { createFetchHandler } = await import("../../src/server/index");
+const { closeDb } = await import("../../src/server/db");
 const store = await import("../../src/server/sourcing/store");
 const enrichStore = await import("../../src/server/enrich/store");
 const { recipeForPreset } = await import("../../src/server/enrich/recipes");
@@ -194,6 +195,13 @@ try {
   }, { name: "screenshots", args: ["--hide-scrollbars", `--window-size=${WIDTH},${HEIGHT}`] });
 } finally {
   await server.stop(true);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  // Closed first: on Windows an open database (and its -wal and -shm) can't be deleted.
+  closeDb();
+  // As with the browser's profile, a leftover temp folder isn't worth failing a run that did its work.
+  try {
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch (err) {
+    console.warn(`  (could not remove ${tmp}: ${(err as Error).message})`);
+  }
 }
 process.exit(failed ? 1 : 0);

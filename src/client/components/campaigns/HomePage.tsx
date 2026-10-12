@@ -8,8 +8,7 @@ import { api } from "../../lib/api";
 import { useCampaignList } from "../../lib/campaignList";
 import { cn } from "../../lib/cn";
 import { formatDateTime, isSameDay, parseLocal, relative, timeAgo } from "../../lib/format";
-import { paperTileFor } from "../../lib/paper";
-import { toneFor } from "../../lib/stages";
+import { campaignTileFor, toneFor } from "../../lib/stages";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
@@ -160,7 +159,7 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
       className="card group cursor-pointer p-6 transition hover:-translate-y-0.5 hover:shadow-hard-lg"
     >
       <div className="flex items-start gap-4">
-        <Tile size="lg" className={cn("text-lg", paperTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
+        <Tile size="lg" className={cn("text-lg", campaignTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-display text-[21px] leading-tight font-bold group-hover:text-clay-deep">{c.name}</h3>
           <p className="mt-0.5 truncate text-[13px] text-mud-faint">
@@ -171,7 +170,7 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
           <Popover align="right" trigger={({ toggle }) => (
             <Button size="icon" variant="ghost" className="-mt-2 -mr-2" onClick={toggle} aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
           )}>
-            {(close) => <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); onRemove(); }} hint="The file stays">Remove from Mudd</MenuItem>}
+            {(close) => <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); onRemove(); }} hint="The file stays">Remove from App</MenuItem>}
           </Popover>
         </div>
       </div>
@@ -236,18 +235,24 @@ function MeetingsCard({ meetings, limit }: { meetings: Meeting[]; limit?: number
   );
 }
 
-/** One meeting, pinned to the card like a note; `tilt` alternates the lean down the list. */
+/**
+ * One meeting, pinned to the card like a note; `tilt` alternates the lean down the list. Today's
+ * is a yellow note, so the one to join today stands out from the blue ones still to come.
+ */
 function MeetingItem({ m, past, tilt = 0 }: { m: Meeting; past?: boolean; tilt?: number }) {
+  const d = parseLocal(m.at);
+  const today = !past && !!d && isSameDay(d, new Date());
+  const ink = past ? "text-mud-faint" : today ? "text-mud-soft" : "text-lake-deep";
   return (
-    <li className={cn("relative rounded-xl border-2 border-rim p-3.5 pt-4 shadow-hard transition", past ? "bg-paper" : "bg-lake-soft", tilt % 2 ? "rotate-[0.8deg]" : "-rotate-[0.8deg]")}>
+    <li className={cn("relative rounded-xl border-2 border-rim p-3.5 pt-4 shadow-hard transition", past ? "bg-paper" : today ? "bg-note" : "bg-lake-soft", tilt % 2 ? "rotate-[0.8deg]" : "-rotate-[0.8deg]")}>
       <span className="pin scale-75" />
       <Link to={`/c/${m.campaignId}?row=${m.rowId}`} className="block">
         <div className="truncate text-[15px] font-extrabold">{m.title}</div>
-        <div className={cn("truncate text-[13px]", past ? "text-mud-faint" : "text-lake-deep")}>{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
+        <div className={cn("truncate text-[13px]", ink)}>{[m.subtitle, m.campaignName].filter(Boolean).join(" · ")}</div>
       </Link>
       <div className="mt-2.5 flex items-center gap-2">
-        <span className={cn("text-[13px]", past ? "text-mud-faint" : "text-lake-deep")}>
-          {formatDateTime(m.at)} · <span className={past ? "" : "font-bold"}>{relative(m.at)}</span>
+        <span className={cn("text-[13px]", ink)}>
+          {formatDateTime(m.at)} · <span className={past ? "" : today ? "font-bold text-clay-deep" : "font-bold"}>{relative(m.at)}</span>
         </span>
         {m.url && !past && (
           <Button size="xs" variant="primary" className="ml-auto" onClick={() => fire(api.openUrl(m.url!))}>

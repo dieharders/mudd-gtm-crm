@@ -7,8 +7,8 @@ import toast from "react-hot-toast";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/cn";
 import { useCampaignList } from "../../lib/campaignList";
+import { campaignTileFor } from "../../lib/stages";
 import { todayString } from "../../lib/format";
-import { paperTileFor } from "../../lib/paper";
 import { ProviderMark } from "../ai/BrandMarks";
 import { useImport } from "../campaigns/ImportFlow";
 import { Button } from "./Button";
@@ -105,7 +105,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
       <nav className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto px-2.5 pb-3 scroll-thin wide:mt-0 wide:px-3">
         {campaigns?.map((c) => (
           <NavLink key={c.id} to={`/c/${c.id}`} className={(s) => cn(item(s), "h-14")} title={c.name}>
-            <Tile size="md" className={cn("text-[13px]", paperTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
+            <Tile size="md" className={cn("text-[13px]", campaignTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
             <span className="hidden min-w-0 flex-1 truncate wide:inline">{c.name}</span>
             <span className="hidden font-label text-[13px] text-mud-faint tabular-nums wide:inline">{c.prospects}</span>
           </NavLink>

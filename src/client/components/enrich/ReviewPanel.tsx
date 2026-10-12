@@ -3,7 +3,7 @@
  * contact's findings under its prospect, named by the contact.
  */
 import { CheckCheck, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Suggestion } from "../../../shared/ai";
 import { columnOf } from "../../../shared/schema";
 import { contactLabel, primaryOf, prospectTitle } from "../../../shared/values";
@@ -23,11 +23,6 @@ export function ReviewPanel({ state, enrich, onClose, onOpenRow }: {
 }) {
   const schema = state.campaign!.schema;
   const [column, setColumn] = useState("");
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const list = enrich.suggestions.filter((s) => !column || s.key === column);
   const columns = [...new Set(enrich.suggestions.map((s) => s.key))];

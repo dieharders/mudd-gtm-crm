@@ -127,12 +127,6 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !(e.target as HTMLElement).closest("input, textarea, select") && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const recipe = sel?.kind === "recipe" ? enrich.recipes.find((r) => r.id === sel.id) ?? null : null;
   useEffect(() => {
     if (sel?.kind === "recipe" && recipe) {

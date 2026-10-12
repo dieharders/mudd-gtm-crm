@@ -31,8 +31,9 @@ export function Pinboard({ open, title, onClose, children }: { open: boolean; ti
   }, [open, onClose]);
   if (!shown) return null;
   return (
-    // Click-through while leaving, so the page is usable as soon as it is asked to close.
-    <div className={cn("fixed inset-0 z-40 bg-mud/25", leaving ? "pointer-events-none" : "animate-fade-in")} onMouseDown={onClose}>
+    // Click-through while leaving, so the page is usable as soon as it is asked to close; the dim
+    // fades out as the drawer slides away, as it faded in.
+    <div className={cn("fixed inset-0 z-40 bg-mud/25", leaving ? "pointer-events-none animate-fade-out" : "animate-fade-in")} onMouseDown={onClose}>
       <aside
         role="dialog"
         aria-modal="true"

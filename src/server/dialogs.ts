@@ -128,12 +128,14 @@ export function openExternal(url: string): boolean {
 /** Show a file in Finder or Explorer, selected; on Linux open its folder. False if it is gone. */
 export function revealInFolder(file: string): boolean {
   if (!fs.existsSync(file)) return false;
-  const argv =
-    process.platform === "win32"
-      ? ["explorer.exe", `/select,${file}`]
-      : process.platform === "darwin"
-        ? ["open", "-R", file]
-        : ["xdg-open", path.dirname(file)];
+  if (process.platform === "win32") {
+    // Explorer reads `/select,"C:\a b\x.xlsx"` itself and splits on commas outside the quotes, so
+    // the line goes as written: the usual quoting would wrap the whole switch, which it can't
+    // parse. A Windows path cannot contain a quote.
+    Bun.spawn(["explorer.exe", `/select,"${file}"`], { stdout: "ignore", stderr: "ignore", stdin: "ignore", windowsVerbatimArguments: true });
+    return true;
+  }
+  const argv = process.platform === "darwin" ? ["open", "-R", file] : ["xdg-open", path.dirname(file)];
   Bun.spawn(argv, { stdout: "ignore", stderr: "ignore", stdin: "ignore" });
   return true;
 }

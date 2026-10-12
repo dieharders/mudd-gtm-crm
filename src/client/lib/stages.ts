@@ -42,16 +42,22 @@ export function pickFor<T>(list: readonly T[], id: string): T {
   return list[h % list.length]!;
 }
 
-/** Avatar tiles for people: a paper pastel per contact, picked from its id. Campaigns use paperTileFor. */
+/** The paper pastels a tile is filled with, each with the ink a person's initial takes on it. */
 const TILES = [
-  "bg-clay-soft text-clay-deep",
-  "bg-lake-soft text-lake-deep",
-  "bg-note text-mud",
-  "bg-note-pink text-mud",
-  "bg-note-mint text-mud",
-  "bg-paper-deep text-mud-soft",
+  { fill: "bg-clay-soft", ink: "text-clay-deep" },
+  { fill: "bg-lake-soft", ink: "text-lake-deep" },
+  { fill: "bg-note", ink: "text-mud" },
+  { fill: "bg-note-pink", ink: "text-mud" },
+  { fill: "bg-note-mint", ink: "text-mud" },
+  { fill: "bg-paper-deep", ink: "text-mud-soft" },
 ];
-export const tileFor = (id: string): string => pickFor(TILES, id);
+/** Avatar tiles for people: a paper pastel per contact, picked from its id. */
+export const tileFor = (id: string): string => {
+  const t = pickFor(TILES, id);
+  return `${t.fill} ${t.ink}`;
+};
+/** Tiles for campaigns: the same pick of pastel, outlined, in mud ink. */
+export const campaignTileFor = (id: string): string => `${pickFor(TILES, id).fill} border-2 border-rim text-mud`;
 
 /** Colours for contact types: one per type, in the Contact type dropdown's order. */
 const TYPE_TONES = [

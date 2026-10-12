@@ -69,11 +69,6 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, co
     if (!tpl && templates[0]) setSelected(templates[0].id);
   }, [tpl, templates]);
   useEffect(() => setConfirmDelete(false), [selected]);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !(e.target as HTMLElement).closest("textarea, input") && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const create = async () => {
     const t = await state.addTemplate(`Template ${templates.length + 1}`, STARTER);
@@ -136,10 +131,7 @@ export function TemplatesPanel({ schema, rows, contactsOf, templates, thesis, co
           )}
         </div>
       {generating && state.campaign && (
-        // A click on the dialog's own backdrop must not reach the panel's, which would close both.
-        <div onMouseDown={(e) => e.stopPropagation()}>
-          <GenerateTemplateDialog open campaignId={state.campaign.id} thesis={thesis} consent={consent} onKeep={keepGenerated} onClose={() => setGenerating(false)} />
-        </div>
+        <GenerateTemplateDialog open campaignId={state.campaign.id} thesis={thesis} consent={consent} onKeep={keepGenerated} onClose={() => setGenerating(false)} />
       )}
     </Panel>
   );
