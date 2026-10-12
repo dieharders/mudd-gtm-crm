@@ -125,6 +125,19 @@ export function openExternal(url: string): boolean {
   return true;
 }
 
+/** Show a file in Finder or Explorer, selected; on Linux open its folder. False if it is gone. */
+export function revealInFolder(file: string): boolean {
+  if (!fs.existsSync(file)) return false;
+  const argv =
+    process.platform === "win32"
+      ? ["explorer.exe", `/select,${file}`]
+      : process.platform === "darwin"
+        ? ["open", "-R", file]
+        : ["xdg-open", path.dirname(file)];
+  Bun.spawn(argv, { stdout: "ignore", stderr: "ignore", stdin: "ignore" });
+  return true;
+}
+
 export function downloadsDir(): string {
   const home = process.env.USERPROFILE ?? process.env.HOME ?? ".";
   return path.join(home, "Downloads");

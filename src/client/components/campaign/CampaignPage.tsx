@@ -1,5 +1,5 @@
 import {
-  ArchiveRestore, ArrowLeft, Building2, CheckCircle2, Columns3, FileSpreadsheet, Inbox, Link2, Loader2, MessageSquareText, MoreHorizontal, Plus,
+  ArchiveRestore, Building2, Columns3, FileSpreadsheet, FolderOpen, Inbox, Loader2, MessageSquareText, MoreHorizontal, Plus,
   Loader2 as Spinner, MessageSquarePlus, Radar, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -19,7 +19,6 @@ import { ConsentDialog } from "../enrich/ConsentDialog";
 import { EnrichPanel } from "../enrich/EnrichPanel";
 import { ReviewPanel } from "../enrich/ReviewPanel";
 import { cn } from "../../lib/cn";
-import { timeAgo } from "../../lib/format";
 import { stageEdits, stageIndex } from "../../lib/pipeline";
 import { paperTileFor } from "../../lib/paper";
 import { toneFor } from "../../lib/stages";
@@ -31,21 +30,19 @@ import { ProspectList } from "../list/ProspectList";
 import { RowDrawer } from "../row/RowDrawer";
 import { cardLayout, groupableColumns, pinnedCount } from "../../lib/listLayout";
 import { TemplatesPanel } from "../templates/TemplatesPanel";
-import { Button, buttonClass } from "../ui/Button";
+import { Button } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Menu";
 import { undoToast } from "../ui/Toaster";
 import { RemoveCampaignDialog } from "../campaigns/RemoveCampaignDialog";
 import { ColumnsDialog } from "./ColumnsDialog";
 import { ExportMenu } from "./ExportMenu";
 import { ScreenOutButton } from "../row/ScreenOutButton";
+import { api } from "../../lib/api";
 import { fire } from "../../lib/fire";
 
 const NOT_SET = "\u0000none";
-const fileNameOf = (p: string) => p.split(/[\\/]/).pop() ?? p;
 // Sorting compares every pair of rows: one collator for all of them, not new options per call.
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-// An imported workbook's old Screened-out tab is not part of the campaign: never listed here.
-const SCREENED_TAB = /screen|disqual|reject|exclu|do.?not|dnc|dropped/i;
 const NO_KEYS = new Set<string>();
 const NO_ROWS: Row[] = [];
 /** The Contacts grid's Company column comes from the prospect: read-only there. */
@@ -327,7 +324,6 @@ function CampaignView({ state }: { state: CampaignState }) {
     return { prospects: of("prospects"), contacts: of("contacts") };
   }, [campaign.sheets]);
   const inSheet = sheetKeys[tab];
-  const passthrough = campaign.sheets.filter((s) => s.role === "passthrough" && !SCREENED_TAB.test(s.name)).map((s) => s.name);
   // Every key a row holds a value for, deleted columns' too, so a new column never inherits one;
   // and every column's, prospects' and contacts' alike: they share one namespace.
   const usedKeys = useMemo(() => {
@@ -341,27 +337,9 @@ function CampaignView({ state }: { state: CampaignState }) {
     <div className="flex h-full flex-col bg-board">
       {/* header */}
       <div className="flex flex-wrap items-center gap-3 px-6 pt-6 pb-3">
-        <Link to="/" className={buttonClass("ghost", "icon", "-ml-2")} title="All campaigns"><ArrowLeft size={20} /></Link>
         <Tile size="lg" className={cn("text-lg", paperTileFor(campaign.id))}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
           <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />
-          <div className="flex items-center gap-2.5 truncate text-[13px] text-mud-faint">
-            {campaign.sourcePath ? (
-              <span className="tag max-w-md truncate bg-note-mint text-mud" title={campaign.sourcePath}>
-                <FileSpreadsheet size={12} /> <span className="truncate">{fileNameOf(campaign.sourcePath)}</span> <Link2 size={11} />
-              </span>
-            ) : campaign.sourceName ? (
-              <span className="tag bg-paper-deep text-mud-soft" title="Dropped files are not linked: use Save as to pick where it goes"><FileSpreadsheet size={12} /> {campaign.sourceName} · not linked</span>
-            ) : (
-              <span className="tag bg-lake-soft text-lake-deep">Created in Mudd</span>
-            )}
-            <SaveIndicator state={state} />
-            {passthrough.length > 0 && (
-              <span className="truncate" title="These tabs are written back to the file exactly as they were imported">
-                Also kept on export: {passthrough.map((p) => <span key={p} className="tag ml-1 bg-paper-deep text-mud-soft">{p}</span>)}
-              </span>
-            )}
-          </div>
         </div>
         {liveRun && (
           <button onClick={() => setShowEnrich(true)} className="tag h-9 rounded-lg bg-lake-soft px-3 font-bold text-lake-deep hover:bg-lake-soft/70" title="Open the running enrichment">
@@ -405,7 +383,14 @@ function CampaignView({ state }: { state: CampaignState }) {
           <Button size="icon" variant="ghost" onClick={toggle} title="More" aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
         )}>
           {(close) => (
-            <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); setRemoving(true); }} hint="The file stays">Remove from Mudd</MenuItem>
+            <>
+              {campaign.sourcePath && (
+                <MenuItem icon={<FolderOpen size={15} />} onClick={() => { close(); fire(api.revealFile(campaign.id)); }} hint={<span className="block max-w-72 whitespace-normal break-all">{campaign.sourcePath}</span>}>
+                  Show in folder
+                </MenuItem>
+              )}
+              <MenuItem danger icon={<Trash2 size={15} />} onClick={() => { close(); setRemoving(true); }} hint="The file stays">Remove from Mudd</MenuItem>
+            </>
           )}
         </Popover>
       </div>
@@ -603,19 +588,6 @@ function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) =
       aria-label="Campaign name"
     />
   );
-}
-
-function SaveIndicator({ state }: { state: CampaignState }) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 15_000);
-    return () => clearInterval(t);
-  }, []);
-  const { state: s, at } = state.save;
-  if (s === "saving") return <span className="inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Saving…</span>;
-  if (s === "error") return <span className="inline-flex items-center gap-1 text-rose-600"><TriangleAlert size={11} /> Not saved</span>;
-  if (s === "saved" && at) return <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 size={11} /> Saved {timeAgo(at)}</span>;
-  return <span>Saved on this computer</span>;
 }
 
 /** A row of buttons of which one is on: the tab switch and the view toggle. */

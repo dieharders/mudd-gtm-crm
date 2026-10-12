@@ -152,6 +152,8 @@ export const api = {
    */
   saveFile: (id: string, opts: { force?: boolean; copy?: boolean } = {}) =>
     call<SaveResult>("POST", `/api/campaigns/${id}/save`, opts),
+  /** Show the campaign's linked file in its folder. */
+  revealFile: (id: string) => call<{ ok: true }>("POST", `/api/campaigns/${id}/reveal`),
 
   openDialog: () => call<DialogResult>("POST", "/api/dialog/open"),
   openUrl: (url: string) => call<{ ok: true }>("POST", "/api/open-url", { url }),
