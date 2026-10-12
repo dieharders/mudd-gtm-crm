@@ -25,7 +25,7 @@ export function Panel({ title, subtitle, icon, actions, onClose, closeLabel = "C
       <div
         role="dialog"
         aria-modal="true"
-        className={cn("flex h-full max-h-[920px] w-full flex-col overflow-hidden rounded-2xl border-2 border-rim bg-paper shadow-hard-lg animate-pop", width)}
+        className={cn("flex h-full max-h-[920px] w-full flex-col overflow-hidden rounded-2xl border-2 border-rim-deep bg-paper shadow-dialog animate-pop", width)}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-4 border-b-2 border-rim/40 px-6 py-4">
