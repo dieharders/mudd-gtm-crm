@@ -48,11 +48,12 @@ function hideOwnConsoleWindow(): void {
  * (title bar, taskbar) separately, so embedding one at build time does nothing for the other.
  * Under `bun run` the exe is bun.exe, so this shows Bun's icon in development.
  */
-function setWindowIcon(webview: { readonly unsafeWindowHandle: Pointer | null }): void {
+function setWindowIcon(webview: { readonly unsafeWindowHandle: Pointer | bigint | null }): void {
   if (process.platform !== "win32") return;
   try {
-    // Read here, inside the try: the getter is itself an FFI call.
-    const hwnd = webview.unsafeWindowHandle;
+    // Read here, inside the try: the getter is itself an FFI call. Typed with bigint, but Bun
+    // returns a number for a ptr return.
+    const hwnd = webview.unsafeWindowHandle as Pointer | null;
     if (!hwnd) return;
     const { shell32, user32 } = win32();
     const exePath = Buffer.from(`${process.execPath}\0`, "utf16le");
