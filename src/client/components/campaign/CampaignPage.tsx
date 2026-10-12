@@ -742,7 +742,7 @@ function ContactBulkBar({ rows, state, onDone }: { rows: Row[]; state: CampaignS
 
 /**
  * Actions on the selected rows. A selection can mix prospects in play with screened-out ones:
- * Screen out, Enrich, Draft intros and Set status take the ones in play, Restore the screened-out
+ * Screen out, Set status, Enrich and Draft intros take the ones in play, Restore the screened-out
  * ones, Delete all of them.
  */
 function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
@@ -768,15 +768,6 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
             onDone();
             if (state.screenOut(activeIds, reason)) undoToast(`Screened out ${count(activeIds.length)}`, () => state.undo());
           }} />
-          <Button size="sm" variant="subtle" onClick={onEnrich}><Sparkles size={13} /> Enrich</Button>
-          {schema.introKey && (
-            <Button size="sm" variant="subtle" disabled={!state.templates.length} title={state.templates.length ? "Write an intro for each selected prospect from your templates" : "Add an intro template first"}
-              onClick={() => fire(enrich.start({ kind: "intro", rowIds: activeIds, intro: { templateId: "auto" }, concurrency: 2 }).then((run) => {
-                if (run) toast.success(`Drafting ${activeIds.length} intro${activeIds.length === 1 ? "" : "s"}. They'll appear under Review.`);
-              }))}>
-              <MessageSquarePlus size={13} /> Draft intros
-            </Button>
-          )}
           {schema.statusKey && (
             <Popover trigger={({ toggle }) => <Button size="sm" onClick={toggle}>Set status</Button>}>
               {(close) => (
@@ -787,6 +778,15 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
                 </>
               )}
             </Popover>
+          )}
+          <Button size="sm" variant="subtle" onClick={onEnrich}><Sparkles size={13} /> Enrich</Button>
+          {schema.introKey && (
+            <Button size="sm" variant="subtle" disabled={!state.templates.length} title={state.templates.length ? "Write an intro for each selected prospect from your templates" : "Add an intro template first"}
+              onClick={() => fire(enrich.start({ kind: "intro", rowIds: activeIds, intro: { templateId: "auto" }, concurrency: 2 }).then((run) => {
+                if (run) toast.success(`Drafting ${activeIds.length} intro${activeIds.length === 1 ? "" : "s"}. They'll appear under Review.`);
+              }))}>
+              <MessageSquarePlus size={13} /> Draft intros
+            </Button>
           )}
         </>
       )}
