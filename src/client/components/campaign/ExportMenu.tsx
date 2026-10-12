@@ -59,7 +59,7 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
               <MenuItem icon={<Save size={15} />} onClick={() => { close(); void save(); }} hint={linked ? baseName(linked) : "To Downloads"}>
                 Save file
               </MenuItem>
-              <MenuItem icon={<CloudUpload size={15} />} disabled onClick={() => {}} hint="SharePoint · coming soon">
+              <MenuItem icon={<CloudUpload size={15} />} disabled onClick={() => {}} hint="Coming soon">
                 Save to cloud
               </MenuItem>
             </>
