@@ -412,10 +412,11 @@ function CampaignView({ state }: { state: CampaignState }) {
         ) : (
           <>
             <TabSwitch tab={tab} onChange={setTab} prospects={state.rows.length} contacts={state.contacts.length} />
-            <div className="relative">
-              <Search size={16} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-mud-faint" />
+            <div className="group relative">
+              <Search size={16} className={`pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 transition group-focus-within:text-mud-soft ${query ? "text-mud-soft" : "text-mud-faint/70"}`} />
+              {/* Dull at rest; the plain brown rim on cream once focused or filtering, without the clay focus ring. */}
               <input
-                className="field h-10 w-64 py-0 pl-10 text-[14px]"
+                className={`field h-10 w-64 py-0 pl-10 text-[14px] focus:border-rim focus:bg-paper focus:ring-0 focus-visible:outline-none ${query ? "" : "border-rim/30 bg-paper/50"}`}
                 placeholder={onContacts ? "Search contacts" : "Search prospects"}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
