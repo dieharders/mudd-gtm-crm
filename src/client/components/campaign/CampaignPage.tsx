@@ -20,6 +20,7 @@ import { EnrichPanel } from "../enrich/EnrichPanel";
 import { ReviewPanel } from "../enrich/ReviewPanel";
 import { cn } from "../../lib/cn";
 import { stageEdits, stageIndex } from "../../lib/pipeline";
+import { contactFilters, prospectFilters, type QuickFilter } from "../../lib/quickFilters";
 import { campaignTileFor, toneFor } from "../../lib/stages";
 import { useCampaignList } from "../../lib/campaignList";
 import { Tile } from "../ui/Logo";
@@ -43,6 +44,21 @@ import { fire } from "../../lib/fire";
 const NOT_SET = "\u0000none";
 /** The status filter that shows only the screened-out prospects. */
 const SCREENED = "\u0000screened";
+/** The filter that leaves the screened-out prospects out. */
+const IN_PLAY = "\u0000inplay";
+/** A filter that is one of the quick filters (Needs follow-up…), by its id. */
+const QUICK = "\u0000quick:";
+const NO_PICKS: ReadonlySet<string> = new Set();
+
+/** Turn a chip on or off. In play and Screened out rule each other out: one turns the other off. */
+function togglePick(picked: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  const next = new Set(picked);
+  if (next.delete(id)) return next;
+  next.add(id);
+  if (id === IN_PLAY) next.delete(SCREENED);
+  if (id === SCREENED) next.delete(IN_PLAY);
+  return next;
+}
 // Sorting compares every pair of rows: one collator for all of them, not new options per call.
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const NO_KEYS = new Set<string>();
@@ -113,7 +129,13 @@ function CampaignView({ state }: { state: CampaignState }) {
   const initialRow = params.get("row");
   const initialDiscover = params.get("discover");
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  // The chips that are on, none being All. Statuses (and Screened out) widen each other, as a
+  // prospect has one status; In play and the quick filters each narrow what those leave.
+  const [picked, setPicked] = useState<ReadonlySet<string>>(NO_PICKS);
+  const pick = (id: string) => setPicked((p) => togglePick(p, id));
+  // The Contacts tab's, as `picked` is the Prospects tab's.
+  const [contactPicked, setContactPicked] = useState<ReadonlySet<string>>(NO_PICKS);
+  const pickContact = (id: string) => setContactPicked((p) => togglePick(p, id));
   const [sort, setSort] = useState<SortState | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openRowId, setOpenRowId] = useState<string | null>(initialRow);
@@ -199,19 +221,29 @@ function CampaignView({ state }: { state: CampaignState }) {
   const q = query.trim().toLowerCase();
   // Read only while searching: a contact's edit then leaves the prospect list (and its sort) be.
   const searchedContactsOf = q ? contactsOf : null;
-  // The status chips are the Prospects tab's: hidden on the Contacts tab, they filter nothing there.
-  const chip = onContacts ? null : statusFilter;
+  const quick = useMemo(() => prospectFilters(schema, stages, contactsOf), [schema, stages, contactsOf]);
+  // Whether a prospect passes the chips that are on; null when All is. The chips are the
+  // Prospects tab's: hidden on the Contacts tab, they filter nothing there.
+  const passes = useMemo(() => {
+    if (onContacts || !picked.size) return null;
+    const statuses = new Set([...picked].filter((p) => p !== IN_PLAY && p !== SCREENED && !p.startsWith(QUICK)));
+    const screenedOn = picked.has(SCREENED);
+    const inPlayOnly = picked.has(IN_PLAY);
+    const tests = quick.filter((f) => picked.has(QUICK + f.id)).map((f) => f.test);
+    return (r: Row) => {
+      const screened = isScreened(r, schema);
+      if (inPlayOnly && screened) return false;
+      if ((statuses.size || screenedOn) && !(screened ? screenedOn : !!statusKey && statuses.has(chipOf(r)))) return false;
+      return tests.every((t) => t(r));
+    };
+  }, [onContacts, picked, quick, schema, statusKey, chipOf]);
   const filtered = useMemo(() => {
     let list = state.rows;
-    if (chip === SCREENED) {
-      list = list.filter((r) => isScreened(r, schema));
-    } else if (chip && statusKey) {
-      list = list.filter((r) => !isScreened(r, schema) && chipOf(r) === chip);
-    }
+    if (passes) list = list.filter(passes);
     // A prospect matches on its own cells or any of its people's.
     if (searchedContactsOf) list = list.filter((r) => cellsHit(r.cells, q) || searchedContactsOf(r.id).some((c) => cellsHit(c.cells, q)));
     return sortRows(list, sort, schema, stages);
-  }, [state.rows, chip, statusKey, q, sort, schema, stages, chipOf, searchedContactsOf]);
+  }, [state.rows, passes, q, sort, schema, stages, searchedContactsOf]);
 
   // ----- the Contacts tab: every prospect's people, with the prospect's company beside them -----
   // Worked out only while the tab is open: every contact is copied to add its company.
@@ -231,10 +263,12 @@ function CampaignView({ state }: { state: CampaignState }) {
       return { ...c, cells: { ...c.cells, [ORG_KEY]: org ? org.cells[companyKey] ?? null : null } };
     });
   }, [onContacts, state.contacts, rowById, schema]);
-  const filteredContacts = useMemo(
-    () => sortRows(q ? contactRows.filter((r) => cellsHit(r.cells, q)) : contactRows, contactSort, contactGridSchema, stages),
-    [contactRows, q, contactSort, contactGridSchema, stages],
-  );
+  const contactQuick = useMemo(() => contactFilters(schema), [schema]);
+  const filteredContacts = useMemo(() => {
+    const on = contactQuick.filter((f) => contactPicked.has(QUICK + f.id));
+    const list = contactRows.filter((r) => on.every((f) => f.test(r)) && (!q || cellsHit(r.cells, q)));
+    return sortRows(list, contactSort, contactGridSchema, stages);
+  }, [contactRows, contactQuick, contactPicked, q, contactSort, contactGridSchema, stages]);
   // A screened-out prospect's people are greyed out and read-only, as it is.
   const isContactLocked = useCallback((r: Row) => {
     const org = r.parentId ? rowById.get(r.parentId) : undefined;
@@ -289,13 +323,15 @@ function CampaignView({ state }: { state: CampaignState }) {
 
   const addRow = () => {
     const cells: Row["cells"] = {};
-    if (statusFilter && statusFilter !== NOT_SET && statusFilter !== SCREENED && statusKey) cells[statusKey] = statusFilter;
-    else if (statusKey && stages[0]) cells[statusKey] = stages[0];
+    // The first status picked, in pipeline order, so the new prospect is among those listed.
+    const status = [...stages, DEAD, ...picked].find((s) => picked.has(s) && s !== NOT_SET && s !== IN_PLAY && s !== SCREENED && !s.startsWith(QUICK)) ?? stages[0];
+    if (statusKey && status) cells[statusKey] = status;
     const row = state.addRow(cells);
     setQuery("");
     setSort(null);
-    // A new prospect is in play: it would not be listed among the screened-out ones.
-    if (statusFilter === SCREENED) setStatusFilter(null);
+    // A blank prospect may still miss the chips that are on (a quick filter, Screened out):
+    // back to All, rather than have it vanish as soon as it is added.
+    if (passes && !passes(row)) setPicked(NO_PICKS);
     if (view === "reading") showRow(row.id);
     else setTimeout(() => grid.current?.focusCell(row.id), 50);
   };
@@ -425,20 +461,30 @@ function CampaignView({ state }: { state: CampaignState }) {
               />
               {query && <button className="absolute top-1/2 right-3 -translate-y-1/2 text-mud-faint hover:text-mud" onClick={() => setQuery("")}><X size={15} /></button>}
             </div>
-            {!onContacts && (statusKey || counts.screened > 0) && (
+            {!onContacts && (statusKey || counts.screened > 0 || quick.length > 0) && (
               <div className="flex flex-wrap items-center gap-2">
-                <Chip active={!statusFilter} onClick={() => setStatusFilter(null)} label="All" count={state.rows.length} tone="bg-paper-deep text-mud-soft" />
-                {[...stages, DEAD].map((s) => (counts.byStatus[s] ? (
-                  <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts.byStatus[s]!} tone={toneFor(s, stages).pill} />
+                <Chip active={!picked.size} onClick={() => setPicked(NO_PICKS)} label="All" count={state.rows.length} />
+                {counts.screened > 0 || picked.has(IN_PLAY) ? (
+                  <Chip active={picked.has(IN_PLAY)} onClick={() => pick(IN_PLAY)} label="In play" count={state.rows.length - counts.screened} title="Everything but the screened-out prospects" />
+                ) : null}
+                {[...stages, DEAD].map((s) => (counts.byStatus[s] || picked.has(s) ? (
+                  <Chip key={s} active={picked.has(s)} onClick={() => pick(s)} label={s} count={counts.byStatus[s] ?? 0} />
                 ) : null))}
                 {Object.keys(counts.byStatus).filter((s) => s !== NOT_SET && ![...stages, DEAD].includes(s)).map((s) => (
-                  <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} label={s} count={counts.byStatus[s]!} tone={toneFor(s, stages).pill} />
+                  <Chip key={s} active={picked.has(s)} onClick={() => pick(s)} label={s} count={counts.byStatus[s]!} />
                 ))}
-                {counts.byStatus[NOT_SET] ? <Chip active={statusFilter === NOT_SET} onClick={() => setStatusFilter(statusFilter === NOT_SET ? null : NOT_SET)} label="No status" count={counts.byStatus[NOT_SET]!} tone="bg-paper-deep text-mud-soft" /> : null}
-                {/* Kept while it is the filter: restoring the last one leaves an empty list, still explained. */}
-                {counts.screened > 0 || statusFilter === SCREENED ? (
-                  <Chip active={statusFilter === SCREENED} onClick={() => setStatusFilter(statusFilter === SCREENED ? null : SCREENED)} label="Screened out" count={counts.screened} tone="bg-paper-deep text-mud-faint" />
+                {counts.byStatus[NOT_SET] || picked.has(NOT_SET) ? <Chip active={picked.has(NOT_SET)} onClick={() => pick(NOT_SET)} label="No status" count={counts.byStatus[NOT_SET] ?? 0} /> : null}
+                {/* Kept while it is on: restoring the last one leaves an empty list, still explained. */}
+                {counts.screened > 0 || picked.has(SCREENED) ? (
+                  <Chip active={picked.has(SCREENED)} onClick={() => pick(SCREENED)} label="Screened out" count={counts.screened} />
                 ) : null}
+                <QuickChips filters={quick} rows={state.rows} picked={picked} onPick={pick} />
+              </div>
+            )}
+            {onContacts && contactQuick.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip active={!contactPicked.size} onClick={() => setContactPicked(NO_PICKS)} label="All" count={state.contacts.length} />
+                <QuickChips filters={contactQuick} rows={state.contacts} picked={contactPicked} onPick={pickContact} />
               </div>
             )}
           </>
@@ -665,19 +711,36 @@ function useStoredState<T extends string>(key: string, initial: T): [T, (v: T) =
   return [value, set];
 }
 
-function Chip({ active, onClick, label, count, tone }: { active: boolean; onClick: () => void; label: string; count: number; tone: string }) {
+/** A filter chip: grey at rest, yellow while it is on. */
+function Chip({ active, onClick, label, count, title }: { active: boolean; onClick: () => void; label: string; count: number; title?: string }) {
   return (
     <button
       onClick={onClick}
+      title={title}
       className={cn(
         "inline-flex h-9 items-center gap-1.5 rounded-lg border-2 px-3 font-label text-[13px] transition",
-        active ? cn(tone, "border-rim font-bold shadow-hard-sm") : "border-rim/40 bg-paper text-mud-soft hover:border-rim hover:text-mud",
+        active ? "border-rim bg-note font-bold text-mud shadow-hard-sm" : "border-rim/40 bg-paper-deep text-mud-soft hover:border-rim hover:text-mud",
       )}
     >
       {label}
       <span className="opacity-70 tabular-nums">{count}</span>
     </button>
   );
+}
+
+/**
+ * The quick filters' chips, among the status chips and turned on and off the same way.
+ * Like a stage's, a chip with nothing to show is left out, unless it is on.
+ */
+function QuickChips({ filters, rows, picked, onPick }: {
+  filters: QuickFilter[]; rows: Row[]; picked: ReadonlySet<string>; onPick: (id: string) => void;
+}) {
+  const counts = useMemo(() => filters.map((f) => rows.reduce((n, r) => (f.test(r) ? n + 1 : n), 0)), [filters, rows]);
+  return filters.map((f, i) => {
+    const id = QUICK + f.id;
+    if (!counts[i] && !picked.has(id)) return null;
+    return <Chip key={f.id} active={picked.has(id)} onClick={() => onPick(id)} label={f.label} count={counts[i]!} title={f.title} />;
+  });
 }
 
 /** No prospects yet. A Discovery campaign's come from its inbox; any other's are typed or pasted. */
