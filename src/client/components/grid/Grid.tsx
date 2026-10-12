@@ -283,7 +283,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
       <div style={{ width: totalWidth, minWidth: "100%" }}>
         {/* header */}
         <div className="sticky top-0 z-20 flex h-10 border-b-2 border-rim/40 bg-paper-deep/60 font-label text-[12px] font-bold tracking-wide text-mud-soft uppercase" style={{ width: totalWidth, minWidth: "100%" }}>
-          <div className="sticky left-0 z-[3] flex shrink-0 items-center gap-2 border-r border-rim/40 bg-paper pl-3" style={{ width: GUTTER }}>
+          <div className="sticky left-0 z-[3] flex shrink-0 items-center gap-1.5 border-r border-rim/40 bg-paper pl-3" style={{ width: GUTTER }}>
             <input
               type="checkbox"
               aria-label="Select all rows"
@@ -292,8 +292,9 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
               ref={(el) => { if (el) el.indeterminate = someSelected; }}
               onChange={toggleAll}
             />
-            <span className="truncate font-sans text-sm font-normal tracking-normal normal-case tabular-nums" title={`${p.rows.length} rows`}>
-              {p.rows.length.toLocaleString()}
+            {/* Capped to fit beside the checkbox; the full count is in the tooltip. */}
+            <span className="truncate font-sans text-xs font-normal tracking-normal normal-case tabular-nums" title={`${p.rows.length.toLocaleString()} rows`}>
+              {p.rows.length > 999 ? "999+" : p.rows.length}
             </span>
           </div>
           {p.columns.map((col, i) => {

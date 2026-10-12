@@ -291,12 +291,8 @@ export function listCampaigns(): CampaignSummary[] {
     const c = toCampaign(r);
     const byStatus: Record<string, number> = {};
     let prospects = 0;
-    let screened = 0;
     for (const row of listRows(c.id)) {
-      if (isScreened(row, c.schema)) {
-        screened++;
-        continue;
-      }
+      if (isScreened(row, c.schema)) continue;
       prospects++;
       const s = c.schema.statusKey ? String(row.cells[c.schema.statusKey] ?? "") : "";
       const key = s || "Not set";
@@ -309,7 +305,6 @@ export function listCampaigns(): CampaignSummary[] {
       sourceName: c.sourceName,
       sourcePath: c.sourcePath,
       prospects,
-      screened,
       byStatus,
       stages: stagesOf(c.schema),
     };

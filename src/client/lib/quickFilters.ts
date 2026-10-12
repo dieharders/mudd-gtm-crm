@@ -3,34 +3,56 @@
  * Each is offered only when the campaign has the columns it reads; any that are on narrow the
  * list together, and with the status chip and the search.
  */
-import { isSourcesColumn } from "../../shared/ai";
-import { DEAD, isChecked, isScreened, type CampaignSchema, type CellValue, type Row } from "../../shared/types";
-import { parseLocal } from "./format";
+import { isSourcesColumn, type EnrichRun, type Recipe } from "../../shared/ai";
+import { CONTACT_TYPE_HINTS, ECONOMIC_BUYER } from "../../shared/schema";
+import { DEAD, isScreened, type CampaignSchema, type CellValue, type Row } from "../../shared/types";
+import { primaryOf } from "../../shared/values";
+import { parseLocal, todayString } from "./format";
 import { contactedStage, lastTouchColumn, repliedColumn, sentColumn, stageIndex } from "./pipeline";
 
 export type QuickFilterId = "followUp" | "notReady" | "unenriched" | "buyer";
+
+/**
+ * What a filter reads beyond the row, handed over at test time: the filters stay the same
+ * through an edit, and the list is filtered again only while a chip that reads what changed is on.
+ */
+export interface FilterContext {
+  contactsOf: (id: string) => Row[];
+  /** Whether a run of the recipe went through the row (see runsThrough). */
+  ran: (recipeId: string, rowId: string) => boolean;
+}
 
 export interface QuickFilter {
   id: QuickFilterId;
   label: string;
   title: string;
-  test: (row: Row) => boolean;
+  /** The part of the context its test reads, if any. */
+  reads?: keyof FilterContext;
+  test: (row: Row, ctx: FilterContext) => boolean;
 }
 
 /** Contacted this many days ago with no reply since: time to chase. */
 export const FOLLOW_UP_DAYS = 7;
-export const ECONOMIC_BUYER = "Economic Buyer";
 
 const blank = (v: CellValue | undefined) => v === null || v === undefined || String(v).trim() === "";
 const statusOf = (row: Row, schema: CampaignSchema) => (schema.statusKey ? String(row.cells[schema.statusKey] ?? "").trim() : "");
 const isDead = (row: Row, schema: CampaignSchema) => statusOf(row, schema).toLowerCase() === DEAD.toLowerCase();
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-export function prospectFilters(
-  schema: CampaignSchema,
-  stages: string[],
-  contactsOf: (id: string) => Row[],
-  now = new Date(),
-): QuickFilter[] {
+/** The rows each recipe's runs finished, whether or not they found anything there. */
+export function runsThrough(runs: readonly EnrichRun[]): FilterContext["ran"] {
+  const done = new Map<string, Set<string>>();
+  for (const run of runs) {
+    if (run.kind !== "enrich" || !run.recipeId) continue;
+    const ids = done.get(run.recipeId) ?? new Set<string>();
+    for (const [rowId, r] of Object.entries(run.rows)) if (r.state === "done") ids.add(rowId);
+    done.set(run.recipeId, ids);
+  }
+  return (recipeId, rowId) => !!done.get(recipeId)?.has(rowId);
+}
+
+/** `today` is the date the follow-up's week counts back from ("2026-10-11"). */
+export function prospectFilters(schema: CampaignSchema, stages: string[], recipes: readonly Recipe[], today = todayString()): QuickFilter[] {
   const out: QuickFilter[] = [];
   const inPlay = (r: Row) => !isScreened(r, schema);
 
@@ -40,7 +62,8 @@ export function prospectFilters(
   const last = lastTouchColumn(schema);
   const replied = repliedColumn(schema);
   if (schema.statusKey && contacted && (sent || last)) {
-    const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - FOLLOW_UP_DAYS);
+    const now = parseLocal(today) ?? new Date();
+    const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - FOLLOW_UP_DAYS).getTime();
     out.push({
       id: "followUp",
       label: "Needs follow-up",
@@ -48,41 +71,57 @@ export function prospectFilters(
       test: (r) => {
         if (!inPlay(r) || statusOf(r, schema).toLowerCase() !== contacted.toLowerCase()) return false;
         if (replied && !blank(r.cells[replied.key])) return false;
-        const dates = [last, sent].map((c) => (c ? parseLocal(String(r.cells[c.key] ?? "")) : null)).filter((d): d is Date => !!d);
-        return !dates.length || Math.max(...dates.map((d) => d.getTime())) <= cutoff.getTime();
+        const values = [last, sent].map((c) => (c ? String(r.cells[c.key] ?? "").trim() : "")).filter(Boolean);
+        if (!values.length) return true;
+        // A date that won't read ("10/10/2026" typed in a text column) can't be told a week old.
+        const dates = values.map(parseLocal);
+        if (dates.some((d) => !d)) return false;
+        // By the day: a datetime's hour doesn't put it on the other side of the cutoff.
+        return Math.max(...dates.map((d) => startOfDay(d!))) <= cutoff;
       },
     });
   }
 
   // Not contacted yet, and missing what outreach needs: someone to address, or the intro itself.
+  // Someone is whoever an intro would greet (primaryOf), Primary ticked or not.
   const { introKey } = schema;
-  const primaryKey = schema.contacts?.primaryKey;
-  if (introKey || primaryKey) {
+  const people = !!schema.contacts;
+  if (introKey || people) {
     const before = contacted ? stageIndex(contacted, stages) : stages.length;
     out.push({
       id: "notReady",
       label: "Not ready to send",
-      title: "Not contacted yet, with no primary contact or no intro",
-      test: (r) => {
+      title: "Not contacted yet, with no contact or no intro",
+      reads: "contactsOf",
+      test: (r, { contactsOf }) => {
         if (!inPlay(r)) return false;
         const s = statusOf(r, schema);
         if (s) {
           const i = stageIndex(s, stages);
           if (i < 0 || i >= before) return false;
         }
-        return (!!introKey && blank(r.cells[introKey])) || (!!primaryKey && !contactsOf(r.id).some((c) => isChecked(c.cells[primaryKey])));
+        return (!!introKey && blank(r.cells[introKey])) || (people && !primaryOf(contactsOf(r.id), schema));
       },
     });
   }
 
-  // A gap in any column an enrichment recipe fills. Dead prospects aren't worth the lookup.
-  const enriched = schema.columns.filter((c) => c.origin === "enrichment" && !c.hidden && !isSourcesColumn(c));
-  if (enriched.length) {
+  // A recipe not yet run on the prospect: none of its columns filled, and no run of it finished
+  // there. A blank a run left (nothing found, a box it didn't tick) is its answer, not a gap.
+  // Dead prospects aren't worth the lookup.
+  const byRecipe = recipes
+    .map((recipe) => ({
+      recipe,
+      keys: recipe.outputs.flatMap((o) => schema.columns.filter((c) => c.key === o.key && !c.hidden && !isSourcesColumn(c)).map((c) => c.key)),
+    }))
+    .filter((x) => x.keys.length);
+  if (byRecipe.length) {
     out.push({
       id: "unenriched",
       label: "Missing enrichment",
-      title: `A blank in ${enriched.map((c) => c.header).join(", ")}`,
-      test: (r) => inPlay(r) && !isDead(r, schema) && enriched.some((c) => blank(r.cells[c.key])),
+      title: `Not yet enriched with ${byRecipe.map((x) => x.recipe.name).join(", ")}`,
+      reads: "ran",
+      test: (r, { ran }) => inPlay(r) && !isDead(r, schema)
+        && byRecipe.some(({ recipe, keys }) => keys.every((k) => blank(r.cells[k])) && !ran(recipe.id, r.id)),
     });
   }
   return out;
@@ -94,7 +133,7 @@ export function contactFilters(schema: CampaignSchema): QuickFilter[] {
   return [{
     id: "buyer",
     label: ECONOMIC_BUYER,
-    title: "Contacts who hold the budget",
+    title: CONTACT_TYPE_HINTS[ECONOMIC_BUYER]!,
     test: (r) => String(r.cells[typeKey] ?? "").trim().toLowerCase() === ECONOMIC_BUYER.toLowerCase(),
   }];
 }

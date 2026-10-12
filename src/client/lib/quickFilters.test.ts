@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { EnrichRun, Recipe } from "../../shared/ai";
 import { ensureAppColumns, makeKey } from "../../shared/schema";
 import { CHECKED, stagesOf, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../shared/types";
-import { contactFilters, prospectFilters, type QuickFilterId } from "./quickFilters";
+import { contactFilters, prospectFilters, runsThrough, type FilterContext, type QuickFilterId } from "./quickFilters";
 
 function sheet(...cols: [string, ColumnType?][]): CampaignSchema {
   const taken = new Set<string>();
@@ -12,12 +13,19 @@ function sheet(...cols: [string, ColumnType?][]): CampaignSchema {
 const keyOf = (schema: CampaignSchema, header: string) => schema.columns.find((c) => c.header === header)!.key;
 let n = 0;
 const row = (cells: Record<string, CellValue>, parentId?: string): Row => ({ id: `r${++n}`, position: n, cells, ...(parentId ? { parentId } : {}) });
-const NOW = new Date(2026, 9, 11);
+const TODAY = "2026-10-11";
 
-function filterOf(schema: CampaignSchema, id: QuickFilterId, contacts: Row[] = []) {
-  const f = prospectFilters(schema, stagesOf(schema), (pid) => contacts.filter((c) => c.parentId === pid), NOW).find((x) => x.id === id);
-  return f;
+function filterOf(schema: CampaignSchema, id: QuickFilterId, { contacts = [], recipes = [], ran = () => false, today = TODAY }: {
+  contacts?: Row[]; recipes?: Recipe[]; ran?: FilterContext["ran"]; today?: string;
+} = {}) {
+  const f = prospectFilters(schema, stagesOf(schema), recipes, today).find((x) => x.id === id);
+  const ctx: FilterContext = { contactsOf: (pid) => contacts.filter((c) => c.parentId === pid), ran };
+  return f && { ...f, test: (r: Row) => f.test(r, ctx) };
 }
+
+const recipe = (id: string, ...keys: string[]): Recipe => ({
+  id, campaignId: "c", name: id, instructions: "", inputKeys: [], outputs: keys.map((key) => ({ key, header: key })), webSearch: false, createdAt: 0, updatedAt: 0,
+});
 
 describe("needs follow-up", () => {
   const schema = sheet(["Company"], ["Status"], ["Sent", "date"], ["Replied", "date"], ["Last touch", "date"]);
@@ -47,6 +55,24 @@ describe("needs follow-up", () => {
     expect(f.test(row({ [s]: "Contacted" }))).toBe(true);
   });
 
+  test("a date it can't read is not taken for never dated", () => {
+    const text = sheet(["Company"], ["Status"], ["Last touch"]);
+    const g = filterOf(text, "followUp")!;
+    expect(g.test(row({ [text.statusKey!]: "Contacted", [keyOf(text, "Last touch")]: "10/10/2026" }))).toBe(false);
+  });
+
+  test("a datetime counts by its day, not its hour", () => {
+    const timed = sheet(["Company"], ["Status"], ["Sent", "datetime"]);
+    const g = filterOf(timed, "followUp")!;
+    expect(g.test(row({ [timed.statusKey!]: "Contacted", [keyOf(timed, "Sent")]: "2026-10-04T15:00" }))).toBe(true);
+    expect(g.test(row({ [timed.statusKey!]: "Contacted", [keyOf(timed, "Sent")]: "2026-10-05T09:00" }))).toBe(false);
+  });
+
+  test("the week counts back from the day given", () => {
+    const later = filterOf(schema, "followUp", { today: "2026-10-12" })!;
+    expect(later.test(row({ [s]: "Contacted", [sent]: "2026-10-05" }))).toBe(true);
+  });
+
   test("not offered without a Sent or Last touch column", () => {
     expect(filterOf(sheet(["Company"], ["Status"]), "followUp")).toBeUndefined();
   });
@@ -54,40 +80,73 @@ describe("needs follow-up", () => {
 
 describe("not ready to send", () => {
   const schema = sheet(["Company"], ["Status"], ["Intro", "longtext"]);
-  const f = (contacts: Row[]) => filterOf(schema, "notReady", contacts)!;
   const s = schema.statusKey!;
   const intro = schema.introKey!;
-  const primary = schema.contacts!.primaryKey!;
 
-  test("a prospect not yet contacted that lacks an intro or a primary contact", () => {
+  test("a prospect not yet contacted that lacks an intro or anyone to address", () => {
     const ready = row({ [s]: "Not contacted", [intro]: "Hi" });
-    const noPrimary = row({ [s]: "Not contacted", [intro]: "Hi" });
+    const nobody = row({ [s]: "Not contacted", [intro]: "Hi" });
     const noIntro = row({});
-    const contacts = [row({ [primary]: CHECKED }, ready.id), row({ [primary]: CHECKED }, noIntro.id), row({}, noPrimary.id)];
-    expect(f(contacts).test(ready)).toBe(false);
-    expect(f(contacts).test(noPrimary)).toBe(true);
-    expect(f(contacts).test(noIntro)).toBe(true);
+    const contacts = [row({}, ready.id), row({}, noIntro.id)];
+    const f = filterOf(schema, "notReady", { contacts })!;
+    expect(f.test(ready)).toBe(false);
+    expect(f.test(nobody)).toBe(true);
+    expect(f.test(noIntro)).toBe(true);
+  });
+
+  test("a contact without the Primary tick is still someone to address", () => {
+    const p = row({ [s]: "Not contacted", [intro]: "Hi" });
+    expect(filterOf(schema, "notReady", { contacts: [row({ [schema.contacts!.primaryKey!]: null }, p.id)] })!.test(p)).toBe(false);
   });
 
   test("once contacted, or dead, it is past sending", () => {
-    expect(f([]).test(row({ [s]: "Contacted" }))).toBe(false);
-    expect(f([]).test(row({ [s]: "Dead" }))).toBe(false);
+    const f = filterOf(schema, "notReady")!;
+    expect(f.test(row({ [s]: "Contacted" }))).toBe(false);
+    expect(f.test(row({ [s]: "Dead" }))).toBe(false);
   });
 });
 
 describe("missing enrichment", () => {
-  test("a blank in an enrichment column, sources aside", () => {
-    const schema = sheet(["Company"], ["Status"]);
-    schema.columns.push({ key: "size", header: "Size", type: "text", origin: "enrichment" });
-    schema.columns.push({ key: "src", header: "Enrichment sources", type: "longtext", origin: "enrichment" });
-    const f = filterOf(schema, "unenriched")!;
-    expect(f.test(row({ size: "50" }))).toBe(false);
+  const schema = sheet(["Company"], ["Status"]);
+  schema.columns.push({ key: "size", header: "Size", type: "text", origin: "enrichment" });
+  schema.columns.push({ key: "hiring", header: "Hiring?", type: "checkbox", origin: "enrichment" });
+  schema.columns.push({ key: "src", header: "Enrichment sources", type: "longtext", origin: "enrichment" });
+  const recipes = [recipe("firmo", "size", "hiring", "src")];
+
+  test("a recipe with none of its columns filled", () => {
+    const f = filterOf(schema, "unenriched", { recipes })!;
     expect(f.test(row({}))).toBe(true);
+    expect(f.test(row({ src: "Size: https://example.com" }))).toBe(true);
+    expect(f.test(row({ size: "50" }))).toBe(false);
+    expect(f.test(row({ hiring: CHECKED }))).toBe(false);
     expect(f.test(row({ [schema.statusKey!]: "Dead" }))).toBe(false);
   });
 
-  test("not offered before anything was enriched", () => {
-    expect(filterOf(sheet(["Company"]), "unenriched")).toBeUndefined();
+  test("a row a run of the recipe finished is done, blanks and unticked boxes included", () => {
+    const done = row({});
+    const f = filterOf(schema, "unenriched", { recipes, ran: (recipeId, rowId) => recipeId === "firmo" && rowId === done.id })!;
+    expect(f.test(done)).toBe(false);
+    expect(f.test(row({}))).toBe(true);
+  });
+
+  test("not offered without a recipe filling a prospect column", () => {
+    expect(filterOf(schema, "unenriched")).toBeUndefined();
+    expect(filterOf(schema, "unenriched", { recipes: [recipe("people", "nowhere")] })).toBeUndefined();
+  });
+});
+
+describe("runsThrough", () => {
+  test("the rows each recipe's runs finished", () => {
+    const run = (recipeId: string | null, kind: "enrich" | "intro", rows: EnrichRun["rows"]) => ({ recipeId, kind, rows }) as EnrichRun;
+    const ran = runsThrough([
+      run("a", "enrich", { r1: { state: "done" }, r2: { state: "error" }, r3: { state: "pending" } }),
+      run("a", "enrich", { r2: { state: "done" } }),
+      run(null, "intro", { r4: { state: "done" } }),
+    ]);
+    expect(ran("a", "r1")).toBe(true);
+    expect(ran("a", "r2")).toBe(true);
+    expect(ran("a", "r3")).toBe(false);
+    expect(ran("b", "r1")).toBe(false);
   });
 });
 
@@ -96,8 +155,9 @@ describe("economic buyer", () => {
     const schema = sheet(["Company"]);
     const [f] = contactFilters(schema);
     const type = schema.contacts!.typeKey!;
-    expect(f!.test(row({ [type]: "Economic Buyer" }))).toBe(true);
-    expect(f!.test(row({ [type]: "economic buyer" }))).toBe(true);
-    expect(f!.test(row({ [type]: "Champion" }))).toBe(false);
+    const ctx: FilterContext = { contactsOf: () => [], ran: () => false };
+    expect(f!.test(row({ [type]: "Economic Buyer" }), ctx)).toBe(true);
+    expect(f!.test(row({ [type]: "economic buyer" }), ctx)).toBe(true);
+    expect(f!.test(row({ [type]: "Champion" }), ctx)).toBe(false);
   });
 });
