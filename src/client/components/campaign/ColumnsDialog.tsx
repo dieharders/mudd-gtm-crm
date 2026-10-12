@@ -67,6 +67,15 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
     onClose();
   };
   const dupes = new Set(cols.map((c) => tidy(c).header.toLowerCase()).filter((h, i, a) => a.indexOf(h) !== i));
+  const colgroup = (
+    <colgroup>
+      <col className="w-8" />
+      <col />
+      <col className="w-36" />
+      <col />
+      <col className="w-9" />
+    </colgroup>
+  );
 
   return (
     <Modal
@@ -82,18 +91,26 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
         </>
       }
     >
-      <div className="max-h-[52vh] overflow-y-auto pr-1 scroll-thin">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-paper text-left text-xs text-mud-faint">
+      {/* The header sits outside the scroller, so rows scroll under a clean edge rather than showing around a sticky row
+          shorter than they are. Both tables share fixed column widths and reserve the same scrollbar gutter to stay aligned. */}
+      <div className="overflow-hidden border-b border-rim/40 pr-1 [scrollbar-gutter:stable] scroll-thin">
+        <table className="w-full table-fixed text-sm">
+          {colgroup}
+          <thead className="text-left text-xs text-mud-faint">
             <tr>
-              <th className="w-8 py-1.5" />
+              <th className="py-1.5" />
               <th className="py-1.5 font-medium">Header</th>
-              <th className="w-36 py-1.5 font-medium">Type</th>
+              <th className="py-1.5 font-medium">Type</th>
               <th className="py-1.5 font-medium">Dropdown options</th>
-              <th className="w-9" />
+              <th />
             </tr>
           </thead>
-          <tbody>
+        </table>
+      </div>
+      <div className="max-h-[52vh] overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable] scroll-thin">
+        <table className="w-full table-fixed text-sm">
+          {colgroup}
+          <tbody className="[&>tr:first-child]:border-t-0">
             {cols.map((c) => {
               const locked = inSheet.has(c.key) || roleKeys.has(c.key);
               const dup = dupes.has(tidy(c).header.toLowerCase());
