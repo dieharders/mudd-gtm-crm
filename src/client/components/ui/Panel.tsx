@@ -1,7 +1,25 @@
 import { X } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
+
+/** How long a panel takes to go: it stays mounted until then. Matches `fade-out`. */
+const LEAVE_MS = 200;
+
+const Leaving = createContext(false);
+
+/**
+ * Mounts a Panel while `open`, and keeps it up for LEAVE_MS after, showing what it last had,
+ * so it can animate out.
+ */
+export function PanelGate({ open, children }: { open: boolean; children: ReactNode }) {
+  const { shown, leaving } = useLeaving(open, LEAVE_MS);
+  const last = useRef(children);
+  if (open) last.current = children;
+  if (!shown) return null;
+  return <Leaving.Provider value={leaving}>{last.current}</Leaving.Provider>;
+}
 
 /**
  * A large centred dialog for the campaign's workspaces (Discover, Enrich, Review, Templates):
@@ -22,18 +40,27 @@ export function Panel({ title, subtitle, icon, actions, onClose, closeLabel = "C
   width?: string;
   children: ReactNode;
 }) {
+  const leaving = useContext(Leaving);
   useEffect(() => {
+    if (leaving) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && !(e.target as HTMLElement).closest("input, textarea, select") && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, leaving]);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-mud/35 p-4 animate-fade-in md:p-8" onMouseDown={onClose}>
+    // Click-through while leaving, so the page is usable as soon as it is asked to close.
+    <div
+      className={cn(
+        "fixed inset-0 z-40 flex items-center justify-center bg-mud/35 p-4 md:p-8",
+        leaving ? "pointer-events-none animate-fade-out" : "animate-fade-in",
+      )}
+      onMouseDown={onClose}
+    >
       <div
         role="dialog"
         aria-modal="true"
-        className={cn("flex h-full max-h-[920px] w-full flex-col overflow-hidden rounded-2xl border-2 border-rim-deep bg-paper shadow-dialog animate-pop", width)}
+        className={cn("flex h-full max-h-[920px] w-full flex-col overflow-hidden rounded-2xl border-2 border-rim-deep bg-paper shadow-dialog", leaving ? "animate-pop-out" : "animate-pop", width)}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-4 border-b-2 border-rim/40 px-6 py-4">

@@ -34,6 +34,7 @@ import { cardLayout, groupableColumns, pinnedCount } from "../../lib/listLayout"
 import { TemplatesPanel } from "../templates/TemplatesPanel";
 import { Button } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Menu";
+import { PanelGate } from "../ui/Panel";
 import { PinCard, Pinboard, PinGroup, type PinCardProps } from "../ui/Pinboard";
 import { undoToast } from "../ui/Toaster";
 import { RemoveCampaignDialog } from "../campaigns/RemoveCampaignDialog";
@@ -665,17 +666,19 @@ function CampaignView({ state }: { state: CampaignState }) {
         </div>
       </div>
 
-      {showTemplates && (
+      <PanelGate open={showTemplates}>
         <TemplatesPanel schema={schema} rows={state.rows} contactsOf={contactsOf} templates={state.templates} thesis={state.thesis} consent={consent} state={state} previewRowId={openRowId} onClose={() => setShowTemplates(false)} />
-      )}
-      {showEnrich && (
+      </PanelGate>
+      <PanelGate open={showEnrich}>
         <EnrichPanel state={state} enrich={enrich} selectedIds={selectedActiveIds} filteredIds={filtered.filter((r) => !isScreened(r, schema)).map((r) => r.id)}
           onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }} onOpenRow={(id) => { setShowEnrich(false); showRow(id); }} />
-      )}
-      {showReview && <ReviewPanel state={state} enrich={enrich} onClose={() => setShowReview(false)} onOpenRow={showRow} />}
-      {showDiscover && discovery.enabled && (
-        <DiscoverPanel state={state} enrich={enrich} discovery={discovery} initial={showDiscover} onClose={() => setShowDiscover(null)} />
-      )}
+      </PanelGate>
+      <PanelGate open={showReview}>
+        <ReviewPanel state={state} enrich={enrich} onClose={() => setShowReview(false)} onOpenRow={showRow} />
+      </PanelGate>
+      <PanelGate open={!!showDiscover && discovery.enabled}>
+        <DiscoverPanel state={state} enrich={enrich} discovery={discovery} initial={showDiscover ?? undefined} onClose={() => setShowDiscover(null)} />
+      </PanelGate>
       <RemoveCampaignDialog campaign={removing ? campaign : null} onClose={() => setRemoving(false)}
         beforeRemove={state.flush} onRemoved={() => void navigate("/")} />
       <ConsentDialog open={!!consent.needsConsent} onConfirm={() => consent.needsConsent?.confirm()} onCancel={() => consent.needsConsent?.cancel()} />
