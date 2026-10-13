@@ -1,10 +1,12 @@
 <h1><img src="assets/icon.png" alt="" width="48" height="48" align="absmiddle"> Mudd</h1>
 
-**A free desktop CRM for sales prospecting that works on the spreadsheet you already have.**
+**Don't let your go-to-market strategy get stuck in the mud.**
 
-Search for and find new cold prospects and their contact information for free using your AI agent.
+A free desktop CRM for sales prospecting that works on spreadsheets you already have.
 
-Open your Excel or CSV lead tracker in Mudd and edit it like a CRM. Track each company and its contacts through your pipeline, let AI research the gaps and draft personal intros. The spreadsheet acts as the source of truth.
+Search for and find new cold prospects and their contact information for free using your own AI agent. Track your relationships and chart your sales course for each prospect.
+
+Open your Excel or CSV lead tracker in Mudd (pronounced Mud-d) and edit it like a CRM. Track each company and its contacts through your pipeline, let AI research the gaps and draft personal intros. The spreadsheet acts as the source of truth.
 
 - **AI enrichment with sources**: Mudd researches each prospect on the web and fills columns you choose, such as industry, headcount or a decision-maker's name. Every suggestion links to its source, and you accept or reject it.
 - **Intros that sound like you**: write templates with `{{First name}}`-style placeholders, and AI fills them in with one or two real, checkable hooks per prospect.
