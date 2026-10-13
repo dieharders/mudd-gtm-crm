@@ -3,7 +3,7 @@
  * sidebar is folded to its icon rail, the same notice is one note-coloured icon button whose title
  * carries the words, and whose click puts them in a heads-up toast with the card's first button.
  */
-import { ArrowUpCircle } from "lucide-react";
+import { ArrowUpCircle, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import type { UpdateInfo } from "../../../shared/types";
@@ -51,7 +51,7 @@ export function UpdateNotice({ info }: { info: UpdateInfo | null }) {
 
   const headline = `Mudd ${version} is ${done ? "installed" : "available"}`;
   const detail = done ? (installed && nativeRestart() ? "Restarting…" : "Restart Mudd to finish.")
-    : info.blocked ?? "Mudd restarts to finish, and stops any AI research in progress.";
+    : info.blocked ?? "Mudd restarts to finish, and stops anything in-progress.";
   // What the rail's one button offers: restart when a restart is all that is left, otherwise
   // install (or, when installing here is blocked, open the download page). It only says so, in a
   // toast whose own button does it: the bare icon is easily clicked just to see what it is. The
@@ -71,11 +71,13 @@ export function UpdateNotice({ info }: { info: UpdateInfo | null }) {
         {done ? null : info.blocked ? (
           <Button size="sm" variant="primary" className="mt-2" onClick={openRelease}>Download</Button>
         ) : (
-          <div className="mt-2.5 flex gap-2">
+          <div className="mt-2.5 flex flex-wrap gap-2">
             <Button size="sm" variant="primary" disabled={installing} onClick={() => void install()}>
               {installing ? "Updating…" : "Update & restart"}
             </Button>
-            <Button size="sm" variant="ghost" onClick={openRelease}>What's new</Button>
+            <Button size="icon" variant="ghost" className="h-9 w-9 text-rim/65 hover:border-transparent hover:bg-transparent hover:text-rim" title="What's new" aria-label="What's new" onClick={openRelease}>
+              <Info size={28} />
+            </Button>
           </div>
         )}
       </div>
