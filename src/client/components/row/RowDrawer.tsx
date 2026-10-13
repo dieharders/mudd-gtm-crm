@@ -15,7 +15,7 @@ import { CONTACT_TYPE_HINTS, contactSchema, prospectSchema } from "../../../shar
 import { DEAD, isScreened, MEETING_STAGE, type CampaignSchema, type CellEdit, type Column, type Row, type Template } from "../../../shared/types";
 import { contactLabel, contactOf, orderedContacts, primaryOf, prospectCells, prospectTitle, toLocalInput } from "../../../shared/values";
 import { cn } from "../../lib/cn";
-import { formatDateTime, isSameDay, parseLocal, relative } from "../../lib/format";
+import { formatDate, formatDateTime, isSameDay, parseLocal, relative, todayString } from "../../lib/format";
 import { contactedStage, shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
 import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
@@ -218,6 +218,8 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
             const role = contactOf(c.cells, cs).role;
             const email = emailCols.map((col) => String(c.cells[col.key] ?? "").trim()).find(Boolean) ?? "";
             const type = cs.typeKey ? String(c.cells[cs.typeKey] ?? "").trim() : "";
+            const contacted = cs.lastContactedKey ? String(c.cells[cs.lastContactedKey] ?? "").trim() : "";
+            const sub = [role, email !== label && email, contacted && `Contacted ${formatDate(contacted)}`].filter(Boolean).join(" · ");
             const pending = enrich.pendingByRow.get(c.id)?.length ?? 0;
             return (
               <li key={c.id}>
@@ -230,7 +232,7 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
                       {c === primary && <PrimaryStar />}
                     </span>
                     {/* A contact with no name is titled by their email: not shown twice. */}
-                    {(role || (email && email !== label)) && <span className="block truncate text-xs text-mud-soft">{[role, email !== label && email].filter(Boolean).join(" · ")}</span>}
+                    {sub && <span className="block truncate text-xs text-mud-soft">{sub}</span>}
                   </span>
                   {pending > 0 && <span className="tag shrink-0 bg-clay text-white">✨ {pending}</span>}
                   {type && <span className={cn("tag shrink-0", typeTone(type, typeCol?.options))}>{type}</span>}
@@ -270,6 +272,8 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
   // Primary is the button below, not a field.
   const fields = cs.columns.filter((c) => c.key !== cs.primaryKey);
   const onEdit = (edits: CellEdit[], l: string) => state.editContacts(edits, l);
+  const contactedToday = !!cs.lastContactedKey && contact.cells[cs.lastContactedKey] === todayString();
+  const markContacted = () => onEdit([{ rowId: contact.id, key: cs.lastContactedKey!, value: todayString() }], "Mark contacted");
   const remove = () => {
     state.deleteRows([contact.id], "Delete contact");
     onBack();
@@ -299,6 +303,13 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
               <Star size={13} /> Make primary
             </Button>
           )}
+          {cs.lastContactedKey && (contactedToday ? (
+            <span className="tag bg-emerald-100 text-emerald-800"><Check size={11} /> Contacted today</span>
+          ) : (
+            <Button size="sm" variant="subtle" onClick={markContacted} title="Set Last contacted to today">
+              <Send size={13} /> Contacted today
+            </Button>
+          ))}
           <Button size="sm" variant="ghost" className="ml-auto text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={remove}>
             <Trash2 size={13} /> Delete contact
           </Button>

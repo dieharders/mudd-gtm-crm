@@ -41,9 +41,9 @@ export function resolveOutputs(campaignId: string, outputs: OutputInput[], recip
     const pool = o.contact && contacts ? contacts.columns : schema.columns;
     let col = o.key ? columnOf(schema, o.key) : undefined;
     col ??= pool.find((x) => x.header.toLowerCase() === header.toLowerCase() || (employees && isEmployeesHeader(x.header)));
-    // The ID is Mudd's own, and the Primary box is the user's pick (one per prospect): nothing
-    // is researched into either.
-    if (col && (col.key === schema.idKey || col.key === schema.contacts?.primaryKey)) continue;
+    // The ID is Mudd's own, and the Primary box and Last contacted are the user's own record:
+    // nothing is researched into them.
+    if (col && (col.key === schema.idKey || col.key === schema.contacts?.primaryKey || col.key === schema.contacts?.lastContactedKey)) continue;
     if (!col) {
       col = { key: newKey(header), header, type: o.type ?? guessType(header, o.hint), origin: "enrichment", recipeId, width: 220, ...(o.options?.length ? { options: o.options } : {}) };
       pool.push(col);

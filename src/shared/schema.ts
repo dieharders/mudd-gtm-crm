@@ -130,16 +130,18 @@ export const CONTACT_TYPE_HINTS: Record<string, string> = {
 const CONTACT_TYPE_HEADER = "contacttype";
 /** "Primary contact" is a name, not this box. */
 const PRIMARY_HEADERS = ["primary", "isprimary"];
+const LAST_CONTACTED_HEADERS = ["lastcontacted", "lastcontact", "lastcontactdate", "lastcontacteddate", "datelastcontacted"];
 
 /** A column made by Mudd: a key free among `taken` (which it joins), the type's width unless given. */
 function newColumn(taken: Set<string>, header: string, type: ColumnType, extra: Partial<Column> = {}): Column {
   return { key: makeKey(header, taken), header, type, origin: "user", width: DEFAULT_WIDTH[type], ...extra };
 }
 
-/** The three contact columns Mudd relies on, as a new campaign has them and as import adds them. */
+/** The four contact columns Mudd relies on, as a new campaign has them and as import adds them. */
 const NAME_COLUMN = { header: "Name", type: "text", width: 180 } as const;
 const TYPE_COLUMN = { header: "Contact type", type: "select", width: 150 } as const;
 const PRIMARY_COLUMN = { header: "Primary", type: "checkbox", width: 90 } as const;
+const LAST_CONTACTED_COLUMN = { header: "Last contacted", type: "date", width: 130 } as const;
 const roleColumn = (taken: Set<string>, spec: { header: string; type: ColumnType; width: number }, extra: Partial<Column> = {}) =>
   newColumn(taken, spec.header, spec.type, { width: spec.width, ...(spec.type === "select" ? { options: [...CONTACT_TYPES] } : {}), ...extra });
 
@@ -248,11 +250,12 @@ function defaultContactColumns(taken: Set<string>): Column[] {
     newColumn(taken, "Email", "email"),
     newColumn(taken, "Phone", "phone"),
     newColumn(taken, "LinkedIn", "url"),
+    roleColumn(taken, LAST_CONTACTED_COLUMN),
     newColumn(taken, "Notes", "longtext"),
   ];
 }
 
-/** The contact columns Mudd relies on: a name, a Contact type dropdown, the Primary box. */
+/** The contact columns Mudd relies on: a name, a Contact type dropdown, the Primary box, Last contacted. */
 function ensureContactColumns(schema: CampaignSchema, taken: Set<string>): void {
   const contacts = (schema.contacts ??= { columns: defaultContactColumns(taken) });
   const find = (names: string[]) => names.map((n) => contacts.columns.find((c) => norm(c.header) === n)).find(Boolean)?.key;
@@ -275,6 +278,9 @@ function ensureContactColumns(schema: CampaignSchema, taken: Set<string>): void 
   contacts.primaryKey ??= find(PRIMARY_HEADERS);
   if (!contacts.primaryKey) contacts.primaryKey = add(PRIMARY_COLUMN);
   else colOf(contacts.primaryKey).type = "checkbox";
+  contacts.lastContactedKey ??= find(LAST_CONTACTED_HEADERS);
+  if (!contacts.lastContactedKey) contacts.lastContactedKey = add(LAST_CONTACTED_COLUMN);
+  else colOf(contacts.lastContactedKey).type = "date";
 }
 
 /**

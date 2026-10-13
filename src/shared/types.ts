@@ -73,6 +73,8 @@ export interface ContactSchema {
   typeKey?: string;
   /** Checkbox: the contact intros and templates address. At most one per prospect. */
   primaryKey?: string;
+  /** Date: when the user last reached out to this person. */
+  lastContactedKey?: string;
 }
 
 export interface CampaignSchema {

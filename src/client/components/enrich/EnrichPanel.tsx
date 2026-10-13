@@ -307,7 +307,7 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
   // The primary contact's columns go along as context too.
   const inputCols = allColumns(schema).filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
   const orgTargets = schema.columns.filter((c) => !isSourcesColumn(c) && c.key !== schema.idKey);
-  const contactTargets = contactSchema(schema).columns.filter((c) => c.key !== schema.contacts?.primaryKey);
+  const contactTargets = contactSchema(schema).columns.filter((c) => c.key !== schema.contacts?.primaryKey && c.key !== schema.contacts?.lastContactedKey);
   const [showInputs, setShowInputs] = useState(draft.inputKeys.length > 0);
   const setOutput = (i: number, patch: Partial<OutputDraft>) => onChange({ outputs: draft.outputs.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
 

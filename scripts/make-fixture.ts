@@ -83,25 +83,26 @@ function addProspects(wb: ExcelJS.Workbook) {
 
 // ---------- Contacts ----------
 
-const CONTACT_HEADERS = ["Prospect ID", "Company", "Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Notes"];
-const CONTACT_WIDTHS = [12, 26, 22, 18, 10, 8, 26, 30, 18, 34, 40];
+const CONTACT_HEADERS = ["Prospect ID", "Company", "Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Last contacted", "Notes"];
+const CONTACT_WIDTHS = [12, 26, 22, 18, 10, 8, 26, 30, 18, 34, 14, 40];
 const contacts: ProspectRow[] = [
-  ["P-001", "Northwind Fabrication", "Maya Okafor", "Champion", "TRUE", "Ms.", "Plant Manager", "maya.okafor@northwindfab.example", "+1 937 555 0141", "https://linkedin.example/in/maya-okafor", "Met at the regional show"],
-  ["P-001", "Northwind Fabrication", "Tom Reyes", "Technical Buyer", null, "Mr.", "IT Lead", "tom.reyes@northwindfab.example", null, null, null],
-  ["P-002", "Harbor Lights Logistics", "Priya Natarajan", "Economic Buyer", "TRUE", null, "VP Operations", "priya@harborlights.example", "+1 253 555 0177", "https://linkedin.example/in/priya-natarajan", null],
-  ["P-004", "Bluestem Dental Group", "Dana Whitfield", "Champion", "TRUE", null, "Office Manager", "dana@bluestemdental.example", "+1 402 555 0126", null, "Prefers afternoon calls"],
-  ["P-004", "Bluestem Dental Group", "Dr. Elise Marchetti", "Economic Buyer", null, "Dr.", "Owner", null, null, null, null],
-  ["P-005", "Granite Peak Credit Union", "Hank Ostrowski", "Gatekeeper", "TRUE", null, "CIO", "hank@granitepeakcu.example", null, null, null],
-  ["P-006", "Saltmarsh Marine Supply", "Rosa Lindqvist", "End User", "TRUE", null, "Operations Coordinator", "rosa@saltmarshmarine.example", "+1 251 555 0199", null, null],
+  ["P-001", "Northwind Fabrication", "Maya Okafor", "Champion", "TRUE", "Ms.", "Plant Manager", "maya.okafor@northwindfab.example", "+1 937 555 0141", "https://linkedin.example/in/maya-okafor", d(2026, 9, 22), "Met at the regional show"],
+  ["P-001", "Northwind Fabrication", "Tom Reyes", "Technical Buyer", null, "Mr.", "IT Lead", "tom.reyes@northwindfab.example", null, null, null, null],
+  ["P-002", "Harbor Lights Logistics", "Priya Natarajan", "Economic Buyer", "TRUE", null, "VP Operations", "priya@harborlights.example", "+1 253 555 0177", "https://linkedin.example/in/priya-natarajan", d(2026, 9, 25), null],
+  ["P-004", "Bluestem Dental Group", "Dana Whitfield", "Champion", "TRUE", null, "Office Manager", "dana@bluestemdental.example", "+1 402 555 0126", null, null, "Prefers afternoon calls"],
+  ["P-004", "Bluestem Dental Group", "Dr. Elise Marchetti", "Economic Buyer", null, "Dr.", "Owner", null, null, null, null, null],
+  ["P-005", "Granite Peak Credit Union", "Hank Ostrowski", "Gatekeeper", "TRUE", null, "CIO", "hank@granitepeakcu.example", null, null, null, null],
+  ["P-006", "Saltmarsh Marine Supply", "Rosa Lindqvist", "End User", "TRUE", null, "Operations Coordinator", "rosa@saltmarshmarine.example", "+1 251 555 0199", null, d(2026, 9, 30), null],
 ];
 
 function addContacts(wb: ExcelJS.Workbook) {
   const ws = wb.addWorksheet("Contacts");
   header(ws, CONTACT_HEADERS, CONTACT_WIDTHS);
   for (const r of contacts) ws.addRow(r);
+  ws.getColumn(11).numFmt = "d mmm yyyy";
   listValidation(ws, "D2:D2000", CONTACT_TYPES);
   listValidation(ws, "E2:E2000", ["TRUE", "FALSE"]);
-  ws.autoFilter = `A1:K${contacts.length + 1}`;
+  ws.autoFilter = `A1:L${contacts.length + 1}`;
 }
 
 // ---------- Summary ----------
