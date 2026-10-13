@@ -102,6 +102,11 @@ jobs:
 
       - run: bun run build.ts --target=${{ matrix.target }}
 
+      # Runs the built executable and checks the spreadsheets it saves. A miscompiled bundle passes
+      # every test on the source: Bun 1.4.0 shipped v0.1.13 writing broken zips. A failure here
+      # fails the run, so no draft is made.
+      - run: bun run scripts/smoke-release.ts dist/${{ matrix.target }}
+
       - name: Zip (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

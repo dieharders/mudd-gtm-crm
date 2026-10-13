@@ -5,7 +5,7 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.2",
   "scripts": {
     "start": "bun run build:css && bun run main.ts",
     "dev": "bun run --hot scripts/dev.ts",
