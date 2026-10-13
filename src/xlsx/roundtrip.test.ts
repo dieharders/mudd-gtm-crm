@@ -553,14 +553,14 @@ describe("campaigns created in Mudd", () => {
     const schema = genericSchema();
     const k = (h: string) => allColumns(schema).find((c) => c.header === h)!.key;
     const rows: ExportRow[] = [
-      { id: "a", position: 0, cells: { [k("ID")]: "P-001", [k("Company")]: "Acme", [k("Status")]: "Replied", [k("Last touch")]: "2026-10-01", [k("Meeting at")]: "2026-10-03T09:15" } },
+      { id: "a", position: 0, cells: { [k("ID")]: "P-001", [k("Company")]: "Acme", [k("Status")]: "Replied", [k("Meeting at")]: "2026-10-03T09:15" } },
       { id: "b", position: 1, cells: { [k("ID")]: "P-002", [k("Company")]: "Beta", [k("Status")]: "Not contacted" } },
       { id: "c", position: 2, cells: { [k("ID")]: "P-003", [k("Company")]: "Gamma", [k("Screened out")]: CHECKED, [k("Screened reason")]: "Too big" } },
     ];
     // Al first, but Ann is Acme's primary contact: she is listed first.
     const contacts: ExportRow[] = [
       { id: "x", position: 3, parentId: "a", cells: { [k("Name")]: "Al Ng", [k("Email")]: "al@acme.io" } },
-      { id: "y", position: 4, parentId: "a", cells: { [k("Name")]: "Ann Lee", [k("Contact type")]: "Economic Buyer", [k("Primary")]: CHECKED } },
+      { id: "y", position: 4, parentId: "a", cells: { [k("Name")]: "Ann Lee", [k("Contact type")]: "Economic Buyer", [k("Primary")]: CHECKED, [k("Last contacted")]: "2026-09-28", [k("Last reply")]: "2026-10-01" } },
       { id: "z", position: 5, parentId: "b", cells: { [k("Name")]: "Bo Chen", [k("Email")]: "bo@beta.io", [k("Primary")]: CHECKED } },
     ];
     const campaign: Campaign = { id: "c", name: "Fresh", createdAt: 0, updatedAt: 0, sourceName: null, sourcePath: null, hasOriginal: false, schema, sheets: [] };
@@ -592,6 +592,7 @@ describe("campaigns created in Mudd", () => {
     expect(ann.parentId).toBe(byCompany("Acme").id);
     expect(ann.cells[cs.typeKey!]).toBe("Economic Buyer");
     expect(ann.cells[cs.primaryKey!]).toBe(CHECKED);
+    expect([ann.cells[cs.lastContactedKey!], ann.cells[cs.lastReplyKey!]]).toEqual(["2026-09-28", "2026-10-01"]);
     expect(again.contacts.find((c) => c.cells[cs.nameKey!] === "Bo Chen")!.parentId).toBe(byCompany("Beta").id);
     expect(again.skipped).toBe(0);
   });
@@ -653,7 +654,7 @@ function withContacts(wb: ExcelJS.Workbook, people: (string | boolean | null)[][
   ws.addRow(["P-001", "Acme", "Contacted"]);
   ws.addRow(["P-002", "Beta", "Replied"]);
   const c = wb.addWorksheet("Contacts");
-  c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted"]);
+  c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply"]);
   for (const p of people) c.addRow(p);
   (c as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations.add("D2:D1000", {
     type: "list", allowBlank: true, formulae: ['"Economic Buyer,Technical Buyer,End User,Influencer,Blocker,Gatekeeper"'],
@@ -681,8 +682,9 @@ describe("the Contacts tab", () => {
     expect(cs.columns.find((c) => c.key === cs.primaryKey)!.type).toBe("checkbox");
     expect(contacts[0]!.cells[cs.primaryKey!]).toBe(CHECKED);
     // The two link columns are the tab's, not the contacts'; the prospect's ID is hidden in the app.
-    expect(cs.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Email", "Last contacted"]);
+    expect(cs.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply"]);
     expect(cs.columns.find((c) => c.key === cs.lastContactedKey)).toMatchObject({ header: "Last contacted", type: "date" });
+    expect(cs.columns.find((c) => c.key === cs.lastReplyKey)).toMatchObject({ header: "Last reply", type: "date" });
     expect(campaign.schema.columns.find((c) => c.key === campaign.schema.idKey)).toMatchObject({ header: "ID", hidden: true });
     const tab = campaign.sheets.find((s) => s.role === "contacts")!;
     expect(tab.dataRows).toEqual([2, 3]);

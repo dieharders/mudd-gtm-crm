@@ -6,7 +6,7 @@
  */
 import {
   ArchiveRestore, ArrowLeft, Ban, CalendarPlus, Check, ChevronDown, ChevronRight, ChevronUp, ClipboardCopy, Copy, ExternalLink, MoreHorizontal,
-  Pencil, Send, Star, Trash2, Undo2, UserPlus, Video, X,
+  Pencil, Reply, Send, Star, Trash2, Undo2, UserPlus, Video, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -218,8 +218,11 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
             const role = contactOf(c.cells, cs).role;
             const email = emailCols.map((col) => String(c.cells[col.key] ?? "").trim()).find(Boolean) ?? "";
             const type = cs.typeKey ? String(c.cells[cs.typeKey] ?? "").trim() : "";
-            const contacted = cs.lastContactedKey ? String(c.cells[cs.lastContactedKey] ?? "").trim() : "";
-            const sub = [role, email !== label && email, contacted && `Contacted ${formatDate(contacted)}`].filter(Boolean).join(" · ");
+            const dated = (key: string | undefined, what: string) => {
+              const v = key ? String(c.cells[key] ?? "").trim() : "";
+              return v && `${what} ${formatDate(v)}`;
+            };
+            const sub = [role, email !== label && email, dated(cs.lastContactedKey, "Contacted"), dated(cs.lastReplyKey, "Replied")].filter(Boolean).join(" · ");
             const pending = enrich.pendingByRow.get(c.id)?.length ?? 0;
             return (
               <li key={c.id}>
@@ -272,8 +275,6 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
   // Primary is the button below, not a field.
   const fields = cs.columns.filter((c) => c.key !== cs.primaryKey);
   const onEdit = (edits: CellEdit[], l: string) => state.editContacts(edits, l);
-  const contactedToday = !!cs.lastContactedKey && contact.cells[cs.lastContactedKey] === todayString();
-  const markContacted = () => onEdit([{ rowId: contact.id, key: cs.lastContactedKey!, value: todayString() }], "Mark contacted");
   const remove = () => {
     state.deleteRows([contact.id], "Delete contact");
     onBack();
@@ -303,13 +304,8 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
               <Star size={13} /> Make primary
             </Button>
           )}
-          {cs.lastContactedKey && (contactedToday ? (
-            <span className="tag bg-emerald-100 text-emerald-800"><Check size={11} /> Contacted today</span>
-          ) : (
-            <Button size="sm" variant="subtle" onClick={markContacted} title="Set Last contacted to today">
-              <Send size={13} /> Contacted today
-            </Button>
-          ))}
+          {cs.lastContactedKey && <TodayButton contact={contact} dateKey={cs.lastContactedKey} label="Contacted today" icon={<Send size={13} />} onEdit={onEdit} />}
+          {cs.lastReplyKey && <TodayButton contact={contact} dateKey={cs.lastReplyKey} label="Replied today" icon={<Reply size={13} />} onEdit={onEdit} />}
           <Button size="sm" variant="ghost" className="ml-auto text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={remove}>
             <Trash2 size={13} /> Delete contact
           </Button>
@@ -337,6 +333,19 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
   );
 }
 
+/** Sets one of the contact's dates (Last contacted, Last reply) to today; a tag once it is. */
+function TodayButton({ contact, dateKey, label, icon, onEdit }: {
+  contact: Row; dateKey: string; label: string; icon: ReactNode; onEdit: (edits: CellEdit[], l: string) => void;
+}) {
+  const today = todayString();
+  if (contact.cells[dateKey] === today) return <span className="tag bg-emerald-100 text-emerald-800"><Check size={11} /> {label}</span>;
+  return (
+    <Button size="sm" variant="subtle" onClick={() => onEdit([{ rowId: contact.id, key: dateKey, value: today }], label)}>
+      {icon} {label}
+    </Button>
+  );
+}
+
 // ---------- pipeline ----------
 
 function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSchema; stages: string[]; onEdit: (e: CellEdit[], l: string, t?: string) => void }) {
@@ -344,8 +353,7 @@ function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSc
   const dead = status === DEAD;
   const cur = stageIndex(status, stages);
   const set = (stage: string) => {
-    const { edits, stamped } = stageEdits(row, schema, stages, stage);
-    onEdit(edits, "Change stage", `${stage || "Stage cleared"}${stamped.length ? ` · ${stamped.join(", ")} set to today` : ""}`);
+    onEdit(stageEdits(row, schema, stage), "Change stage", stage || "Stage cleared");
   };
   return (
     <section>
@@ -446,7 +454,7 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
     const next = shouldAdvanceToMeeting(status, stages);
     let msg = "Meeting saved";
     if (next && schema.statusKey) {
-      edits.push(...stageEdits(row, schema, stages, next).edits);
+      edits.push(...stageEdits(row, schema, next));
       msg = `Meeting saved · status set to ${next}`;
     }
     onEdit(edits, "Book meeting", msg);
@@ -508,8 +516,7 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
             <div className="mt-3 flex items-center gap-2 border-t border-rim/40 pt-3 text-xs text-mud-soft">
               <span>This was {relative(at)}. Did it happen?</span>
               <Button size="sm" variant="subtle" className="ml-auto" onClick={() => {
-                const { edits } = stageEdits(row, schema, stages, heldStage);
-                onEdit(edits, "Change stage", `Status set to ${heldStage}`);
+                onEdit(stageEdits(row, schema, heldStage), "Change stage", `Status set to ${heldStage}`);
               }}>Mark {heldStage}</Button>
               <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>Reschedule</Button>
             </div>
@@ -552,8 +559,7 @@ function IntroSection({ row, primary, schema, stages, templates, onEdit, onOpenT
   };
   const markSent = () => {
     if (!contacted || !schema.statusKey) return;
-    const { edits, stamped } = stageEdits(row, schema, stages, contacted);
-    onEdit(edits, "Mark sent", `Marked ${contacted}${stamped.length ? ` · ${stamped.join(", ")} set to today` : ""}`);
+    onEdit(stageEdits(row, schema, contacted), "Mark sent", `Marked ${contacted}`);
   };
 
   return (

@@ -10,15 +10,19 @@ import type { Candidate, DiscoveryRun, SearchAngle } from "../../src/shared/sour
 import type { Row } from "../../src/shared/types";
 
 // Dates are days from today (the shots were first taken on 11 Oct 2026), so a retake shows the
-// same upcoming meetings and the same ages of last touch. At h:min UTC, as Excel keeps no zone.
+// same upcoming meetings and the same ages of last contact. At h:min UTC, as Excel keeps no zone.
 const today = new Date();
 const d = (days: number, h = 0, min = 0) => new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() + days, h, min));
 const site = (company: string) => company.toLowerCase().split(" ").slice(0, 2).join("").replace(/[^a-z]+/g, "") + ".example";
 
 // ---------- tracker workbook ----------
 
-const PROSPECT_HEADERS = ["ID", "Company", "Tier", "Industry", "Location", "Website", "# Employees", "Status", "Last touch", "Next step", "Meeting URL", "Meeting at", "Hook", "Notes", "Source"];
-/** Company, tier, industry, location, staff, status, last touch, next step, meeting URL, meeting at, hook, notes, source. */
+const PROSPECT_HEADERS = ["ID", "Company", "Tier", "Industry", "Location", "Website", "# Employees", "Status", "Next step", "Meeting URL", "Meeting at", "Hook", "Notes", "Source"];
+/**
+ * Company, tier, industry, location, staff, status, when its people were last contacted (and,
+ * at Replied, replied: written to the Contacts tab), next step, meeting URL, meeting at, hook,
+ * notes, source.
+ */
 type Prospect = [string, string, string, string, number, string, Date | null, string | null, string | null, Date | null, string | null, string | null, string];
 const PROSPECTS: Prospect[] = [
   ["Northwind Fabrication", "A", "Metal fabrication", "Dayton, OH", 420, "Meeting booked", d(-3), "Walk through the insurance checklist", "https://meet.example/northwind", d(3, 15), "Hiring a security lead after a phishing scare", "Plant manager owns the IT budget", "Trade show"],
@@ -41,7 +45,7 @@ const PROSPECTS: Prospect[] = [
   ["Thornbury Electronics", "A", "Electronics assembly", "Austin, TX", 730, "Replied", d(-3), "Loop in the CFO", null, null, "SOC 2 asked for by a big customer", "Technical buyer is keen", "Referral"],
 ];
 
-const CONTACT_HEADERS = ["Prospect ID", "Company", "Name", "Contact type", "Primary", "Role", "Email", "Phone", "LinkedIn"];
+const CONTACT_HEADERS = ["Prospect ID", "Company", "Name", "Contact type", "Primary", "Role", "Email", "Phone", "LinkedIn", "Last contacted", "Last reply"];
 /** Prospect number (1-based), name, contact type, primary, role. */
 const PEOPLE: [number, string, string, boolean, string][] = [
   [1, "Maya Okafor", "Economic Buyer", true, "Plant Manager"], [1, "Tom Reyes", "Technical Buyer", false, "IT Lead"],
@@ -66,15 +70,18 @@ export async function writeDemoWorkbook(file: string): Promise<void> {
   const ids = PROSPECTS.map((_, i) => `P-${String(i + 1).padStart(3, "0")}`);
   const ps = wb.addWorksheet("Prospects");
   header(ps, PROSPECT_HEADERS);
-  PROSPECTS.forEach(([company, ...rest], i) => ps.addRow([ids[i], company, rest[0], rest[1], rest[2], site(company), ...rest.slice(3)]));
-  ps.getColumn(9).numFmt = "d mmm yyyy";
-  ps.getColumn(12).numFmt = "d mmm yyyy h:mm";
+  PROSPECTS.forEach(([company, tier, industry, location, staff, status, , ...rest], i) =>
+    ps.addRow([ids[i], company, tier, industry, location, site(company), staff, status, ...rest]));
+  ps.getColumn(11).numFmt = "d mmm yyyy h:mm";
   const cs = wb.addWorksheet("Contacts");
   header(cs, CONTACT_HEADERS);
   for (const [n, name, type, primary, role] of PEOPLE) {
-    const company = PROSPECTS[n - 1]![0];
-    cs.addRow([ids[n - 1], company, name, type, primary ? "TRUE" : null, role, `${name.split(" ")[0]!.toLowerCase()}@${site(company)}`, null, null]);
+    const [company, , , , , status, contacted] = PROSPECTS[n - 1]!;
+    const replied = status === "Replied" ? contacted : null;
+    cs.addRow([ids[n - 1], company, name, type, primary ? "TRUE" : null, role, `${name.split(" ")[0]!.toLowerCase()}@${site(company)}`, null, null, contacted, replied]);
   }
+  cs.getColumn(10).numFmt = "d mmm yyyy";
+  cs.getColumn(11).numFmt = "d mmm yyyy";
   await wb.xlsx.writeFile(file);
 }
 

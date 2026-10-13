@@ -4,7 +4,7 @@
  * Columns that exist in the spreadsheet can be hidden but not deleted: they are still in the
  * file, and export writes every row back to them. Columns Mudd itself relies on (Status, Intro
  * message, the meeting pair, the Screened out box and its reason, the prospect's ID; a contact's
- * name, Contact type, Primary box and Last contacted) can be renamed or hidden, not removed.
+ * name, Contact type, Primary box, Last contacted and Last reply) can be renamed or hidden, not removed.
  *
  * It edits one list at a time: the prospects' columns, or their contacts'.
  */
@@ -37,7 +37,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
   }, [open, schema]);
 
   const roles: Record<string, string> = kind === "contacts"
-    ? Object.fromEntries([[schema.nameKey, "Contact name"], [schema.typeKey, "Contact type"], [schema.primaryKey, "Primary contact"], [schema.lastContactedKey, "Last contacted"]].filter(([k]) => k))
+    ? Object.fromEntries([[schema.nameKey, "Contact name"], [schema.typeKey, "Contact type"], [schema.primaryKey, "Primary contact"], [schema.lastContactedKey, "Last contacted"], [schema.lastReplyKey, "Last reply"]].filter(([k]) => k))
     : Object.fromEntries([
       [schema.statusKey, "Pipeline status"], [schema.introKey, "Intro message"], [schema.meetingAtKey, "Meeting time"], [schema.meetingUrlKey, "Meeting link"],
       [schema.screenedKey, "Screened out"], [schema.reasonKey, "Screened reason"], [schema.idKey, "Prospect ID: the Contacts tab links by it"],
@@ -45,7 +45,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
   const roleKeys = new Set(Object.keys(roles));
   const role = (k: string) => roles[k] ?? null;
   // Their type is what makes them work: a dropdown of stages or contact types, a box, an ID.
-  const fixedType = new Set([schema.statusKey, schema.screenedKey, schema.idKey, schema.typeKey, schema.primaryKey, schema.lastContactedKey].filter(Boolean));
+  const fixedType = new Set([schema.statusKey, schema.screenedKey, schema.idKey, schema.typeKey, schema.primaryKey, schema.lastContactedKey, schema.lastReplyKey].filter(Boolean));
 
   // A company's Staff, Headcount or Size is its "# Employees", a number.
   const employees = (header: string) => kind === "prospects" && isEmployeesHeader(header);

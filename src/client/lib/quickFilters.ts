@@ -8,7 +8,7 @@ import { CONTACT_TYPE_HINTS, ECONOMIC_BUYER } from "../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Row } from "../../shared/types";
 import { primaryOf } from "../../shared/values";
 import { parseLocal, todayString } from "./format";
-import { contactedStage, lastTouchColumn, repliedColumn, sentColumn, stageIndex } from "./pipeline";
+import { contactedStage, stageIndex } from "./pipeline";
 
 export type QuickFilterId = "followUp" | "notReady" | "unenriched" | "buyer";
 
@@ -63,28 +63,35 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
   const out: QuickFilter[] = [];
   const inPlay = (r: Row) => !isScreened(r, schema);
 
-  // Still at Contacted, nothing heard back, and the last touch is a week old (or never dated).
+  // Still at Contacted, nobody has replied since they were last contacted, and that was a week
+  // ago (or was never dated). The dates are the contacts' own.
   const contacted = contactedStage(stages);
-  const sent = sentColumn(schema);
-  const last = lastTouchColumn(schema);
-  const replied = repliedColumn(schema);
-  if (schema.statusKey && contacted && (sent || last)) {
+  const { lastContactedKey, lastReplyKey } = schema.contacts ?? {};
+  if (schema.statusKey && contacted && lastContactedKey) {
     const now = parseLocal(today) ?? new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - FOLLOW_UP_DAYS).getTime();
+    // The latest of a date column across the contacts, by the day: a datetime's hour doesn't put
+    // it on the other side of the cutoff. NaN when one won't read ("10/10/2026" typed as text).
+    const latest = (people: Row[], key: string | undefined) => {
+      const values = key ? people.map((p) => String(p.cells[key] ?? "").trim()).filter(Boolean) : [];
+      if (!values.length) return null;
+      const dates = values.map(parseLocal);
+      return dates.some((d) => !d) ? NaN : Math.max(...dates.map((d) => startOfDay(d!)));
+    };
     out.push({
       id: "followUp",
       label: "Needs follow-up",
-      title: `At ${contacted} with no reply, last touched ${FOLLOW_UP_DAYS}+ days ago`,
-      test: (r) => {
+      title: `At ${contacted} with no reply, last contacted ${FOLLOW_UP_DAYS}+ days ago`,
+      reads: "contactsOf",
+      test: (r, { contactsOf }) => {
         if (!inPlay(r) || statusOf(r, schema).toLowerCase() !== contacted.toLowerCase()) return false;
-        if (replied && !blank(r.cells[replied.key])) return false;
-        const values = [last, sent].map((c) => (c ? String(r.cells[c.key] ?? "").trim() : "")).filter(Boolean);
-        if (!values.length) return true;
-        // A date that won't read ("10/10/2026" typed in a text column) can't be told a week old.
-        const dates = values.map(parseLocal);
-        if (dates.some((d) => !d)) return false;
-        // By the day: a datetime's hour doesn't put it on the other side of the cutoff.
-        return Math.max(...dates.map((d) => startOfDay(d!))) <= cutoff;
+        const people = contactsOf(r.id);
+        const sent = latest(people, lastContactedKey);
+        const reply = latest(people, lastReplyKey);
+        // A date that won't read can't be told a week old, nor a reply told older than the message.
+        if (Number.isNaN(sent) || Number.isNaN(reply)) return false;
+        if (reply !== null && (sent === null || reply >= sent)) return false;
+        return sent === null || sent <= cutoff;
       },
     });
   }

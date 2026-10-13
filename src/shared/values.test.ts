@@ -128,10 +128,12 @@ describe("prospect IDs and contact columns", () => {
     expect(schema.idKey).toBe("id");
     expect(schema.columns.map((c) => c.header)).not.toContain("Name");
     const contacts = schema.contacts!;
-    expect(contacts.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Last contacted", "Notes"]);
+    expect(contacts.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Last contacted", "Last reply", "Notes"]);
     expect(contacts.columns.find((c) => c.key === contacts.typeKey)?.options).toEqual(CONTACT_TYPES);
     expect(contacts.columns.find((c) => c.key === contacts.primaryKey)?.type).toBe("checkbox");
     expect(contacts.columns.find((c) => c.key === contacts.lastContactedKey)).toMatchObject({ header: "Last contacted", type: "date" });
+    expect(contacts.columns.find((c) => c.key === contacts.lastReplyKey)).toMatchObject({ header: "Last reply", type: "date" });
+    expect(schema.columns.map((c) => c.header)).not.toContain("Last touch");
     // Notes is both the company's and a contact's: two keys.
     const keys = [...schema.columns, ...contacts.columns].map((c) => c.key);
     expect(new Set(keys).size).toBe(keys.length);

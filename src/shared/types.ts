@@ -75,6 +75,8 @@ export interface ContactSchema {
   primaryKey?: string;
   /** Date: when the user last reached out to this person. */
   lastContactedKey?: string;
+  /** Date: when this person last replied. */
+  lastReplyKey?: string;
 }
 
 export interface CampaignSchema {
