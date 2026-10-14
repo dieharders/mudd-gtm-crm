@@ -28,6 +28,12 @@ const bundles: Record<string, CampaignBundle> = {
     rows: [prospect("a", "Screened out"), { ...prospect("b", null), cells: { [pipeline.screenedKey!]: CHECKED } }, prospect("c", "No status")],
     contacts: [], templates: [], thesis: null,
   },
+  // Statuses beyond the pipeline's, two of them named like what every object has.
+  others: {
+    campaign: { id: "others", name: "Others", createdAt: 0, updatedAt: 0, sourceName: null, sourcePath: null, hasOriginal: false, schema: pipeline, sheets: [] },
+    rows: [prospect("f", "Foo"), prospect("b", "Bar"), prospect("c", "constructor"), prospect("p", "__proto__")],
+    contacts: [], templates: [], thesis: null,
+  },
   plain: {
     campaign: { id: "plain", name: "Plain", createdAt: 0, updatedAt: 0, sourceName: null, sourcePath: null, hasOriginal: false, schema: genericSchema(), sheets: [] },
     rows: [], contacts: [], templates: [], thesis: null,
@@ -117,8 +123,14 @@ async function mount(id: string) {
   };
   const pickFilter = (label: string) => inFilters((drawer) => click(cardIn(drawer, label)));
   const filterCards = () => inFilters(cardsIn);
+  // Typed into the toolbar's search box, as React hears it.
+  const search = (text: string) => act(() => {
+    const input = el.querySelector<HTMLInputElement>('input[placeholder^="Search"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, text);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+  });
   return {
-    el, button, card, openMore, click, selectAll, listed, tab, filterButton, cardsIn, cardIn, inFilters, pickFilter, filterCards,
+    el, button, card, openMore, click, selectAll, listed, tab, filterButton, cardsIn, cardIn, inFilters, pickFilter, filterCards, search,
     unmount: async () => { await act(() => root.unmount()); el.remove(); },
   };
 }
@@ -219,8 +231,7 @@ test("a card turned off in the open drawer stays put until it closes", async () 
     // The same cards in the same places (and so leaning the same way), No status now off.
     expect(after.map((c) => c.label)).toEqual(before.map((c) => c.label));
     expect(after).toContainEqual({ label: "No status", on: false, count: 0 });
-    // With nothing to show, it is gone once the drawer is opened again.
-    await leave();
+    // With nothing to show, it is gone once the drawer is opened again, even as it slides out.
     expect((await page.filterCards()).map((c) => c.label)).not.toContain("No status");
   } finally {
     await page.unmount();
@@ -233,11 +244,12 @@ test("a status in the sheet named like a fixed filter gets a card of its own", a
   const restoreConsole = failOnConsoleError();
   const page = await mount("lookalike");
   try {
+    // The sheet's own statuses beyond the pipeline's go by name, before the fixed Screened out.
     expect(await page.filterCards()).toEqual([
       { label: "All", on: true, count: 3 },
       { label: "Prospects only", on: false, count: 2 },
-      { label: "Screened out", on: false, count: 1 },
       { label: "No status", on: false, count: 1 },
+      { label: "Screened out", on: false, count: 1 },
       { label: "Screened out", on: false, count: 1 },
     ]);
     // The first is the sheet's status: it lists the prospect in play that holds it.
@@ -245,6 +257,101 @@ test("a status in the sheet named like a fixed filter gets a card of its own", a
     expect(page.listed()).toBe(1);
     await page.selectAll();
     expect(page.button("Set status")).toBeDefined();
+  } finally {
+    await page.unmount();
+    restoreConsole();
+  }
+});
+
+test("a status named like what every object has is a status like any other", async () => {
+  const restoreConsole = failOnConsoleError();
+  const page = await mount("others");
+  try {
+    const cards = await page.filterCards();
+    expect(cards).toContainEqual({ label: "constructor", on: false, count: 1 });
+    expect(cards).toContainEqual({ label: "__proto__", on: false, count: 1 });
+    await page.pickFilter("constructor");
+    expect(page.listed()).toBe(1);
+    expect(page.filterButton().title).toBe("On: constructor");
+  } finally {
+    await page.unmount();
+    restoreConsole();
+  }
+});
+
+test("statuses no prospect holds any more keep their places as they are turned off", async () => {
+  const restoreConsole = failOnConsoleError();
+  const page = await mount("others");
+  try {
+    // Bar, then Foo, on; both prospects then set to Contacted, so neither status is held any more.
+    await page.pickFilter("Bar");
+    await page.pickFilter("Foo");
+    await page.selectAll();
+    await page.click(page.button("Set status"));
+    await page.click([...document.body.querySelectorAll("button")].find((b) => b.textContent === "Contacted"));
+    const [before, after] = await page.inFilters(async (drawer) => {
+      const shown = page.cardsIn(drawer);
+      await page.click(page.cardIn(drawer, "Bar"));
+      return [shown, page.cardsIn(drawer)];
+    });
+    expect(after.map((c) => c.label)).toEqual(before.map((c) => c.label));
+    expect(after).toContainEqual({ label: "Bar", on: false, count: 0 });
+  } finally {
+    await page.unmount();
+    restoreConsole();
+  }
+});
+
+test("the filter drawer keeps its board as it slides out, through a switch of tab", async () => {
+  const restoreConsole = failOnConsoleError();
+  const page = await mount("people");
+  try {
+    await page.inFilters(() => {});
+    await page.tab("Contacts");
+    const drawer = page.el.querySelector('[role="dialog"][aria-label^="Filter"]')!;
+    expect(drawer.getAttribute("aria-label")).toBe("Filter prospects");
+    expect(page.cardsIn(drawer).map((c) => c.label)).toContain("Not contacted");
+    // The tab is stored for the campaign: the next test to open it starts on Prospects.
+    await page.tab("Prospects");
+  } finally {
+    await page.unmount();
+    restoreConsole();
+  }
+});
+
+test("an empty list names the search as well as the filters, and clears both", async () => {
+  const restoreConsole = failOnConsoleError();
+  const page = await mount("pipeline");
+  try {
+    await page.pickFilter("Not contacted");
+    await page.search("zzz");
+    expect(page.el.textContent).toContain("Searching for “zzz”");
+    expect(page.el.textContent).toContain("Filtered by Not contacted");
+    await page.click(page.button("Clear search and filters"));
+    expect(page.listed()).toBe(3);
+    expect(page.el.querySelector<HTMLInputElement>('input[placeholder^="Search"]')!.value).toBe("");
+    expect(page.filterButton().getAttribute("aria-label")).toBe("Filter");
+  } finally {
+    await page.unmount();
+    restoreConsole();
+  }
+});
+
+test("a card on the More drawer hands focus to the dialog it opens, and it goes back to More once that closes", async () => {
+  const restoreConsole = failOnConsoleError();
+  const page = await mount("pipeline");
+  try {
+    const more = page.el.querySelector<HTMLButtonElement>('[aria-label="Campaign menu"]')!;
+    more.focus();
+    await page.openMore();
+    const card = page.card("Remove from App") as HTMLButtonElement;
+    card.focus();
+    await page.click(card);
+    // In the dialog, not on the More button under it, where Enter would open the drawer again.
+    const dialog = [...page.el.querySelectorAll('[role="dialog"]')].find((d) => d.textContent?.includes("from the app?"))!;
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await page.click(page.button("Cancel"));
+    expect(document.activeElement).toBe(more);
   } finally {
     await page.unmount();
     restoreConsole();

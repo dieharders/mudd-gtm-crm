@@ -45,3 +45,41 @@ test("Escape closes only the top layer", async () => {
     restoreConsole();
   }
 });
+
+test("focus goes into each layer as it opens, and back to what opened it as it closes", async () => {
+  const restoreConsole = failOnConsoleError();
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const root = createRoot(el);
+  const show = (panel: boolean, modal: boolean) => act(() => root.render(
+    <>
+      <button id="open-panel">Templates</button>
+      <PanelGate open={panel}>
+        <Panel title="Templates" onClose={() => {}}>
+          <button id="open-modal">Delete</button>
+          <Modal open={modal} title="Delete?" onClose={() => {}}>Sure?</Modal>
+        </Panel>
+      </PanelGate>
+    </>,
+  ));
+  const byId = (id: string) => el.querySelector<HTMLElement>(`#${id}`)!;
+  const dialog = (title: string) => [...el.querySelectorAll('[role="dialog"]')].find((d) => d.querySelector("h2")?.textContent === title);
+  try {
+    await show(false, false);
+    byId("open-panel").focus();
+    await show(true, false);
+    expect(document.activeElement).toBe(dialog("Templates")!);
+    byId("open-modal").focus();
+    await show(true, true);
+    expect(document.activeElement).toBe(dialog("Delete?")!);
+    // The Modal goes back to the button in the Panel under it, which is still open.
+    await show(true, false);
+    expect(document.activeElement).toBe(byId("open-modal"));
+    await show(false, false);
+    expect(document.activeElement).toBe(byId("open-panel"));
+  } finally {
+    await act(() => root.unmount());
+    el.remove();
+    restoreConsole();
+  }
+});

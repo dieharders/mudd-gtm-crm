@@ -15,7 +15,7 @@ import { ArrowDown, ArrowUp, Maximize2 } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { CHECKED, isChecked, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../../shared/types";
 import { cn } from "../../lib/cn";
-import { CellEditor, CellView, coerce, display, type Move } from "./cells";
+import { CellEditor, CellView, coercePasted, display, type Move } from "./cells";
 import { clipboardCell, parseClipboard } from "./clipboard";
 
 export interface SortState {
@@ -214,7 +214,8 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
     }
   };
 
-  // Paste a block from Excel or Sheets. Cells of locked rows are skipped.
+  // Paste a block from Excel or Sheets. Cells of locked rows are skipped, and so are values a
+  // dropdown doesn't list.
   const onPaste = (e: React.ClipboardEvent) => {
     if (editing || !active || p.readOnly) return;
     const text = e.clipboardData.getData("text/plain");
@@ -226,7 +227,9 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid(p, ref) {
       if (!row) return;
       cells.forEach((raw, j) => {
         const col = p.columns[active.c + j];
-        if (col && !isFixed(row, col)) edits.push({ rowId: row.id, key: col.key, value: coerce(raw, col) });
+        if (!col || isFixed(row, col)) return;
+        const value = coercePasted(raw, col);
+        if (value !== undefined) edits.push({ rowId: row.id, key: col.key, value });
       });
     });
     if (edits.length) p.onEdit(edits, "Paste");

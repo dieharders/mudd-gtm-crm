@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
-import { createContext, useContext, useEffect, type ReactNode } from "react";
-import { useInert, useLeaving } from "../../hooks/useLeaving";
+import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { useFocusReturn, useInert, useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
@@ -40,6 +40,9 @@ export function Panel({ title, subtitle, icon, onClose, closeLabel = "Close", wi
 }) {
   const leaving = useContext(Leaving);
   const layer = useInert<HTMLDivElement>(leaving);
+  // Focus goes into it as it opens, and back to what opened it as it closes.
+  const box = useRef<HTMLDivElement>(null);
+  useFocusReturn(!leaving, layer, box);
   useEffect(() => {
     if (leaving) return;
     const onKey = (e: KeyboardEvent) => {
@@ -62,9 +65,11 @@ export function Panel({ title, subtitle, icon, onClose, closeLabel = "Close", wi
       onMouseDown={onClose}
     >
       <div
+        ref={box}
         role="dialog"
         aria-modal="true"
-        className={cn("flex h-full max-h-[920px] w-full flex-col overflow-hidden rounded-2xl border-2 border-rim-deep bg-paper shadow-dialog", leaving ? "animate-pop-out" : "animate-pop", width)}
+        tabIndex={-1}
+        className={cn("flex h-full max-h-[920px] w-full flex-col overflow-hidden rounded-2xl border-2 border-rim-deep bg-paper shadow-dialog outline-none", leaving ? "animate-pop-out" : "animate-pop", width)}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-4 border-b-2 border-rim/40 px-6 py-4">
