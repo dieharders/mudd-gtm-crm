@@ -101,6 +101,15 @@ async function* setupStream(url: string, body: unknown, signal: AbortSignal): As
 
 export type DialogResult = { path: string } | { cancelled: true } | { unsupported: true };
 
+export interface ImportContactsResult {
+  fileName: string;
+  /** The contacts added. */
+  ids: string[];
+  skipped: number;
+  duplicates: number;
+  mismatched: number;
+}
+
 export interface SaveResult {
   /** Where the file was written. */
   path: string;
@@ -155,6 +164,18 @@ export const api = {
   /** Export CSV: the prospects, or their contacts, as a new file in Downloads. Links nothing. */
   exportCsv: (id: string, kind: "prospects" | "contacts") =>
     call<{ path: string }>("POST", `/api/campaigns/${id}/csv`, { kind }),
+  /**
+   * Import contacts from a CSV, each linked to its prospect by Prospect ID or Company. `skipped`
+   * match no prospect; `duplicates` are people their prospect already has.
+   */
+  importContacts: (id: string, src: File | { path: string }) => {
+    let payload: FormData | { path: string } = src as { path: string };
+    if (src instanceof File) {
+      payload = new FormData();
+      payload.append("file", src);
+    }
+    return call<ImportContactsResult>("POST", `/api/campaigns/${id}/contacts/import`, payload);
+  },
   /** Show the campaign's linked file in its folder. */
   revealFile: (id: string) => call<{ ok: true }>("POST", `/api/campaigns/${id}/reveal`),
 

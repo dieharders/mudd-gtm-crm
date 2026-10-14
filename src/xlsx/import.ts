@@ -15,7 +15,7 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { norm } from "../shared/merge";
-import { COMPANY_HEADER, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds, STATUS_HEADER } from "../shared/schema";
+import { allColumns, columnByHeaders, COMPANY_HEADER, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds, STATUS_HEADER } from "../shared/schema";
 import { questionByLabel } from "../shared/thesis";
 import { ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole, type Thesis, type ThesisId } from "../shared/types";
 import { colLetter, readCellValue } from "./cells";
@@ -639,4 +639,95 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
     break;
   }
   return { schema, sheets, rows, contacts, skippedContacts, mismatchedContacts, templates, thesis };
+}
+
+// ---------- contacts into a campaign ----------
+
+export interface ImportedContacts {
+  /** The campaign's schema with the file's other columns added to the contacts'. */
+  schema: CampaignSchema;
+  contacts: { parentId: string; cells: Record<string, CellValue> }[];
+  /** Rows that match no prospect in the campaign. */
+  skipped: number;
+  /** Rows for someone the prospect already has: the same name, or the same cells when unnamed. */
+  duplicates: number;
+  /** Linked by Prospect ID, but their Company names another company than that prospect's. */
+  mismatched: number;
+}
+
+/**
+ * A contacts CSV into a campaign that has prospects: each row goes to its prospect as the
+ * Contacts tab's do, by Prospect ID, or by Company when it has none. A column is the contacts'
+ * column of that header when there is one, otherwise a new contact column. `taken` holds the
+ * keys any row has a value for (db.allCellKeys), which a new column must not take.
+ */
+export function readContactsCsv(book: LoadedBook, schema: CampaignSchema, prospects: Row[], existing: Row[], taken: Iterable<string>): ImportedContacts {
+  const ws = book.wb.worksheets[0];
+  const t = ws ? readSheet(ws, book) : null;
+  if (!ws || !t?.rows.length) throw new Error("This file has no contacts in it.");
+  const link = linkColumns(t);
+  if (link.id < 0 && link.company < 0) {
+    throw new Error("A contacts file needs a Prospect ID or Company column, to tell whose people they are.");
+  }
+
+  const next: CampaignSchema = structuredClone(schema);
+  const cs = (next.contacts ??= { columns: [] });
+  const keys = new Set([...allColumns(next).map((c) => c.key), ...taken]);
+  const map: Record<string, number> = {};
+  const used = new Set<string>();
+  t.samples.forEach((s, i) => {
+    if (i === link.id || i === link.company) return;
+    const free = cs.columns.filter((c) => !used.has(c.key));
+    let col = free.find((c) => c.header === s.header) ?? columnByHeaders(free, [norm(s.header)]);
+    if (!col) cs.columns.push((col = sheetColumn(ws, s, i, keys)));
+    used.add(col.key);
+    map[col.key] = i + 1;
+  });
+  ensureAppColumns(next, keys);
+
+  const byId = new Map<string, Row>();
+  const byCompany = new Map<string, Row>();
+  for (const p of prospects) {
+    const id = next.idKey ? linkKey(p.cells[next.idKey]) : "";
+    if (id && !byId.has(id)) byId.set(id, p);
+    const company = next.companyKey ? linkKey(p.cells[next.companyKey]) : "";
+    if (company && !byCompany.has(company)) byCompany.set(company, p);
+  }
+
+  // Who each prospect already has, by name, or by every cell for someone with none (a main line).
+  const nameKey = cs.nameKey;
+  const signature = (cells: Record<string, CellValue>) => {
+    const name = nameKey ? linkKey(cells[nameKey]) : "";
+    return name ? `name:${name}` : `cells:${JSON.stringify(Object.keys(cells).sort().map((k) => [k, String(cells[k])]))}`;
+  };
+  const known = new Set(existing.filter((c) => c.parentId).map((c) => `${c.parentId}\u0000${signature(c.cells)}`));
+
+  const out: ImportedContacts = { schema: next, contacts: [], skipped: 0, duplicates: 0, mismatched: 0 };
+  for (const r of t.rows) {
+    const id = link.id >= 0 ? linkKey(readCellValue(r.values[link.id] ?? null)) : "";
+    const company = link.company >= 0 ? linkKey(readCellValue(r.values[link.company] ?? null)) : "";
+    // The ID when there is one: a company name can be stale, or shared.
+    const parent = id ? byId.get(id) : byCompany.get(company);
+    if (!parent) {
+      out.skipped++;
+      continue;
+    }
+    const cells: Record<string, CellValue> = {};
+    for (const col of cs.columns) {
+      const idx = map[col.key];
+      if (!idx) continue;
+      const v = readCellValue(r.values[idx - 1] ?? null, col.type, { preferLink: col.type === "url" || col.type === "email" });
+      if (v !== null) cells[col.key] = v;
+    }
+    const sig = `${parent.id}\u0000${signature(cells)}`;
+    if (known.has(sig)) {
+      out.duplicates++;
+      continue;
+    }
+    known.add(sig);
+    const theirs = next.companyKey ? linkKey(parent.cells[next.companyKey]) : "";
+    if (id && company && theirs && company !== theirs) out.mismatched++;
+    out.contacts.push({ parentId: parent.id, cells });
+  }
+  return out;
 }

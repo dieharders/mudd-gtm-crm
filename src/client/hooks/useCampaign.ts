@@ -391,6 +391,23 @@ export function useCampaign(id: string) {
     });
   }, []);
 
+  /**
+   * Import contacts from a CSV: the server links and adds them (and any new columns), and they
+   * come in here as one undo step, which takes them out again. Waits for pending edits first, so
+   * the server matches against the prospects as they are on screen.
+   */
+  const importContacts = useCallback(async (src: File | { path: string }) => {
+    await flush();
+    const r = await api.importContacts(id, src);
+    if (!r.ids.length) return r;
+    const b = await api.campaign(id);
+    const added = new Set(r.ids);
+    setCampaign(b.campaign);
+    applyRemoteRows((b.contacts ?? []).filter((c) => added.has(c.id)));
+    pushUndo({ kind: "insert", label: r.ids.length === 1 ? "Import contact" : `Import ${r.ids.length} contacts`, ids: r.ids });
+    return r;
+  }, [applyRemoteRows, flush, id, pushUndo]);
+
   /** A campaign the server already saved (a recipe added columns): take it as it is. */
   const replaceCampaign = useCallback((c: Campaign) => {
     setCampaign(c);
@@ -441,7 +458,7 @@ export function useCampaign(id: string) {
   return {
     campaign, rows: views.prospects, contacts: views.contacts, contactsOf, rowById: views.rowById, templates, thesis, error, canUndo: undoCount > 0,
     reload: load, edit, editContacts, addRow, addContact, duplicateRow, deleteRows, makePrimary, screenOut, restore, setSchema, rename, undo, flush,
-    addTemplate, updateTemplate, removeTemplate, setSource, applyRemote, applyRemoteRows, replaceCampaign, setThesis,
+    addTemplate, updateTemplate, removeTemplate, setSource, applyRemote, applyRemoteRows, replaceCampaign, setThesis, importContacts,
   };
 }
 

@@ -7,7 +7,7 @@ import path from "node:path";
 import { copySchema, discoverySchema, genericSchema } from "../shared/schema";
 import { IMPORT_EXTENSIONS, type CampaignBundle, type CampaignSchema, type CellEdit, type InspectResult, type Row } from "../shared/types";
 import { exportCampaign, exportCsv } from "../xlsx/export";
-import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook, type LoadedBook } from "../xlsx/import";
+import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook, readContactsCsv, type LoadedBook } from "../xlsx/import";
 import * as db from "./db";
 import { registerAiRoutes } from "./ai-routes";
 import { dialogsSupported, downloadsDir, openDialog, openExternal, revealInFolder } from "./dialogs";
@@ -72,26 +72,22 @@ function stage(s: Omit<Staged, "at">): string {
   return token;
 }
 
-async function inspect(req: Request): Promise<InspectResult> {
-  let buf: Uint8Array;
-  let fileName: string;
-  let filePath: string | null = null;
-  let mtime: number | null = null;
+/** The file a request brings: uploaded (dropped in, or the file input), or a path the Open dialog gave. */
+async function readUpload(req: Request): Promise<{ buf: Uint8Array; fileName: string; filePath: string | null; mtime: number | null }> {
   const type = req.headers.get("content-type") ?? "";
   if (type.includes("multipart/form-data")) {
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) throw new HttpError(400, "No file in the upload.");
-    buf = new Uint8Array(await file.arrayBuffer());
-    fileName = file.name;
-  } else {
-    const { path: p } = await body<{ path: string }>(req);
-    if (!p || !fs.existsSync(p)) throw new HttpError(400, "That file could not be found.");
-    buf = new Uint8Array(fs.readFileSync(p));
-    fileName = path.basename(p);
-    filePath = p;
-    mtime = Math.round(fs.statSync(p).mtimeMs);
+    return { buf: new Uint8Array(await file.arrayBuffer()), fileName: file.name, filePath: null, mtime: null };
   }
+  const { path: p } = await body<{ path: string }>(req);
+  if (!p || !fs.existsSync(p)) throw new HttpError(400, "That file could not be found.");
+  return { buf: new Uint8Array(fs.readFileSync(p)), fileName: path.basename(p), filePath: p, mtime: Math.round(fs.statSync(p).mtimeMs) };
+}
+
+async function inspect(req: Request): Promise<InspectResult> {
+  const { buf, fileName, filePath, mtime } = await readUpload(req);
   if (/\.xlsm$/i.test(fileName)) {
     throw new HttpError(400, `${fileName} has macros, and saving it would lose them. In Excel, use File › Save As › Excel Workbook (.xlsx) and import that copy.`);
   }
@@ -138,6 +134,25 @@ async function doImport(req: Request) {
   });
   staged.delete(b.token);
   return { ...campaign, skippedContacts: imp.skippedContacts, mismatchedContacts: imp.mismatchedContacts };
+}
+
+/**
+ * Import contacts: a contacts CSV (as Export contacts as CSV writes one) into a campaign, each
+ * person linked to their prospect. New columns join the contacts'; nothing else changes.
+ */
+async function importContacts(id: string, req: Request) {
+  const c = mustCampaign(id);
+  const { buf, fileName } = await readUpload(req);
+  if (!isCsvName(fileName)) throw new HttpError(400, `${fileName} is not a CSV. Import contacts from a .csv file.`);
+  let imp;
+  try {
+    imp = readContactsCsv(await loadWorkbook(buf, fileName), c.schema, db.listRows(id), db.listRows(id, "contacts"), db.allCellKeys(id));
+  } catch (err) {
+    throw new HttpError(400, (err as Error).message);
+  }
+  if (imp.contacts.length && JSON.stringify(imp.schema) !== JSON.stringify(c.schema)) db.updateCampaign(id, { schema: imp.schema });
+  const rows = db.insertRows(id, imp.contacts);
+  return json({ fileName, ids: rows.map((r) => r.id), skipped: imp.skipped, duplicates: imp.duplicates, mismatched: imp.mismatched });
 }
 
 // ---------- Save file ----------
@@ -314,6 +329,7 @@ on("POST", "/api/import/inspect", async (req) => json(await inspect(req)));
 on("POST", "/api/import", async (req) => json(await doImport(req)));
 on("POST", "/api/campaigns/:id/save", async (req, [id]) => saveFile(id!, req));
 on("POST", "/api/campaigns/:id/csv", async (req, [id]) => saveCsv(id!, req));
+on("POST", "/api/campaigns/:id/contacts/import", async (req, [id]) => importContacts(id!, req));
 // Only the campaign's own linked file, never a path from the request.
 on("POST", "/api/campaigns/:id/reveal", (_req, [id]) => {
   const c = mustCampaign(id!);

@@ -14,6 +14,8 @@ import type { CampaignState } from "./useCampaign";
 const saved: { id: string; edits: CellEdit[] }[] = [];
 const deleted: string[][] = [];
 const inserted: Partial<Row>[][] = [];
+/** Contacts the server has besides the bundle's: what a contacts import added. */
+const imported: Row[] = [];
 
 const people: CampaignSchema = {
   columns: [{ key: "id", header: "ID", type: "text", hidden: true }, { key: "company", header: "Company", type: "text" }],
@@ -33,6 +35,7 @@ const bundle = (id: string): CampaignBundle =>
       contacts: [
         { id: "ann", position: 2, parentId: "acme", cells: { name: "Ann", primary: CHECKED } },
         { id: "al", position: 3, parentId: "acme", cells: { name: "Al" } },
+        ...imported,
       ],
       templates: [],
       thesis: null,
@@ -56,6 +59,10 @@ void mock.module("../lib/api", () => ({
       inserted.push(rows);
       return Promise.resolve(rows);
     },
+    importContacts: () => {
+      imported.push({ id: "bo", position: 4, parentId: "beta", cells: { name: "Bo" } }, { id: "bea", position: 5, parentId: "beta", cells: { name: "Bea" } });
+      return Promise.resolve({ fileName: "people.csv", ids: ["bo", "bea"], skipped: 0, duplicates: 0, mismatched: 0 });
+    },
     deleteRows: (_id: string, ids: string[]) => {
       deleted.push(ids);
       return Promise.resolve({ ok: true });
@@ -72,6 +79,7 @@ beforeEach(() => {
   saved.length = 0;
   deleted.length = 0;
   inserted.length = 0;
+  imported.length = 0;
 });
 
 let current: CampaignState | null = null;
@@ -229,4 +237,18 @@ test("a prospect and its contacts that arrive in one batch (a Discovery accept) 
     expect(s().rows.map((r) => r.id)).toEqual(["acme", "beta", "gamma"]);
     expect(s().contactsOf("gamma").map((c) => c.id)).toEqual(["gil", "gus"]);
     expect(s().thesis).toBeNull();
+  }));
+
+test("contacts imported from a CSV are shown, and one undo step takes them all out", () =>
+  withCampaign("P", async (s) => {
+    await act(async () => {
+      await s().importContacts({ path: "/tmp/people.csv" });
+    });
+    expect(s().contactsOf("beta").map((c) => c.id)).toEqual(["bo", "bea"]);
+    expect(s().contactsOf("acme").map((c) => c.id)).toEqual(["ann", "al"]);
+    await act(() => {
+      expect(s().undo()).toBe("Import 2 contacts");
+    });
+    expect(s().contactsOf("beta")).toEqual([]);
+    expect(deleted.at(-1)!.sort()).toEqual(["bea", "bo"]);
   }));

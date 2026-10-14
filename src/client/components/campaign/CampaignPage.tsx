@@ -1,6 +1,6 @@
 import {
   ArchiveRestore, Building2, Columns3, FileSpreadsheet, FolderOpen, Inbox, ListChecks, ListFilter, Loader2, MessageSquareText, MoreHorizontal, Plus,
-  Loader2 as Spinner, Radar, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
+  Loader2 as Spinner, Radar, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, UserPlus, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -38,6 +38,7 @@ import { undoToast } from "../ui/Toaster";
 import { RemoveCampaignDialog } from "../campaigns/RemoveCampaignDialog";
 import { ColumnsDialog } from "./ColumnsDialog";
 import { ExportMenu } from "./ExportMenu";
+import { useImportContacts } from "./ImportContacts";
 import { ScreenOutButton } from "../row/ScreenOutButton";
 import { api } from "../../lib/api";
 import { fire } from "../../lib/fire";
@@ -205,6 +206,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   const [removing, setRemoving] = useState(false);
   // The overflow drawer: the campaign's workspaces and file actions, pinned up as cards.
   const [showMore, setShowMore] = useState(false);
+  const importContacts = useImportContacts(state);
   const closeMore = useCallback(() => setShowMore(false), []);
   // The filter drawer: the current tab's filters, pinned up as cards that turn on and off.
   const [showFilters, setShowFilters] = useState(false);
@@ -489,6 +491,7 @@ function CampaignView({ state }: { state: CampaignState }) {
           )}
         </span>
       </div>
+      {importContacts.fileInput}
       <Pinboard open={showMore} title={campaign.name} onClose={closeMore}>
           {/* Numbered across both groups, so no two neighbours lean the same way. */}
           {(() => {
@@ -501,6 +504,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               { tone: "bg-paper", icon: <Columns3 size={18} />, label: "Columns", hint: onContacts ? "Of the contacts list" : "Of the prospects list", onClick: pick(() => setShowColumns(true)) },
             ];
             const file: Omit<PinCardProps, "index">[] = [
+              { icon: <UserPlus size={18} />, label: "Import contacts", hint: "From a CSV, by Prospect ID or Company", onClick: pick(() => fire(importContacts.start())) },
               ...(campaign.sourcePath ? [{ icon: <FolderOpen size={18} />, label: "Show in folder", hint: campaign.sourcePath, title: campaign.sourcePath, onClick: pick(() => fire(api.revealFile(campaign.id))) }] : []),
               { tone: "bg-coral-100", danger: true, icon: <Trash2 size={18} />, label: "Remove from App", hint: "The file stays", onClick: pick(() => setRemoving(true)) },
             ];
@@ -579,7 +583,7 @@ function CampaignView({ state }: { state: CampaignState }) {
           <div key={sheet} className={cn("h-full", sheetMoved.current && "motion-safe:animate-sheet-in")}>
           {onContacts ? (
             state.contacts.length === 0 ? (
-              <EmptyContacts />
+              <EmptyContacts onImport={() => fire(importContacts.start())} busy={importContacts.busy} />
             ) : (
               <>
                 {/* Keyed apart from the Prospects grid: its active cell and scroll are about other rows. */}
@@ -956,12 +960,14 @@ function EmptyList({ onAdd, discovery }: { onAdd: () => void; discovery: { waiti
   );
 }
 
-function EmptyContacts() {
+function EmptyContacts({ onImport, busy }: { onImport: () => void; busy: boolean }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
       <Users className="text-clay" size={40} strokeWidth={2.2} />
       <p className="font-display text-xl font-bold">No contacts yet</p>
       <p className="max-w-sm text-[14px] text-mud-faint">Open a prospect and add its people there: who holds the budget, who evaluates, who uses it. Everyone you add is listed here.</p>
+      <p className="max-w-sm text-[14px] text-mud-faint">Or bring them in from a contacts CSV, each linked to a prospect by its Prospect ID or Company.</p>
+      <Button className="mt-2" onClick={onImport} disabled={busy}><UserPlus size={15} /> {busy ? "Importing…" : "Import contacts"}</Button>
     </div>
   );
 }
