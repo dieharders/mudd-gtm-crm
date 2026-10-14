@@ -15,7 +15,7 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { norm } from "../shared/merge";
-import { COMPANY_HEADERS, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds } from "../shared/schema";
+import { COMPANY_HEADER, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds, STATUS_HEADER } from "../shared/schema";
 import { questionByLabel } from "../shared/thesis";
 import { ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole, type Thesis, type ThesisId } from "../shared/types";
 import { colLetter, readCellValue } from "./cells";
@@ -374,7 +374,7 @@ const contactsName = (name: string) => /^contacts\d*$/.test(norm(name));
 /** The link columns of a Contacts tab: the prospect's ID, and its company. -1 when missing. */
 function linkColumns(t: SheetTable): { id: number; company: number } {
   const find = (names: string[]) => names.map((n) => t.headers.findIndex((h) => norm(h) === n)).find((i) => i >= 0) ?? -1;
-  return { id: find([PROSPECT_ID_HEADER]), company: find(COMPANY_HEADERS) };
+  return { id: find([PROSPECT_ID_HEADER]), company: find([COMPANY_HEADER]) };
 }
 
 /** A Contacts tab: that name, a column linking each person to a prospect, and no formulas. */
@@ -406,7 +406,7 @@ export function inspectWorkbook(book: LoadedBook): { sheets: InspectSheet[]; tem
     rows: t.rows.length,
     cols: t.dataCols,
     headers: t.headers.slice(0, 10),
-    hasStatus: t.headers.some((h) => ["status", "stage"].includes(norm(h))),
+    hasStatus: t.headers.some((h) => norm(h) === STATUS_HEADER),
     hasFormulas: t.hasFormulas,
     footnotes: t.footnotes,
   }));

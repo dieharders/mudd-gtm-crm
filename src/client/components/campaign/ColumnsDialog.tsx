@@ -2,9 +2,10 @@
  * Add, rename, retype, hide and delete columns.
  *
  * Columns that exist in the spreadsheet can be hidden but not deleted: they are still in the
- * file, and export writes every row back to them. Columns Mudd itself relies on (Status, Intro
- * message, the meeting pair, the Screened out box and its reason, the prospect's ID; a contact's
- * name, Contact type, Primary box, Last contacted and Last reply) can be renamed or hidden, not removed.
+ * file, and export writes every row back to them. Columns Mudd itself relies on (Status, Company,
+ * Intro message, the meeting pair, the Screened out box and its reason, the prospect's ID; a
+ * contact's name, Contact type, Primary box, Last contacted and Last reply) can only be hidden:
+ * import makes them Mudd's again (header, type and dropdown list), so an edit here wouldn't last.
  *
  * It edits one list at a time: the prospects' columns, or their contacts'.
  */
@@ -39,13 +40,12 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
   const roles: Record<string, string> = kind === "contacts"
     ? Object.fromEntries([[schema.nameKey, "Contact name"], [schema.typeKey, "Contact type"], [schema.primaryKey, "Primary contact"], [schema.lastContactedKey, "Last contacted"], [schema.lastReplyKey, "Last reply"]].filter(([k]) => k))
     : Object.fromEntries([
-      [schema.statusKey, "Pipeline status"], [schema.introKey, "Intro message"], [schema.meetingAtKey, "Meeting time"], [schema.meetingUrlKey, "Meeting link"],
-      [schema.screenedKey, "Screened out"], [schema.reasonKey, "Screened reason"], [schema.idKey, "Prospect ID: the Contacts tab links by it"],
+      [schema.statusKey, "Pipeline status"], [schema.companyKey, "Company"], [schema.introKey, "Intro message"], [schema.meetingAtKey, "Meeting time"],
+      [schema.meetingUrlKey, "Meeting link"], [schema.screenedKey, "Screened out"], [schema.reasonKey, "Screened reason"],
+      [schema.idKey, "Prospect ID: the Contacts tab links by it"],
     ].filter(([k]) => k));
   const roleKeys = new Set(Object.keys(roles));
   const role = (k: string) => roles[k] ?? null;
-  // Their type is what makes them work: a dropdown of stages or contact types, a box, an ID.
-  const fixedType = new Set([schema.statusKey, schema.screenedKey, schema.idKey, schema.typeKey, schema.primaryKey, schema.lastContactedKey, schema.lastReplyKey].filter(Boolean));
 
   // A company's Staff, Headcount or Size is its "# Employees", a number.
   const employees = (header: string) => kind === "prospects" && isEmployeesHeader(header);
@@ -112,7 +112,9 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
           {colgroup}
           <tbody className="[&>tr:first-child]:border-t-0">
             {cols.map((c) => {
-              const locked = inSheet.has(c.key) || roleKeys.has(c.key);
+              // Mudd's own: hidden or shown, nothing else.
+              const fixed = roleKeys.has(c.key);
+              const locked = inSheet.has(c.key) || fixed;
               const dup = dupes.has(tidy(c).header.toLowerCase());
               return (
                 <tr key={c.key} className={cn("border-t border-rim/40 align-top", c.hidden && "opacity-55")}>
@@ -124,18 +126,18 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
                     </div>
                   </td>
                   <td className="py-1.5 pr-2">
-                    <input className={cn("field h-8 py-0", dup && "border-rose-300")} value={c.header} onChange={(e) => patch(c.key, { header: e.target.value })} />
+                    <input className={cn("field h-8 py-0", dup && "border-rose-300")} value={c.header} disabled={fixed} onChange={(e) => patch(c.key, { header: e.target.value })} />
                     {role(c.key) && <span className="mt-0.5 block text-[10px] text-clay-deep">{role(c.key)}</span>}
                   </td>
                   <td className="py-1.5 pr-2">
-                    <select className="field h-8 py-0" value={c.type} disabled={fixedType.has(c.key)}
+                    <select className="field h-8 py-0" value={c.type} disabled={fixed}
                       onChange={(e) => patch(c.key, { type: e.target.value as ColumnType, options: e.target.value === "select" ? c.options ?? [] : c.options })}>
                       {COLUMN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </td>
                   <td className="py-1.5 pr-2">
                     {c.type === "select" ? (
-                      <input className="field h-8 py-0 text-xs" placeholder="Comma-separated" value={(c.options ?? []).join(", ")}
+                      <input className="field h-8 py-0 text-xs" placeholder="Comma-separated" value={(c.options ?? []).join(", ")} disabled={fixed}
                         onChange={(e) => patch(c.key, { options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
                     ) : <span className="flex h-8 items-center text-xs text-mud-faint">—</span>}
                   </td>

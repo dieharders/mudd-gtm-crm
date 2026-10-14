@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { norm } from "./merge";
 import { recipeMode } from "./ai";
 import { PRESETS, presetTargets } from "./presets";
-import { assignRoles, CONTACT_TYPES, ensureAppColumns, genericSchema, makeKey, NAME_HEADERS, newProspectId, prospectSchema } from "./schema";
+import { assignRoles, CONTACT_TYPES, ensureAppColumns, genericSchema, makeKey, newProspectId, prospectSchema } from "./schema";
 import { CHECKED, type CampaignSchema, type CellValue } from "./types";
 import { CompanyIndex, companyKeys, contactLabel, contactOf, isChannel, isEmptyContact, orderedContacts, primaryOf, prospectCells, prospectTitle } from "./values";
 
@@ -12,7 +11,7 @@ function sheet(...headers: string[]): CampaignSchema {
   const schema: CampaignSchema = { columns: headers.map((header) => ({ key: makeKey(header, taken), header, type: "text", origin: "sheet" })) };
   assignRoles(schema);
   // Read as a contact's columns: the name is theirs.
-  schema.nameKey = NAME_HEADERS.map((n) => schema.columns.find((c) => norm(c.header) === n)?.key).find(Boolean);
+  schema.nameKey = schema.columns.find((c) => c.header === "Name")?.key;
   return schema;
 }
 /** A campaign whose contacts have these columns, and no columns of its own. */
@@ -148,19 +147,26 @@ describe("prospect IDs and contact columns", () => {
     expect(schema.contacts!.columns.filter((c) => c.header === "Name")).toHaveLength(1);
   });
 
-  test("a contact date is only the column Mudd writes, and is a date whatever the tab had", () => {
+  test("a contact column Mudd relies on is only the one Mudd heads, and is Mudd's whatever the tab had", () => {
     const schema = sheet("Company", "Status");
     schema.contacts = { columns: [
+      { key: "name", header: "NAME", type: "url", origin: "sheet" },
+      { key: "contact_type", header: "Contact type", type: "select", options: ["Buyer", "User"], origin: "sheet" },
+      { key: "is_primary", header: "Is primary", type: "checkbox", origin: "sheet" },
       { key: "last_contact", header: "Last contact", type: "text", origin: "sheet" },
       { key: "last_reply", header: "Last reply", type: "select", options: ["Yes", "No"], origin: "sheet" },
     ] };
     ensureAppColumns(schema);
     const cs = schema.contacts;
-    // "Last contact" is the tab's own column; Mudd adds its own "Last contacted".
-    expect(cs.columns.find((c) => c.key === "last_contact")!.type).toBe("text");
-    expect(cs.columns.find((c) => c.key === cs.lastContactedKey)).toMatchObject({ header: "Last contacted", type: "date", origin: "mudd" });
-    expect(cs.lastReplyKey).toBe("last_reply");
-    expect(cs.columns.find((c) => c.key === "last_reply")).toEqual({ key: "last_reply", header: "Last reply", type: "date", origin: "sheet" });
+    const col = (key: string) => cs.columns.find((c) => c.key === key);
+    expect(col("name")).toEqual({ key: "name", header: "Name", type: "text", origin: "sheet" });
+    expect(col("contact_type")!.options).toEqual(CONTACT_TYPES);
+    expect(col("last_reply")).toEqual({ key: "last_reply", header: "Last reply", type: "date", origin: "sheet" });
+    // "Is primary" and "Last contact" are the tab's own columns; Mudd adds its own.
+    expect(col("is_primary")!.header).toBe("Is primary");
+    expect(col("last_contact")!.type).toBe("text");
+    expect(col(cs.primaryKey!)).toMatchObject({ header: "Primary", type: "checkbox", origin: "mudd" });
+    expect(col(cs.lastContactedKey!)).toMatchObject({ header: "Last contacted", type: "date", origin: "mudd" });
   });
 });
 
@@ -219,7 +225,8 @@ describe("preset targets", () => {
   });
 
   test("a person's details fill the contact columns, never the prospect's", () => {
-    const schema: CampaignSchema = { ...sheet("Company", "Role", "Email"), contacts: people("Full name", "Role", "Email").contacts };
+    const contacts = people("Full name", "Role", "Email").contacts!;
+    const schema: CampaignSchema = { ...sheet("Company", "Role", "Email"), contacts: { ...contacts, nameKey: contacts.columns[0]!.key } };
     const [name, jobTitle, linkedIn] = presetTargets(role, schema, []);
     // No alias for "Full name": the contacts' name column all the same.
     expect(name?.header).toBe("Full name");

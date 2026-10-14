@@ -10,7 +10,7 @@ import JSZip from "jszip";
 import fs from "node:fs";
 import path from "node:path";
 import { allColumns, discoverySchema, genericSchema } from "../shared/schema";
-import { CHECKED, isScreened, type Campaign, type Template, type Thesis, type ThesisId } from "../shared/types";
+import { CHECKED, DEAD, DEFAULT_STAGES, isScreened, type Campaign, type Template, type Thesis, type ThesisId } from "../shared/types";
 import { exportCampaign, type ExportRow } from "./export";
 import { importWorkbook, inspectWorkbook, loadWorkbook } from "./import";
 import { YOURS_FILL } from "./layouts";
@@ -260,17 +260,39 @@ describe("Save file patches the imported workbook", () => {
   test("dropdown options edited in the app reach the file", async () => {
     const original = await xlsxOf(tracker);
     const { campaign, rows, key } = await importFrom(original);
-    const status = campaign.schema.columns.find((c) => c.key === key("Status"))!;
-    status.options = ["Not contacted", "Contacted", "Nurture", "Replied", "Dead"];
     const notes = campaign.schema.columns.find((c) => c.key === key("Notes"))!;
     notes.type = "select";
     notes.options = ["Warm", "Hot", "Cold"];
     const out = await exportCampaign(campaign, original, rows, [], [], null);
-    const xml = await sheetXml(out, "Prospects");
-    expect(xml).toContain("&quot;Not contacted,Contacted,Nurture,Replied,Dead&quot;");
-    expect(xml).toMatch(/sqref="G2:G1000"><formula1>&quot;Warm,Hot,Cold&quot;/);
+    expect(await sheetXml(out, "Prospects")).toMatch(/sqref="G2:G1000"><formula1>&quot;Warm,Hot,Cold&quot;/);
     const again = await importFrom(out);
-    expect(again.campaign.schema.columns.find((c) => c.header === "Status")!.options).toContain("Nurture");
+    expect(again.campaign.schema.columns.find((c) => c.header === "Notes")!.options).toEqual(["Warm", "Hot", "Cold"]);
+  });
+
+  test("the columns Mudd relies on are Mudd's, whatever the sheet made them", async () => {
+    const original = await xlsxOf((wb) => {
+      const ws = wb.addWorksheet("Prospects");
+      ws.addRow(["ID", "Company", "STATUS", "Stage", "Screened out"]);
+      ws.addRow(["P-001", "Acme", "Nurture", "Early", "TRUE"]);
+      ws.addRow(["P-002", "Beta", "Contacted", "Late", null]);
+      (ws as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations.add("C2:C1000", {
+        type: "list", allowBlank: true, formulae: ['"Nurture,Contacted,Dead"'],
+      });
+    });
+    const { campaign, rows } = await importFrom(original);
+    const s = campaign.schema;
+    const stages = [...DEFAULT_STAGES, DEAD];
+    expect(s.columns.find((c) => c.key === s.statusKey)).toMatchObject({ header: "Status", type: "select", options: stages });
+    // Only the header Mudd writes: "Stage" is the sheet's own column.
+    expect(s.columns.find((c) => c.header === "Stage")!.type).toBe("text");
+    // A "Screened out" of text is the box all the same, and its TRUE a tick.
+    expect(s.columns.find((c) => c.key === s.screenedKey)).toMatchObject({ header: "Screened out", type: "checkbox" });
+    expect(isScreened(rows[0]!, s)).toBe(true);
+    expect(s.columns.filter((c) => c.header === "Status" || c.header === "Screened out")).toHaveLength(2);
+    // The cells stay the sheet's; the dropdown is Mudd's.
+    expect(rows[0]!.cells[s.statusKey!]).toBe("Nurture");
+    const out = await exportCampaign(campaign, original, rows, [], [], null);
+    expect(await sheetXml(out, "Prospects")).toContain(`&quot;${stages.join(",")}&quot;`);
   });
 
   test("screening out is a ticked column; the prospect stays in its row", async () => {
@@ -673,7 +695,7 @@ function withContacts(wb: ExcelJS.Workbook, people: (string | boolean | null)[][
   c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply"]);
   for (const p of people) c.addRow(p);
   (c as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations.add("D2:D1000", {
-    type: "list", allowBlank: true, formulae: ['"Economic Buyer,Technical Buyer,End User,Influencer,Blocker,Gatekeeper"'],
+    type: "list", allowBlank: true, formulae: ['"Economic Buyer,Champion,Technical Buyer,End User,Influencer,Blocker,Gatekeeper,Channel"'],
   });
 }
 

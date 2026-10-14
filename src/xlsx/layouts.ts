@@ -4,8 +4,7 @@
  * own to patch (and for the columns Mudd appends to one that does).
  */
 import type ExcelJS from "exceljs";
-import { norm } from "../shared/merge";
-import { COMPANY_HEADERS, contactRecordKeys, DEFAULT_WIDTH, NAME_HEADERS, typeFromHeader } from "../shared/schema";
+import { contactRecordKeys, DEFAULT_WIDTH, typeFromHeader } from "../shared/schema";
 import { DEAD, type CampaignSchema, type Column, type ColumnType } from "../shared/types";
 import { colLetter, hrefFor, isTimeOnly, numFmtFor, readCellValue, toNumber } from "./cells";
 import { inlineListOptions } from "./ooxml";
@@ -31,10 +30,7 @@ export interface ColumnSample {
   listOptions?: string[];
 }
 
-const FLAG_TEXT = /^(true|false|yes|no|y|n|x|1|0|✓|✔|☑)$/i;
-
 export function detectType(s: ColumnSample): Pick<Column, "type" | "options" | "numeric"> {
-  const h = norm(s.header);
   const byHeader = typeFromHeader(s.header);
   const vals = s.values.filter((v) => v !== null && v !== undefined && v !== "");
   // Rich text, links and formula results read as the text the sheet shows.
@@ -45,9 +41,6 @@ export function detectType(s: ColumnSample): Pick<Column, "type" | "options" | "
     return { type: "select", options: s.listOptions, numeric: numeric || undefined };
   }
   if (vals.length && vals.every((v) => typeof v === "boolean")) return { type: "checkbox" };
-  if (byHeader?.type === "checkbox" && texts.every((t) => FLAG_TEXT.test(t.trim()))) return { type: "checkbox" };
-  if (/^meeting(at|date|time|datetime|when)$/.test(h)) return { type: "datetime" };
-  if (/^meeting(url|link)$/.test(h)) return { type: "url" };
 
   const fmts = s.numFmts.filter(Boolean) as string[];
   // A time with no date (h:mm) is kept as text ("10:30"), not shown as a day in 1899.
@@ -62,11 +55,10 @@ export function detectType(s: ColumnSample): Pick<Column, "type" | "options" | "
     }
   }
   if (fmts.some((f) => f.includes("$"))) return { type: "currency" };
-  if (byHeader?.strong && byHeader.type !== "checkbox") return { type: byHeader.type };
+  if (byHeader?.strong) return { type: byHeader.type };
   // Numbers before links: "4.5" is a score, not a website.
   if (vals.length && vals.every((v) => typeof v === "number")) return { type: "number" };
-  const nameLike = NAME_HEADERS.includes(h) || COMPANY_HEADERS.includes(h);
-  if (!nameLike && texts.length && texts.filter((t) => hrefFor(t) && /[/.]/.test(t)).length / texts.length >= 0.6 && texts.every((t) => !/\s/.test(t.trim()))) {
+  if (texts.length && texts.filter((t) => hrefFor(t) && /[/.]/.test(t)).length / texts.length >= 0.6 && texts.every((t) => !/\s/.test(t.trim()))) {
     return { type: "url" };
   }
   const long = texts.filter((t) => t.length > 70).length;

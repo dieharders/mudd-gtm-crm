@@ -19,7 +19,7 @@ const OUT = path.join(import.meta.dir, "..", "src", "xlsx", "fixtures", "base-tr
 
 const HEADER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1C1B18" } };
 const HEADER_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" } };
-const STAGES = ["Not contacted", "Contacted", "Replied", "Meeting booked", "Proposal", "Won", "Dead"];
+const STAGES = ["Not contacted", "Contacted", "Replied", "Meeting booked", "Clinic held", "Trial", "Signed", "Dead"];
 const CONTACT_TYPES = ["Economic Buyer", "Champion", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", "Channel"];
 
 const d = (y: number, m: number, day: number, h = 0, min = 0) => new Date(Date.UTC(y, m - 1, day, h, min));
