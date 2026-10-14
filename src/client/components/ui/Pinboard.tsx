@@ -1,6 +1,6 @@
 /** A drawer that slides in from the right: a strip of board with its actions pinned on as tilted cards. */
 import { X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { useInert, useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
@@ -12,9 +12,20 @@ export function Pinboard({ open, title, onClose, children }: { open: boolean; ti
   const closeRef = useRef<HTMLButtonElement>(null);
   const { shown, leaving } = useLeaving(open, LEAVE_MS);
   const layer = useInert<HTMLDivElement>(leaving);
+  // Focus goes to Close as it opens, and back to what opened it (its button) as it closes, unless
+  // something else has taken it by then (a panel a card opened).
   useEffect(() => {
     if (!open) return;
+    const from = document.activeElement;
+    const drawer = layer.current;
     closeRef.current?.focus();
+    return () => {
+      const at = document.activeElement;
+      if (from instanceof HTMLElement && from.isConnected && (!at || at === document.body || drawer?.contains(at))) from.focus();
+    };
+  }, [open, layer]);
+  useEffect(() => {
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopPropagation();
@@ -77,34 +88,44 @@ export interface PinCardProps {
   title?: string;
 }
 
-/** One action on the board: a pinned note card that straightens up when hovered. */
-export function PinCard({ icon, label, hint, count, tone = "bg-paper", danger, index = 0, onClick, title }: PinCardProps) {
+/**
+ * A note card pinned to the board, as a button: it lands in its turn, leans by its place, and
+ * straightens up when hovered. The pin goes last, so the card's own content comes first.
+ */
+function Pinned({ index, className, children, ...button }: { index: number } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <div className="animate-pop" style={{ animationDelay: `${60 + index * 35}ms` }}>
       <button
         type="button"
-        onClick={onClick}
-        title={title}
+        {...button}
         className={cn(
-          "relative flex h-full w-full flex-col items-start gap-2 rounded-xl border-2 border-rim px-4 pt-5 pb-4 text-left shadow-hard transition",
+          "relative flex h-full w-full flex-col items-start rounded-xl border-2 border-rim px-4 pt-5 text-left shadow-hard transition",
           "hover:-translate-y-0.5 hover:rotate-0 hover:shadow-hard-lg active:translate-y-0.5 active:shadow-hard-sm",
           TILTS[index % TILTS.length],
-          tone,
-          danger ? "text-rose-700" : "text-mud",
+          className,
         )}
       >
+        {children}
         <span className="pin scale-75" />
-        <span className="flex w-full items-center gap-2">
-          <span className={cn("shrink-0", danger ? "text-rose-500" : "text-mud-soft")}>{icon}</span>
-          {count !== undefined && count > 0 && (
-            <span className="ml-auto rounded-full border border-rim bg-clay px-2 font-label text-[12px] leading-5 font-bold text-paper tabular-nums">{count}</span>
-          )}
-        </span>
-        <span className="font-label text-[16px] leading-tight font-bold">{label}</span>
-        {/* Mud-soft, not faint: the faint grey washes out on the tinted notes. */}
-        {hint && <span className={cn("line-clamp-2 font-label text-[12px] leading-snug [overflow-wrap:anywhere]", danger ? "text-rose-800/80" : "text-mud-soft")}>{hint}</span>}
       </button>
     </div>
+  );
+}
+
+/** One action on the board: a pinned note card. */
+export function PinCard({ icon, label, hint, count, tone = "bg-paper", danger, index = 0, onClick, title }: PinCardProps) {
+  return (
+    <Pinned index={index} onClick={onClick} title={title} className={cn("gap-2 pb-4", tone, danger ? "text-rose-700" : "text-mud")}>
+      <span className="flex w-full items-center gap-2">
+        <span className={cn("shrink-0", danger ? "text-rose-500" : "text-mud-soft")}>{icon}</span>
+        {count !== undefined && count > 0 && (
+          <span className="ml-auto rounded-full border border-rim bg-clay px-2 font-label text-[12px] leading-5 font-bold text-paper tabular-nums">{count}</span>
+        )}
+      </span>
+      <span className="font-label text-[16px] leading-tight font-bold">{label}</span>
+      {/* Mud-soft, not faint: the faint grey washes out on the tinted notes. */}
+      {hint && <span className={cn("line-clamp-2 font-label text-[12px] leading-snug [overflow-wrap:anywhere]", danger ? "text-rose-800/80" : "text-mud-soft")}>{hint}</span>}
+    </Pinned>
   );
 }
 
@@ -117,26 +138,13 @@ export interface PinToggleProps {
   title?: string;
 }
 
-/** A filter on the board: a pinned card turned on and off, coloured as the filter chips were, yellow while on. */
+/** A filter on the board: a pinned card turned on and off, grey at rest and yellow while on. */
 export function PinToggle({ label, count, active, index = 0, onClick, title }: PinToggleProps) {
   return (
-    <div className="animate-pop" style={{ animationDelay: `${60 + index * 35}ms` }}>
-      <button
-        type="button"
-        onClick={onClick}
-        title={title}
-        aria-pressed={active}
-        className={cn(
-          "relative flex h-full w-full flex-col items-start gap-1 rounded-xl border-2 px-4 pt-5 pb-3.5 text-left font-label transition",
-          "border-rim shadow-hard hover:-translate-y-0.5 hover:rotate-0 hover:shadow-hard-lg active:translate-y-0.5 active:shadow-hard-sm",
-          TILTS[index % TILTS.length],
-          active ? "bg-note text-mud" : "bg-paper-deep text-mud-soft hover:text-mud",
-        )}
-      >
-        <span className={cn("text-[15px] leading-tight [overflow-wrap:anywhere]", active && "font-bold")}>{label}</span>
-        <span className="text-[22px] leading-none opacity-70 tabular-nums">{count}</span>
-        <span className="pin scale-75" />
-      </button>
-    </div>
+    <Pinned index={index} onClick={onClick} title={title} aria-pressed={active}
+      className={cn("gap-1 pb-3.5 font-label", active ? "bg-note text-mud" : "bg-paper-deep text-mud-soft hover:text-mud")}>
+      <span className={cn("text-[15px] leading-tight [overflow-wrap:anywhere]", active && "font-bold")}>{label}</span>
+      <span className="text-[22px] leading-none opacity-70 tabular-nums">{count}</span>
+    </Pinned>
   );
 }

@@ -1,7 +1,7 @@
 /**
- * The on/off filters beside the status chips, each picking the rows that need one thing done.
- * Each is offered only when the campaign has the columns it reads; any that are on narrow the
- * list together, and with the status chip and the search.
+ * The on/off filters under the status filters in the Filter drawer, each picking the rows that
+ * need one thing done. Each is offered only when the campaign has the columns it reads; any that
+ * are on narrow the list together, and with the status filters and the search.
  */
 import { isSourcesColumn, type EnrichRun, type Recipe } from "../../shared/ai";
 import { CONTACT_TYPE_HINTS, contactSchema, ECONOMIC_BUYER } from "../../shared/schema";
@@ -14,7 +14,7 @@ export type QuickFilterId = "followUp" | "notReady" | "unenriched" | "buyer";
 
 /**
  * What a filter reads beyond the row, handed over at test time: the filters stay the same
- * through an edit, and the list is filtered again only while a chip that reads what changed is on.
+ * through an edit, and the list is filtered again only while a filter that reads what changed is on.
  */
 export interface FilterContext {
   contactsOf: (id: string) => Row[];
