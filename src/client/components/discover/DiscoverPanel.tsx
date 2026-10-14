@@ -112,7 +112,7 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
             ) : sel.kind === "thesis" ? (
               <ThesisEditor discovery={discovery} ready={ready} onSetup={() => ai.setOpen(true)} onNext={firstRun ? () => setSel({ kind: "find" }) : undefined} />
             ) : sel.kind === "find" ? (
-              <div className="space-y-5">
+              <div className="space-y-5 select-none">
                 <FindBox discovery={discovery} recipes={enrich.recipes} ready={ready} onSetup={() => ai.setOpen(true)} />
                 {findRun && <DiscoveryProgress run={findRun} candidates={discovery.candidates} onAction={(a) => fire(discovery.action(findRun.id, a))} />}
                 {findRun && findRun.ready > 0 && inbox.length > 0 && (
