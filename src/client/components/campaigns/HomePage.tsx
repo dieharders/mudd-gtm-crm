@@ -15,6 +15,7 @@ import { MenuItem, Popover } from "../ui/Menu";
 import { useImport } from "./ImportFlow";
 import { RemoveCampaignDialog } from "./RemoveCampaignDialog";
 import { fire } from "../../lib/fire";
+import { toggleFidget } from "../../lib/fidget";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -22,9 +23,9 @@ function greeting(): string {
 }
 
 /** A small sticky note pinned above a page title. */
-function PinnedNote({ children }: { children: ReactNode }) {
+function PinnedNote({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
   return (
-    <span className="relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-[15px] shadow-hard-sm">
+    <span onClick={onClick} className={cn("relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-sm shadow-hard-sm select-none", onClick && "cursor-pointer")}>
       <span className="pin scale-75" />
       {children}
     </span>
@@ -48,7 +49,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
       <div className="mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
         <div className="mb-10 flex flex-wrap items-end gap-4">
           <div className="mr-auto">
-            <PinnedNote>{greeting()} 👋</PinnedNote>
+            <PinnedNote onClick={toggleFidget}>{greeting()} 👋</PinnedNote>
             <h1 className="font-display text-[40px] leading-none font-bold tracking-tight">Your campaigns</h1>
           </div>
           <Button onClick={startImport} disabled={busy}>

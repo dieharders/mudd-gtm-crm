@@ -1,4 +1,6 @@
 /** The left rail: brand, primary actions, and every campaign one click away. Folds to icons below `wide`. */
+import confetti from "@hiseb/confetti";
+import { useState } from "react";
 import { CalendarClock, FolderOpen, Gift, Home, Plus, Sparkles, X } from "lucide-react";
 import { PROVIDERS } from "../../../shared/ai";
 import { api } from "../../lib/api";
@@ -11,8 +13,11 @@ import { campaignTileFor } from "../../lib/stages";
 import { todayString } from "../../lib/format";
 import { ProviderMark } from "../ai/BrandMarks";
 import { useImport } from "../campaigns/ImportFlow";
+import { useFidgetShown } from "../../lib/fidget";
+import { reducedMotion } from "../../lib/motion";
 import { Button } from "./Button";
 import { Logo, Tile } from "./Logo";
+import { RubberBand } from "./RubberBand";
 import { UpdateNotice, useUpdateCheck } from "./UpdateNotice";
 
 /**
@@ -53,6 +58,7 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
   const { status: aiStatus, ready: aiReady } = useActiveProvider();
   const upcoming = meetings.filter((m) => m.at.slice(0, 10) >= todayString()).length;
   const update = useUpdateCheck();
+  const fidget = useFidgetShown();
 
   const aiLabel = ai.settings?.provider ? PROVIDERS[ai.settings.provider].label : "AI";
   const aiState =
@@ -113,6 +119,8 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
         {campaigns && campaigns.length === 0 && <p className="hidden px-3 py-1 font-label text-[13px] text-mud-faint wide:block">No campaigns yet</p>}
       </nav>
 
+      {fidget && <Fidget />}
+
       <UpdateNotice info={update} />
 
       <div className="px-2.5 pb-3 wide:px-3">
@@ -146,5 +154,24 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
         )}
       </div>
     </aside>
+  );
+}
+
+/** A rubber band slider to play with, wide rail only; Party! bursts as many confetti as the readout shows. */
+function Fidget() {
+  const [tension, setTension] = useState(50);
+  return (
+    <div className="mx-3 mb-3 hidden rounded-xl border-2 border-rim bg-paper px-3 py-2.5 shadow-hard-sm select-none wide:block">
+      <span className="font-label text-[0.8125rem] text-mud-soft">Fidget</span>
+      <RubberBand value={tension} min={0} max={100} onChange={setTension} width={200} aria-label="Tension" className="mt-2" />
+      <div className="mt-2 flex items-center gap-2">
+        <span className="mr-auto font-display text-[1.25rem] leading-none font-bold tabular-nums">{tension}</span>
+        <Button size="xs" onClick={(e) => {
+          if (reducedMotion()) return;
+          const r = e.currentTarget.getBoundingClientRect();
+          confetti({ position: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, count: tension });
+        }}>Party!</Button>
+      </div>
+    </div>
   );
 }
