@@ -12,6 +12,7 @@ import { campaignTileFor, toneFor } from "../../lib/stages";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
+import { RubberBand } from "../ui/RubberBand";
 import { useImport } from "./ImportFlow";
 import { RemoveCampaignDialog } from "./RemoveCampaignDialog";
 import { fire } from "../../lib/fire";
@@ -77,8 +78,9 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
                 {campaigns.map((c) => <CampaignCard key={c.id} c={c} onRemove={() => setRemoving(c)} />)}
               </div>
             </div>
-            <aside>
+            <aside className="flex flex-col gap-6">
               <MeetingsCard meetings={meetings} limit={6} />
+              <FidgetCard />
             </aside>
           </div>
         )}
@@ -98,6 +100,18 @@ export function MeetingsPage() {
         <h1 className="mb-8 font-display text-[40px] leading-none font-bold tracking-tight">Meetings</h1>
         <MeetingsCard meetings={meetings} />
       </div>
+    </div>
+  );
+}
+
+/** A rubber band slider to play with; the readout beside it shows the value it sets. */
+function FidgetCard() {
+  const [tension, setTension] = useState(50);
+  return (
+    <div className="card mb-8 flex flex-wrap items-center gap-6 px-6 py-4 select-none">
+      <div className="font-label text-sm text-mud-soft">Fidget</div>
+      <RubberBand value={tension} min={0} max={100} onChange={setTension} width={250} aria-label="Tension" />
+      <div className="ml-auto font-display text-[30px] leading-none font-bold tabular-nums">{tension}</div>
     </div>
   );
 }
