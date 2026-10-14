@@ -130,7 +130,7 @@ Answer as JSON: {"fields": {"<field key>": {"value": string or null, "source": s
 const INTRO_RULES = (web: boolean) => `You write short, warm, specific cold introduction messages for a founder. You work from the user's own templates and keep their voice, structure, length and sign-off.
 
 Rules:
-- The message is to one person at the prospect: the one under "${THIS_CONTACT}".
+- The message is to one person at the prospect: the one under "${THIS_CONTACT}". Their fields (Role, Title, Notes and the rest) say who they are and what the user knows about them: write to that person, in terms of their job, and use what the notes say where it fits (a past meeting, an interest, a request), still in the user's voice. Do not quote the notes or make the message about them.
 - Fill every {{placeholder}} from the prospect data. Placeholders name spreadsheet columns, the prospect's or the contact's; {{First name}} is the contact's first name; {{Column|fallback}} uses the fallback when the value is missing. If a value is missing and there is no fallback, rewrite that phrase so it reads naturally without it.
 - A contact whose Contact type is "Channel" is a way in (a main line, a general inbox), not a person: never greet it by its name; write to the team.
 - If a Hook is given, it is the researched reason to write to this prospect: make it the inspiration for the message and work it in naturally (where its placeholder is, if the template has one), in the user's voice, rather than pasting it word for word. Report it in "hooks" with the source given for it (null if none).
