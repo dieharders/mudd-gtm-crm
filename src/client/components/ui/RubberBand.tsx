@@ -26,8 +26,8 @@ export interface RubberBandProps {
 const OVER = 40;
 const PIN_R = 9;
 const BAND_W = 5.5;
-/** The track ends this far from the right edge; pulled past it, the band draws outside the box. */
-const EDGE = 22;
+/** The track ends this far from the right edge, so a tack at max is flush with it; pulled past, the band draws outside the box. */
+const EDGE = PIN_R + 1;
 /**
  * The component's layout box is only as tall as a tack. The drawing surface is bigger than that
  * box in every direction, placed over it, so the droop, an overpull and a lifted tack all draw past
@@ -37,9 +37,12 @@ const HEIGHT = PIN_R * 2 + 16;
 const BAND_Y = HEIGHT / 2;
 const BLEED_X = OVER + PIN_R * 2 + 8;
 const BLEED_TOP = 28;
-/** The fixed tack sits here; the thumb's track starts just to its right so the two never overlap. */
-const FIXED_X = 24;
-const TRACK_START = FIXED_X + 30;
+/**
+ * The fixed tack sits flush with the left edge and is the band's true left end; the thumb's track
+ * starts just to its right so the two never overlap.
+ */
+const FIXED_X = PIN_R + 1;
+const TRACK_START = FIXED_X + PIN_R * 2 + 4;
 
 // Springs: the thumb snaps home with a little overshoot, the droop lags behind and wobbles.
 const X_STIFF = 320;
@@ -230,10 +233,10 @@ export function RubberBand({ value, min, max, step = 1, onChange, width = 320, c
           </radialGradient>
         </defs>
 
-        {/* A pencilled guide along the track, min to max, with a short tick at each end. */}
+        {/* A pencilled guide from the fixed tack out to max, with a short tick at the far end. */}
         <g stroke="var(--color-rim)" strokeWidth={1.5} strokeLinecap="round" opacity={0.4} fill="none">
-          <path d={`M ${TRACK_START} ${BAND_Y} L ${trackEnd} ${BAND_Y}`} strokeDasharray="1 6" />
-          <path d={`M ${TRACK_START} ${BAND_Y - 5} V ${BAND_Y + 5} M ${trackEnd} ${BAND_Y - 5} V ${BAND_Y + 5}`} />
+          <path d={`M ${FIXED_X} ${BAND_Y} L ${trackEnd} ${BAND_Y}`} strokeDasharray="1 6" />
+          <path d={`M ${trackEnd} ${BAND_Y - 5} V ${BAND_Y + 5}`} />
         </g>
 
         {frame.hole !== null && (

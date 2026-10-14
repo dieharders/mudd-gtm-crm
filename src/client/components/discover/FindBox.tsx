@@ -1,14 +1,43 @@
 /** The Find run's settings: how many companies and people, a focus, what to enrich accepted ones with. */
 import { Radar } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { Recipe } from "../../../shared/ai";
 import { PRESETS } from "../../../shared/presets";
-import { DEFAULT_ENRICH, estimateTurns, PER_COMPANY_OPTIONS, TARGET_OPTIONS, type EnrichChoice } from "../../../shared/sourcing";
+import { DEFAULT_ENRICH, estimateTurns, PER_COMPANY_RANGE, TARGET_RANGE, type EnrichChoice } from "../../../shared/sourcing";
 import { canFind } from "../../../shared/thesis";
 import type { DiscoveryState } from "../../hooks/useDiscovery";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
+import { RubberBand } from "../ui/RubberBand";
 import { fire } from "../../lib/fire";
+
+/** A labelled rubber band filling its column; the band shows no number, so the label carries it. */
+function BandField({ label, readout, value, min, max, onChange }: {
+  label: string;
+  readout: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  // The band takes a width in px, so it follows its column as the dialog resizes.
+  useLayoutEffect(() => {
+    const el = box.current!;
+    const measure = () => setWidth(Math.floor(el.clientWidth));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={box}>
+      <span className="label">{label} <span className="font-bold tabular-nums text-clay-deep">{readout}</span></span>
+      {width > 0 && <RubberBand value={value} min={min} max={max} onChange={onChange} width={width} aria-label={label} />}
+    </div>
+  );
+}
 
 export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
   discovery: DiscoveryState;
@@ -18,8 +47,8 @@ export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
   onSetup: () => void;
   onStarted?: () => void;
 }) {
-  const [target, setTarget] = useState(10);
-  const [perCompany, setPerCompany] = useState(5);
+  const [target, setTarget] = useState(5);
+  const [perCompany, setPerCompany] = useState(1);
   const [focus, setFocus] = useState("");
   const [enrich, setEnrich] = useState<EnrichChoice>(DEFAULT_ENRICH);
   const [starting, setStarting] = useState(false);
@@ -46,18 +75,8 @@ export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
   return (
     <div className="rounded-2xl border border-clay bg-clay-soft/30 p-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor="fb-target">Number of companies</label>
-          <select id="fb-target" className="field" value={target} onChange={(e) => setTarget(Number(e.target.value))}>
-            {TARGET_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="fb-per">Contacts per company</label>
-          <select id="fb-per" className="field" value={perCompany} onChange={(e) => setPerCompany(Number(e.target.value))}>
-            {PER_COMPANY_OPTIONS.map((n) => <option key={n} value={n}>up to {n}</option>)}
-          </select>
-        </div>
+        <BandField label="Number of companies" readout={String(target)} value={target} {...TARGET_RANGE} onChange={setTarget} />
+        <BandField label="Contacts per company" readout={`up to ${perCompany}`} value={perCompany} {...PER_COMPANY_RANGE} onChange={setPerCompany} />
       </div>
       <div className="mt-3">
         <label className="label" htmlFor="fb-focus">Focus for this run <span className="font-normal text-mud-faint">(optional)</span></label>
