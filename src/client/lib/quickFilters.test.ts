@@ -90,24 +90,26 @@ describe("needs follow-up", () => {
 });
 
 describe("not ready to send", () => {
-  const schema = sheet(["Company"], ["Status"], ["Intro", "longtext"]);
+  const schema = sheet(["Company"], ["Status"]);
   const s = schema.statusKey!;
-  const intro = schema.introKey!;
+  const intro = schema.contacts!.introKey!;
 
-  test("a prospect not yet contacted that lacks an intro or anyone to address", () => {
-    const ready = row({ [s]: "Not contacted", [intro]: "Hi" });
-    const nobody = row({ [s]: "Not contacted", [intro]: "Hi" });
+  test("a prospect not yet contacted with no intro to any of its contacts, or no one to address", () => {
+    const ready = row({ [s]: "Not contacted" });
+    const nobody = row({ [s]: "Not contacted" });
     const noIntro = row({});
-    const contacts = [row({}, ready.id), row({}, noIntro.id)];
+    const contacts = [row({ [intro]: "Hi" }, ready.id), row({}, noIntro.id)];
     const f = filterOf(schema, "notReady", { contacts })!;
     expect(f.test(ready)).toBe(false);
     expect(f.test(nobody)).toBe(true);
     expect(f.test(noIntro)).toBe(true);
   });
 
-  test("a contact without the Primary tick is still someone to address", () => {
-    const p = row({ [s]: "Not contacted", [intro]: "Hi" });
-    expect(filterOf(schema, "notReady", { contacts: [row({ [schema.contacts!.primaryKey!]: null }, p.id)] })!.test(p)).toBe(false);
+  test("an intro to anyone counts, the primary contact or not, as the card's badge does", () => {
+    const p = row({ [s]: "Not contacted" });
+    const primary = row({ [schema.contacts!.primaryKey!]: CHECKED }, p.id);
+    expect(filterOf(schema, "notReady", { contacts: [primary, row({ [intro]: "Hi" }, p.id)] })!.test(p)).toBe(false);
+    expect(filterOf(schema, "notReady", { contacts: [primary, row({ [intro]: "  " }, p.id)] })!.test(p)).toBe(true);
   });
 
   test("once contacted, or dead, it is past sending", () => {

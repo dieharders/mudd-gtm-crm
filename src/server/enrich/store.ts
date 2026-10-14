@@ -119,6 +119,14 @@ export function pendingValues(campaignId: string, rowIds: string[], key: string)
   return out;
 }
 
+/** The finding waiting for review in one cell, if any: the newest. */
+export function pendingFor(campaignId: string, rowId: string, key: string): Suggestion | null {
+  const r = getDb()
+    .query("SELECT json FROM suggestions WHERE campaign_id = ? AND row_id = ? AND status = 'pending' AND json_extract(json, '$.key') = ? ORDER BY created_at DESC LIMIT 1")
+    .get(campaignId, rowId, key) as { json: string } | null;
+  return r ? (JSON.parse(r.json) as Suggestion) : null;
+}
+
 /** A newer suggestion for the same cell replaces an older one still waiting for review. */
 export function supersedePending(campaignId: string, rowId: string, key: string): void {
   getDb()

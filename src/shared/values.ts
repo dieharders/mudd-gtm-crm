@@ -138,8 +138,8 @@ export function rowTitle(row: Pick<Row, "cells">, schema: CampaignSchema): { tit
 export const isChannel = (contact: Pick<Row, "cells">, schema: CampaignSchema): boolean => isChannelCells(contact.cells, schema);
 
 /**
- * The contact intros and templates address: the first one ticked Primary, else the first person,
- * else the first contact (a channel).
+ * The prospect's main person, named under its company and seen with it in research: the first
+ * one ticked Primary, else the first person, else the first contact (a channel).
  */
 export function primaryOf<T extends Pick<Row, "cells">>(contacts: readonly T[], schema: CampaignSchema): T | undefined {
   const key = schema.contacts?.primaryKey;
@@ -150,6 +150,12 @@ export function primaryOf<T extends Pick<Row, "cells">>(contacts: readonly T[], 
 export function isEmptyContact(contact: Pick<Row, "cells">, schema: CampaignSchema): boolean {
   const primaryKey = schema.contacts?.primaryKey;
   return Object.entries(contact.cells).every(([k, v]) => k === primaryKey || v === null || v === "");
+}
+
+/** A contact with an intro written to them. */
+export function hasIntro(contact: Pick<Row, "cells">, schema: CampaignSchema): boolean {
+  const key = schema.contacts?.introKey;
+  return !!key && String(contact.cells[key] ?? "").trim() !== "";
 }
 
 /** Contacts as the panel lists them: the primary first, the others in their own order. */

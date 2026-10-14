@@ -1,7 +1,7 @@
 /**
  * Drafting an intro-message template with AI. One short turn, no web: from the user's own words
  * about the problem they are working on (and the ICP thesis, when the campaign has one), a
- * template the intro run can fill per prospect.
+ * template the intro run can fill for each contact.
  *
  * The message has a fixed shape, the founder's outreach philosophy: we are passionate about this
  * problem; we are still learning; here is how we think about it; may we learn how it affects you,

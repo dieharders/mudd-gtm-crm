@@ -8,7 +8,7 @@ import { AlertTriangle, Ban, CalendarClock, ExternalLink, Mail, MessageSquareTex
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { contactSchema } from "../../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Column, type Row } from "../../../shared/types";
-import { contactLabel, orderedContacts, primaryOf, toNumber } from "../../../shared/values";
+import { contactLabel, hasIntro, orderedContacts, primaryOf, toNumber } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { cueFor } from "../../lib/cues";
 import { formatDate, formatDateTime, relative } from "../../lib/format";
@@ -129,7 +129,7 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
   const paragraphs = layout.paragraphs.map((col) => ({ col, v: txt(col.key) })).filter((p) => p.v);
   const facts = layout.facts.map((col) => ({ col, v: txt(col.key) })).filter((f) => f.v);
   const meetingAt = txt(schema.meetingAtKey);
-  const intro = txt(schema.introKey);
+  const intros = contacts.filter((p) => hasIntro(p, schema)).length;
   const screened = isScreened(row, schema);
   const reason = screened ? txt(schema.reasonKey) : "";
   const dead = status === DEAD;
@@ -157,7 +157,7 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
             <CalendarClock size={12} /> {relative(meetingAt)}
           </span>
         )}
-        {intro && <span className="tag bg-lake-soft text-lake-deep"><MessageSquareText size={12} /> Intro drafted</span>}
+        {intros > 0 && <span className="tag bg-lake-soft text-lake-deep"><MessageSquareText size={12} /> {intros === 1 ? "Intro drafted" : `${intros} intros drafted`}</span>}
         {pendingCount > 0 && <span className="tag bg-clay text-white">✨ {pendingCount} to review</span>}
       </div>
 

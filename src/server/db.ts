@@ -354,7 +354,7 @@ export function contactsOf(campaignId: string, orgId: string): Row[] {
   ).map(toRow);
 }
 
-/** The contact a prospect's intro addresses (see primaryOf). */
+/** The prospect's main person (see primaryOf). */
 export function primaryContact(campaignId: string, orgId: string, schema: CampaignSchema): Row | null {
   return primaryOf(contactsOf(campaignId, orgId), schema) ?? null;
 }

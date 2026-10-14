@@ -141,29 +141,30 @@ export const COMPANY_HEADER = norm(COMPANY_COLUMN.header);
  * The prospect's columns Mudd relies on, in the order it adds the ones a sheet lacks. The
  * company is only read: a sheet without one doesn't get one.
  */
-const PROSPECT_ROLES: Roles<"statusKey" | "companyKey" | "meetingUrlKey" | "meetingAtKey" | "introKey" | "screenedKey" | "reasonKey" | "idKey"> = [
+const PROSPECT_ROLES: Roles<"statusKey" | "companyKey" | "meetingUrlKey" | "meetingAtKey" | "screenedKey" | "reasonKey" | "idKey"> = [
   { key: "statusKey", spec: STATUS_COLUMN, label: "Pipeline status" },
   { key: "companyKey", spec: COMPANY_COLUMN, label: "Company", add: false },
   { key: "meetingUrlKey", spec: { header: "Meeting URL", type: "url", width: 220 }, label: "Meeting link" },
   { key: "meetingAtKey", spec: { header: "Meeting at", type: "datetime", width: 170 }, label: "Meeting time" },
-  { key: "introKey", spec: { header: "Intro message", type: "longtext", width: 320 }, label: "Intro message" },
   { key: "screenedKey", spec: { header: "Screened out", type: "checkbox", width: 120 }, label: "Screened out" },
   { key: "reasonKey", spec: { header: "Screened reason", type: "longtext", width: 280 }, label: "Screened reason" },
   { key: "idKey", spec: { header: "ID", type: "text", width: 90, hidden: true }, label: "Prospect ID: the Contacts tab links by it" },
 ];
 
-/** The five contact columns Mudd relies on, as a new campaign has them and as import adds them. */
+/** The contact columns Mudd relies on, as a new campaign has them and as import adds them. */
 const NAME_COLUMN: RoleSpec = { header: "Name", type: "text", width: 180 };
 const TYPE_COLUMN: RoleSpec = { header: "Contact type", type: "select", width: 150, options: CONTACT_TYPES };
 const PRIMARY_COLUMN: RoleSpec = { header: "Primary", type: "checkbox", width: 90 };
 const LAST_CONTACTED_COLUMN: RoleSpec = { header: "Last contacted", type: "date", width: 130 };
 const LAST_REPLY_COLUMN: RoleSpec = { header: "Last reply", type: "date", width: 120 };
-const CONTACT_ROLES: Roles<"nameKey" | "typeKey" | "primaryKey" | "lastContactedKey" | "lastReplyKey"> = [
+const INTRO_COLUMN: RoleSpec = { header: "Intro message", type: "longtext", width: 320 };
+const CONTACT_ROLES: Roles<"nameKey" | "typeKey" | "primaryKey" | "lastContactedKey" | "lastReplyKey" | "introKey"> = [
   { key: "nameKey", spec: NAME_COLUMN, label: "Contact name" },
   { key: "typeKey", spec: TYPE_COLUMN, label: "Contact type" },
   { key: "primaryKey", spec: PRIMARY_COLUMN, label: "Primary contact" },
   { key: "lastContactedKey", spec: LAST_CONTACTED_COLUMN, label: "Last contacted" },
   { key: "lastReplyKey", spec: LAST_REPLY_COLUMN, label: "Last reply" },
+  { key: "introKey", spec: INTRO_COLUMN, label: "Intro message" },
 ];
 
 /** The keys of a list's columns Mudd relies on, each with what Mudd uses it for. */
@@ -180,12 +181,18 @@ export const contactSchema = (schema: CampaignSchema): ContactSchema => schema.c
 
 /**
  * The contact columns that are the user's own record, not facts about the person: the Primary
- * box, Last contacted and Last reply. Nothing is researched into them, and they don't go to the
- * AI as context.
+ * box, Last contacted, Last reply and the intro written to them. Nothing is researched into
+ * them, and they don't go to the AI as context.
  */
 export function contactRecordKeys(schema: CampaignSchema): string[] {
-  const { primaryKey, lastContactedKey, lastReplyKey } = contactSchema(schema);
-  return [primaryKey, lastContactedKey, lastReplyKey].filter((k): k is string => !!k);
+  const { primaryKey, lastContactedKey, lastReplyKey, introKey } = contactSchema(schema);
+  return [primaryKey, lastContactedKey, lastReplyKey, introKey].filter((k): k is string => !!k);
+}
+
+/** The contacts' Intro message column. */
+export function introColumn(schema: CampaignSchema): Column | undefined {
+  const cs = contactSchema(schema);
+  return cs.introKey ? cs.columns.find((c) => c.key === cs.introKey) : undefined;
 }
 
 /** Every column, the prospect's then its contacts'. */
@@ -289,6 +296,7 @@ function defaultContactColumns(taken: Set<string>): Column[] {
     roleColumn(taken, LAST_CONTACTED_COLUMN),
     roleColumn(taken, LAST_REPLY_COLUMN),
     newColumn(taken, "Notes", "longtext"),
+    roleColumn(taken, INTRO_COLUMN),
   ];
 }
 
@@ -334,7 +342,6 @@ export function genericSchema(): CampaignSchema {
     c("Hook", "longtext"),
     c("Notes", "longtext"),
     c("Source", "text"),
-    c("Intro message", "longtext", { width: 320 }),
     c("Screened out", "checkbox", { width: 120 }),
     c("Screened reason", "longtext", { width: 280 }),
   ];
@@ -402,7 +409,6 @@ export function discoverySchema(): CampaignSchema {
     c("Hook", "longtext"),
     c("Notes", "longtext"),
     c("Source", "text"),
-    c("Intro message", "longtext", { width: 320 }),
     c("Screened out", "checkbox", { width: 120 }),
     c("Screened reason", "longtext", { width: 280 }),
   ];

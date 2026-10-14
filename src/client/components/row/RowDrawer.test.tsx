@@ -37,7 +37,7 @@ const state = {
   makePrimary: (id: string) => madePrimary.push(id),
 } as unknown as CampaignState;
 const enrich = {
-  pendingByRow: new Map(), activeRuns: [], runs: [], suggestions: [],
+  pendingByRow: new Map(), activeRuns: [], drafting: new Set(), runs: [], suggestions: [],
   start: () => Promise.resolve(null), accept: () => Promise.resolve(), reject: () => Promise.resolve(), action: () => Promise.resolve(),
 } as unknown as EnrichmentState;
 

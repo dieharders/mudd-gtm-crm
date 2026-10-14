@@ -71,12 +71,14 @@ export interface ContactSchema {
   nameKey?: string;
   /** What kind of stakeholder they are: Economic Buyer, Gatekeeper… */
   typeKey?: string;
-  /** Checkbox: the contact intros and templates address. At most one per prospect. */
+  /** Checkbox: the prospect's main person, named under it and seen with it in research. At most one per prospect. */
   primaryKey?: string;
   /** Date: when the user last reached out to this person. */
   lastContactedKey?: string;
   /** Date: when this person last replied. */
   lastReplyKey?: string;
+  /** Long text: the intro message written to this person. */
+  introKey?: string;
 }
 
 export interface CampaignSchema {
@@ -86,7 +88,6 @@ export interface CampaignSchema {
   screenedKey?: string;
   /** Why the prospect was screened out. */
   reasonKey?: string;
-  introKey?: string;
   meetingUrlKey?: string;
   meetingAtKey?: string;
   /** A person's name. On a prospect schema only in `prospectSchema`'s merged view, from `contacts`. */

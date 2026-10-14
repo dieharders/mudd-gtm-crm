@@ -116,10 +116,12 @@ export function useEnrichment(state: CampaignState, consent: ConsentGate) {
     // A contact a run made for someone it found is empty until accepted: with every finding
     // for it rejected, it goes too (one undo step, like any delete). Only such a contact is both
     // empty and has findings: a run researches no empty contact of the user's (researchedContacts).
+    // An intro draft is no finding about anyone: discarding one never removes its contact.
     const schema = campaign?.schema;
     if (schema) {
       const waiting = new Set(suggestions.filter((s) => !ids.has(s.id)).map((s) => s.rowId));
-      const empty = [...new Set(list.map((s) => s.rowId))].filter((rowId) => {
+      const found = list.filter((s) => s.key !== schema.contacts?.introKey);
+      const empty = [...new Set(found.map((s) => s.rowId))].filter((rowId) => {
         const row = state.rowById.get(rowId);
         return !!row?.parentId && !waiting.has(rowId) && isEmptyContact(row, schema);
       });
@@ -160,8 +162,18 @@ export function useEnrichment(state: CampaignState, consent: ConsentGate) {
 
   const activeRuns = runs.filter((r) => isLiveStatus(r.status));
 
+  /** The contacts an intro is being written to: none of them can be deleted until it's done. */
+  const drafting = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of runs) {
+      if (r.kind !== "intro" || !isLiveStatus(r.status)) continue;
+      for (const [rowId, row] of Object.entries(r.rows)) if (row.state === "pending" || row.state === "running") ids.add(rowId);
+    }
+    return ids;
+  }, [runs]);
+
   return {
-    recipes, runs, finished, activeRuns, suggestions, pendingByRow, accept, reject, saveRecipe, deleteRecipe, start, action,
+    recipes, runs, finished, activeRuns, drafting, suggestions, pendingByRow, accept, reject, saveRecipe, deleteRecipe, start, action,
   };
 }
 

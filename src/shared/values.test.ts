@@ -128,7 +128,7 @@ describe("prospect IDs and contact columns", () => {
     expect(schema.idKey).toBe("id");
     expect(schema.columns.map((c) => c.header)).not.toContain("Name");
     const contacts = schema.contacts!;
-    expect(contacts.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Last contacted", "Last reply", "Notes"]);
+    expect(contacts.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Last contacted", "Last reply", "Notes", "Intro message"]);
     expect(contacts.columns.find((c) => c.key === contacts.typeKey)?.options).toEqual(CONTACT_TYPES);
     expect(contacts.columns.find((c) => c.key === contacts.primaryKey)?.type).toBe("checkbox");
     expect(contacts.columns.find((c) => c.key === contacts.lastContactedKey)).toMatchObject({ header: "Last contacted", type: "date" });
@@ -137,7 +137,7 @@ describe("prospect IDs and contact columns", () => {
     // Notes is both the company's and a contact's: two keys.
     const keys = [...schema.columns, ...contacts.columns].map((c) => c.key);
     expect(new Set(keys).size).toBe(keys.length);
-    expect(contacts.columns.at(-1)!.key).toBe("notes_2");
+    expect(contacts.columns.find((c) => c.header === "Notes")!.key).toBe("notes_2");
   });
 
   test("an old campaign gains contact columns that don't reuse a key a deleted column left values under", () => {

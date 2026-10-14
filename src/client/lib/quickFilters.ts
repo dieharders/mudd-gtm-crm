@@ -6,7 +6,7 @@
 import { isSourcesColumn, type EnrichRun, type Recipe } from "../../shared/ai";
 import { CONTACT_TYPE_HINTS, contactSchema, ECONOMIC_BUYER } from "../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Row } from "../../shared/types";
-import { primaryOf } from "../../shared/values";
+import { hasIntro } from "../../shared/values";
 import { parseLocal, todayString } from "./format";
 import { contactedStage, stageIndex } from "./pipeline";
 
@@ -65,7 +65,7 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
 
   // Still at Contacted, last contacted a week or more ago, and nobody has replied since. The
   // dates are the contacts' own. With none at all, it was moved to Contacted without a date
-  // (Mark sent, the stepper): due, unless someone has replied.
+  // (the stepper): due, unless someone has replied.
   const contacted = contactedStage(stages);
   const { lastContactedKey, lastReplyKey } = contactSchema(schema);
   if (schema.statusKey && contacted && lastContactedKey) {
@@ -95,11 +95,10 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
     });
   }
 
-  // Not contacted yet, and missing what outreach needs: someone to address, or the intro itself.
-  // Someone is whoever an intro would greet (primaryOf), Primary ticked or not.
-  const { introKey } = schema;
-  const people = !!schema.contacts;
-  if (introKey || people) {
+  // Not contacted yet, and missing what outreach needs: anyone to write to, or an intro written
+  // to any of them.
+  const introKey = schema.contacts?.introKey;
+  if (schema.contacts) {
     const before = contacted ? stageIndex(contacted, stages) : stages.length;
     out.push({
       id: "notReady",
@@ -113,7 +112,8 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
           const i = stageIndex(s, stages);
           if (i < 0 || i >= before) return false;
         }
-        return (!!introKey && blank(r.cells[introKey])) || (people && !primaryOf(contactsOf(r.id), schema));
+        const people = contactsOf(r.id);
+        return !people.length || (!!introKey && !people.some((p) => hasIntro(p, schema)));
       },
     });
   }
