@@ -54,7 +54,7 @@ const NO_PICKS: ReadonlySet<string> = new Set();
 /** A chip that is a status: a stage, another status the sheet holds, or No status. */
 const isStatusPick = (p: string) => p !== IN_PLAY && p !== SCREENED && !p.startsWith(QUICK);
 
-/** Turn a chip on or off. Not screened out and Screened out rule each other out: one turns the other off. */
+/** Turn a chip on or off. Prospects only and Screened out rule each other out: one turns the other off. */
 function togglePick(picked: ReadonlySet<string>, id: string): ReadonlySet<string> {
   const next = new Set(picked);
   if (next.delete(id)) return next;
@@ -162,7 +162,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   const initialDiscover = params.get("discover");
   const [query, setQuery] = useState("");
   // The chips that are on, none being All. Statuses (and Screened out) widen each other, as a
-  // prospect has one status; Not screened out and the quick filters each narrow what those leave.
+  // prospect has one status; Prospects only and the quick filters each narrow what those leave.
   const [picked, setPicked] = useState<ReadonlySet<string>>(NO_PICKS);
   const pick = (id: string) => setPicked((p) => togglePick(p, id));
   // The Contacts tab's, as `picked` is the Prospects tab's.
@@ -539,7 +539,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               <div className="flex flex-wrap items-center gap-2">
                 <Chip active={!picked.size} onClick={() => setPicked(NO_PICKS)} label="All" count={state.rows.length} />
                 {counts.screened > 0 || picked.has(IN_PLAY) ? (
-                  <Chip active={picked.has(IN_PLAY)} onClick={() => pick(IN_PLAY)} label="Not screened out" count={state.rows.length - counts.screened} title="Everything but the screened-out prospects" />
+                  <Chip active={picked.has(IN_PLAY)} onClick={() => pick(IN_PLAY)} label="Prospects only" count={state.rows.length - counts.screened} title="Everything but the screened-out prospects" />
                 ) : null}
                 {[...stages, DEAD].map((s) => (counts.byStatus[s] || picked.has(s) ? (
                   <Chip key={s} active={picked.has(s)} onClick={() => pick(s)} label={s} count={counts.byStatus[s] ?? 0} />
