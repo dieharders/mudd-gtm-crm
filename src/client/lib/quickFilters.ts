@@ -65,7 +65,7 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
 
   // Still at Contacted, last contacted a week or more ago, and nobody has replied since. The
   // dates are the contacts' own. With none at all, it was moved to Contacted without a date
-  // (Mark sent, the stepper): due, unless someone has replied.
+  // (the stepper): due, unless someone has replied.
   const contacted = contactedStage(stages);
   const { lastContactedKey, lastReplyKey } = contactSchema(schema);
   if (schema.statusKey && contacted && lastContactedKey) {

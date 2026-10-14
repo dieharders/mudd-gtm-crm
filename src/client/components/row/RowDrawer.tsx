@@ -6,7 +6,7 @@
  */
 import {
   ArchiveRestore, ArrowLeft, Ban, CalendarPlus, Check, ChevronDown, ChevronRight, ChevronUp, ClipboardCopy, Copy, ExternalLink, MoreHorizontal,
-  MessageSquareText, Pencil, Send, Star, Trash2, Undo2, UserPlus, Video, X,
+  MessageSquareText, Pencil, Star, Trash2, Undo2, UserPlus, Video, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -15,8 +15,8 @@ import { CONTACT_TYPE_HINTS, contactSchema, introColumn, prospectSchema } from "
 import { DEAD, isScreened, MEETING_STAGE, type CampaignSchema, type CellEdit, type Column, type Row, type Template } from "../../../shared/types";
 import { contactLabel, contactOf, orderedContacts, primaryOf, prospectCells, prospectTitle, toLocalInput } from "../../../shared/values";
 import { cn } from "../../lib/cn";
-import { formatDate, formatDateTime, isSameDay, parseLocal, relative, todayString } from "../../lib/format";
-import { contactedStage, shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
+import { formatDate, formatDateTime, isSameDay, parseLocal, relative } from "../../lib/format";
+import { shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
 import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
@@ -115,7 +115,7 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
       </div>
 
       {contact ? (
-        <ContactPanel key={`contact-${contact.id}`} contact={contact} org={row} orgTitle={title} schema={schema} stages={stages} templates={templates} state={state} enrich={enrich}
+        <ContactPanel key={`contact-${contact.id}`} contact={contact} org={row} orgTitle={title} schema={schema} templates={templates} state={state} enrich={enrich}
           disabled={screened} isPrimary={contact === primary} onBack={() => onOpenContact(null)} onEdit={edit} onOpenTemplates={onOpenTemplates} />
       ) : (
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 scroll-thin">
@@ -272,10 +272,10 @@ function PrimaryStar() {
 }
 
 /** One contact, open in the panel: the intro to them, every field, Make primary and Delete. */
-function ContactPanel({ contact, org, orgTitle, schema, stages, templates, state, enrich, disabled, isPrimary, onBack, onEdit: editAny, onOpenTemplates }: {
-  contact: Row; org: Row; orgTitle: string; schema: CampaignSchema; stages: string[]; templates: Template[]; state: CampaignState; enrich: EnrichmentState;
+function ContactPanel({ contact, org, orgTitle, schema, templates, state, enrich, disabled, isPrimary, onBack, onEdit: editAny, onOpenTemplates }: {
+  contact: Row; org: Row; orgTitle: string; schema: CampaignSchema; templates: Template[]; state: CampaignState; enrich: EnrichmentState;
   disabled: boolean; isPrimary: boolean; onBack: () => void;
-  /** Edits to the contact and its prospect at once (Mark sent), with an undo toast. */
+  /** Edits to the contact, with an undo toast. */
   onEdit: (e: CellEdit[], l: string, t?: string) => void;
   onOpenTemplates: () => void;
 }) {
@@ -328,7 +328,7 @@ function ContactPanel({ contact, org, orgTitle, schema, stages, templates, state
       <div className="mt-5 space-y-6">
         {!disabled && <RowSuggestions row={contact} contacts={[]} schema={schema} enrich={enrich} />}
         {!disabled && cs.introKey && (
-          <IntroSection org={org} contact={contact} schema={schema} stages={stages} templates={templates} onEdit={editAny} onOpenTemplates={onOpenTemplates}
+          <IntroSection org={org} contact={contact} schema={schema} templates={templates} onEdit={editAny} onOpenTemplates={onOpenTemplates}
             ai={<AiIntro contact={contact} schema={schema} templates={templates} enrich={enrich} />} />
         )}
         <section>
@@ -543,13 +543,12 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
 
 // ---------- intro message ----------
 
-/** The intro written to one contact: filled from a template, or by AI, then copied and marked sent. */
-function IntroSection({ org, contact, schema, stages, templates, onEdit, onOpenTemplates, ai }: {
-  org: Row; contact: Row; schema: CampaignSchema; stages: string[]; templates: Template[];
+/** The intro written to one contact: filled from a template, or by AI, then copied. */
+function IntroSection({ org, contact, schema, templates, onEdit, onOpenTemplates, ai }: {
+  org: Row; contact: Row; schema: CampaignSchema; templates: Template[];
   onEdit: (e: CellEdit[], l: string, t?: string) => void; onOpenTemplates: () => void; ai?: ReactNode;
 }) {
   const introCol = introColumn(schema)!;
-  const { lastContactedKey } = contactSchema(schema);
   const intro = String(contact.cells[introCol.key] ?? "");
   const [pick, setPick] = useState(templates[0]?.id ?? "");
   useEffect(() => {
@@ -559,23 +558,11 @@ function IntroSection({ org, contact, schema, stages, templates, onEdit, onOpenT
   // {{First name}} and the contact's other columns are this contact's.
   const merged = useMemo(() => (tpl ? mergeTemplate(tpl.body, prospectSchema(schema), prospectCells(org, contact)) : null), [tpl, schema, org, contact]);
   const leftovers = placeholderNames(intro);
-  const status = schema.statusKey ? String(org.cells[schema.statusKey] ?? "") : "";
-  const contacted = contactedStage(stages);
-  const orgBehind = !!contacted && !!schema.statusKey && stageIndex(status, stages) < stageIndex(contacted, stages);
-  const sent = lastContactedKey ? String(contact.cells[lastContactedKey] ?? "") : "";
-  const today = todayString();
 
   const apply = () => {
     if (!merged) return;
     onEdit([{ rowId: contact.id, key: introCol.key, value: merged.text }], "Use template", intro ? `Replaced intro with “${tpl!.name}”` : `Filled from “${tpl!.name}”`);
     if (merged.missing.length) toast(`No value for ${merged.missing.join(", ")} — left blank`, { icon: "⚠️" });
-  };
-  // Sent today: this person was contacted today, and the prospect is Contacted if it wasn't yet.
-  const markSent = () => {
-    const edits: CellEdit[] = [];
-    if (lastContactedKey) edits.push({ rowId: contact.id, key: lastContactedKey, value: today });
-    if (orgBehind) edits.push(...stageEdits(org, schema, contacted!));
-    onEdit(edits, "Mark sent", orgBehind ? `Marked sent · status set to ${contacted}` : "Marked sent");
   };
 
   return (
@@ -611,11 +598,6 @@ function IntroSection({ org, contact, schema, stages, templates, onEdit, onOpenT
         <Button size="sm" disabled={!intro} onClick={() => void navigator.clipboard.writeText(intro).then(() => toast.success("Copied"), () => toast.error("Could not copy"))}>
           <ClipboardCopy size={13} /> Copy
         </Button>
-        {(lastContactedKey ? sent !== today : orgBehind) && (
-          <Button size="sm" variant="ghost" onClick={markSent} disabled={!intro} title={lastContactedKey ? "Set Last contacted to today" : undefined}>
-            <Send size={13} /> Mark sent
-          </Button>
-        )}
         <span className="ml-auto text-[11px] text-mud-faint tabular-nums">{intro.length} chars</span>
       </div>
     </section>
