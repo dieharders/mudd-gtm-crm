@@ -128,7 +128,7 @@ describe("prospect IDs and contact columns", () => {
     expect(schema.idKey).toBe("id");
     expect(schema.columns.map((c) => c.header)).not.toContain("Name");
     const contacts = schema.contacts!;
-    expect(contacts.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Last contacted", "Last reply", "Notes", "Intro message"]);
+    expect(contacts.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Title", "Role", "Email", "Email source", "Phone", "LinkedIn", "Last contacted", "Last reply", "Notes", "Intro message"]);
     expect(contacts.columns.find((c) => c.key === contacts.typeKey)?.options).toEqual(CONTACT_TYPES);
     expect(contacts.columns.find((c) => c.key === contacts.primaryKey)?.type).toBe("checkbox");
     expect(contacts.columns.find((c) => c.key === contacts.lastContactedKey)).toMatchObject({ header: "Last contacted", type: "date" });

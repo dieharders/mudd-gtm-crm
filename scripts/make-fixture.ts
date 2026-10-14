@@ -21,6 +21,7 @@ const HEADER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: 
 const HEADER_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" } };
 const STAGES = ["Not contacted", "Contacted", "Replied", "Meeting booked", "Clinic held", "Trial", "Signed", "Dead"];
 const CONTACT_TYPES = ["Economic Buyer", "Champion", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", "Channel"];
+const EMAIL_SOURCES = ["Published", "Reported", "Pattern", "Verified"];
 
 const d = (y: number, m: number, day: number, h = 0, min = 0) => new Date(Date.UTC(y, m - 1, day, h, min));
 
@@ -82,28 +83,29 @@ function addProspects(wb: ExcelJS.Workbook) {
 
 // ---------- Contacts ----------
 
-const CONTACT_HEADERS = ["Prospect ID", "Company", "Name", "Contact type", "Primary", "Title", "Role", "Email", "Phone", "LinkedIn", "Last contacted", "Last reply", "Notes", "Intro message"];
-const CONTACT_WIDTHS = [12, 26, 22, 18, 10, 8, 26, 30, 18, 34, 14, 12, 40, 44];
+const CONTACT_HEADERS = ["Prospect ID", "Company", "Name", "Contact type", "Primary", "Title", "Role", "Email", "Email source", "Phone", "LinkedIn", "Last contacted", "Last reply", "Notes", "Intro message"];
+const CONTACT_WIDTHS = [12, 26, 22, 18, 10, 8, 26, 30, 14, 18, 34, 14, 12, 40, 44];
 const contacts: ProspectRow[] = [
-  ["P-001", "Northwind Fabrication", "Maya Okafor", "Champion", "TRUE", "Ms.", "Plant Manager", "maya.okafor@northwindfab.example", "+1 937 555 0141", "https://linkedin.example/in/maya-okafor", d(2026, 9, 22), null, "Met at the regional show", null],
-  ["P-001", "Northwind Fabrication", "Tom Reyes", "Technical Buyer", null, "Mr.", "IT Lead", "tom.reyes@northwindfab.example", null, null, null, null, null, null],
-  ["P-002", "Harbor Lights Logistics", "Priya Natarajan", "Economic Buyer", "TRUE", null, "VP Operations", "priya@harborlights.example", "+1 253 555 0177", "https://linkedin.example/in/priya-natarajan", d(2026, 9, 25), d(2026, 9, 26), null, null],
-  ["P-004", "Bluestem Dental Group", "Dana Whitfield", "Champion", "TRUE", null, "Office Manager", "dana@bluestemdental.example", "+1 402 555 0126", null, null, null, "Prefers afternoon calls", "Hi Dana,\nthanks for the time this week."],
-  ["P-004", "Bluestem Dental Group", "Dr. Elise Marchetti", "Economic Buyer", null, "Dr.", "Owner", null, null, null, null, null, null, null],
-  ["P-005", "Granite Peak Credit Union", "Hank Ostrowski", "Gatekeeper", "TRUE", null, "CIO", "hank@granitepeakcu.example", null, null, null, null, null, null],
-  ["P-006", "Saltmarsh Marine Supply", "Rosa Lindqvist", "End User", "TRUE", null, "Operations Coordinator", "rosa@saltmarshmarine.example", "+1 251 555 0199", null, d(2026, 9, 30), null, null, null],
+  ["P-001", "Northwind Fabrication", "Maya Okafor", "Champion", "TRUE", "Ms.", "Plant Manager", "maya.okafor@northwindfab.example", "Published", "+1 937 555 0141", "https://linkedin.example/in/maya-okafor", d(2026, 9, 22), null, "Met at the regional show", null],
+  ["P-001", "Northwind Fabrication", "Tom Reyes", "Technical Buyer", null, "Mr.", "IT Lead", "tom.reyes@northwindfab.example", "Pattern", null, null, null, null, null, null],
+  ["P-002", "Harbor Lights Logistics", "Priya Natarajan", "Economic Buyer", "TRUE", null, "VP Operations", "priya@harborlights.example", "Reported", "+1 253 555 0177", "https://linkedin.example/in/priya-natarajan", d(2026, 9, 25), d(2026, 9, 26), null, null],
+  ["P-004", "Bluestem Dental Group", "Dana Whitfield", "Champion", "TRUE", null, "Office Manager", "dana@bluestemdental.example", "Verified", "+1 402 555 0126", null, null, null, "Prefers afternoon calls", "Hi Dana,\nthanks for the time this week."],
+  ["P-004", "Bluestem Dental Group", "Dr. Elise Marchetti", "Economic Buyer", null, "Dr.", "Owner", null, null, null, null, null, null, null, null],
+  ["P-005", "Granite Peak Credit Union", "Hank Ostrowski", "Gatekeeper", "TRUE", null, "CIO", "hank@granitepeakcu.example", "Published", null, null, null, null, null, null],
+  ["P-006", "Saltmarsh Marine Supply", "Rosa Lindqvist", "End User", "TRUE", null, "Operations Coordinator", "rosa@saltmarshmarine.example", "Pattern", "+1 251 555 0199", null, d(2026, 9, 30), null, null, null],
 ];
 
 function addContacts(wb: ExcelJS.Workbook) {
   const ws = wb.addWorksheet("Contacts");
   header(ws, CONTACT_HEADERS, CONTACT_WIDTHS);
   for (const r of contacts) ws.addRow(r);
-  ws.getColumn(11).numFmt = "d mmm yyyy";
   ws.getColumn(12).numFmt = "d mmm yyyy";
+  ws.getColumn(13).numFmt = "d mmm yyyy";
   listValidation(ws, "D2:D2000", CONTACT_TYPES);
   listValidation(ws, "E2:E2000", ["TRUE", "FALSE"]);
-  for (let r = 2; r <= contacts.length + 1; r++) ws.getCell(r, 14).alignment = { wrapText: true, vertical: "top" };
-  ws.autoFilter = `A1:N${contacts.length + 1}`;
+  listValidation(ws, "I2:I2000", EMAIL_SOURCES);
+  for (let r = 2; r <= contacts.length + 1; r++) ws.getCell(r, 15).alignment = { wrapText: true, vertical: "top" };
+  ws.autoFilter = `A1:O${contacts.length + 1}`;
 }
 
 // ---------- Summary ----------

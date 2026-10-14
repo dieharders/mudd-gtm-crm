@@ -707,7 +707,7 @@ function withContacts(wb: ExcelJS.Workbook, people: (string | boolean | null)[][
   ws.addRow(["P-001", "Acme", "Contacted"]);
   ws.addRow(["P-002", "Beta", "Replied"]);
   const c = wb.addWorksheet("Contacts");
-  c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message"]);
+  c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message", "Email source"]);
   for (const p of people) c.addRow(p);
   (c as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations.add("D2:D1000", {
     type: "list", allowBlank: true, formulae: ['"Economic Buyer,Champion,Technical Buyer,End User,Influencer,Blocker,Gatekeeper,Channel"'],
@@ -735,7 +735,7 @@ describe("the Contacts tab", () => {
     expect(cs.columns.find((c) => c.key === cs.primaryKey)!.type).toBe("checkbox");
     expect(contacts[0]!.cells[cs.primaryKey!]).toBe(CHECKED);
     // The two link columns are the tab's, not the contacts'; the prospect's ID is hidden in the app.
-    expect(cs.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message"]);
+    expect(cs.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message", "Email source"]);
     expect(cs.columns.find((c) => c.key === cs.lastContactedKey)).toMatchObject({ header: "Last contacted", type: "date" });
     expect(cs.columns.find((c) => c.key === cs.lastReplyKey)).toMatchObject({ header: "Last reply", type: "date" });
     expect(campaign.schema.columns.find((c) => c.key === campaign.schema.idKey)).toMatchObject({ header: "ID", hidden: true });
@@ -802,6 +802,29 @@ describe("the Contacts tab", () => {
     expect(again.contacts.map((c) => [c.cells[cs2.nameKey!], c.cells[cs2.typeKey!], c.parentId])).toEqual([["Cy Dee", "Influencer", again.rows[2]!.id]]);
   });
 
+  test("a tab without an Email source column gets one after its last, a dropdown of where each email came from", async () => {
+    const original = await xlsxOf((wb) => {
+      const ws = wb.addWorksheet("Prospects");
+      ws.addRow(["ID", "Company"]);
+      ws.addRow(["P-001", "Acme"]);
+      const c = wb.addWorksheet("Contacts");
+      c.addRow(["Prospect ID", "Company", "Name", "Email"]);
+      c.addRow(["P-001", "Acme", "Ann Lee", "ann@acme.io"]);
+    });
+    const { campaign, rows, contacts } = await importFrom(original);
+    const col = campaign.schema.contacts!.columns.find((c) => c.header === "Email source")!;
+    expect(col).toMatchObject({ type: "select", options: ["Published", "Reported", "Pattern", "Verified"] });
+    contacts[0]!.cells[col.key] = "Pattern";
+    const out = await exportCampaign(campaign, original, rows, [], contacts, null);
+    const ws = (await read(out)).getWorksheet("Contacts")!;
+    const header = (ws.getRow(1).values as unknown[]).slice(1);
+    expect(header.slice(0, 4)).toEqual(["Prospect ID", "Company", "Name", "Email"]);
+    expect(header).toContain("Email source");
+    expect(ws.getCell(2, header.indexOf("Email source") + 1).value).toBe("Pattern");
+    const again = await importFrom(out);
+    expect(again.campaign.schema.contacts!.columns.filter((c) => c.header === "Email source")).toHaveLength(1);
+  });
+
   test("an intro to a contact is saved in the tab's Intro message column, added after its last one when it has none", async () => {
     const original = await xlsxOf((wb) => {
       const ws = wb.addWorksheet("Prospects");
@@ -817,8 +840,8 @@ describe("the Contacts tab", () => {
     const ws = (await read(out)).getWorksheet("Contacts")!;
     const header = (ws.getRow(1).values as unknown[]).slice(1);
     expect(header.slice(0, 4)).toEqual(["Prospect ID", "Company", "Name", "Notes"]);
-    expect(header.at(-1)).toBe("Intro message");
-    expect(ws.getCell(2, header.length).value).toBe("Hi Ann,\nshort intro.");
+    expect(header.slice(-2)).toEqual(["Intro message", "Email source"]);
+    expect(ws.getCell(2, header.length - 1).value).toBe("Hi Ann,\nshort intro.");
     const again = await importFrom(out);
     expect(again.contacts[0]!.cells[again.campaign.schema.contacts!.introKey!]).toBe("Hi Ann,\nshort intro.");
   });

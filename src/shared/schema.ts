@@ -279,7 +279,14 @@ export function ensureAppColumns(schema: CampaignSchema, extraTaken: Iterable<st
   ensureRoles(schema, schema.columns, PROSPECT_ROLES, taken);
   const contacts = (schema.contacts ??= { columns: defaultContactColumns(taken) });
   ensureRoles(contacts, contacts.columns, CONTACT_ROLES, taken);
+  // Not a role: an ordinary column the user can rename or delete, only added where it is missing.
+  if (!contacts.columns.some((c) => norm(c.header) === EMAIL_SOURCE_HEADER)) contacts.columns.push(emailSourceColumn(taken));
 }
+
+/** Where a contact's email came from: Pattern is inferred, and the grid flags it to verify. */
+export const EMAIL_SOURCES = ["Published", "Reported", "Pattern", "Verified"];
+const EMAIL_SOURCE_HEADER = norm("Email source");
+const emailSourceColumn = (taken: Set<string>) => newColumn(taken, "Email source", "select", { options: [...EMAIL_SOURCES] });
 
 /** Contact columns a new campaign starts with. */
 function defaultContactColumns(taken: Set<string>): Column[] {
@@ -291,6 +298,7 @@ function defaultContactColumns(taken: Set<string>): Column[] {
     newColumn(taken, "Title", "text", { width: 90 }),
     newColumn(taken, "Role", "text", { width: 200 }),
     newColumn(taken, "Email", "email"),
+    emailSourceColumn(taken),
     newColumn(taken, "Phone", "phone"),
     newColumn(taken, "LinkedIn", "url"),
     roleColumn(taken, LAST_CONTACTED_COLUMN),
