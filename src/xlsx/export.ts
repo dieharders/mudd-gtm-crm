@@ -68,6 +68,39 @@ export async function exportCampaign(
   return patchWorkbook(campaign, original, ordered, tpls, people, thesis);
 }
 
+// ---------- CSV ----------
+
+/** Text Excel would run as a formula: `=`, `+`, `-`, `@`, or a tab or CR before one. */
+const FORMULA_START = /^[=+\-@\t\r]/;
+
+/**
+ * One CSV field. Values go as Mudd stores them (ISO dates, TRUE for a tick), which its CSV
+ * import reads back as they were. Text Excel would run as a formula gets a leading `'`, which
+ * the import takes off again.
+ */
+function csvField(v: CellValue | undefined): string {
+  if (v === null || v === undefined) return "";
+  let s = String(v);
+  if (typeof v === "string" && FORMULA_START.test(s) && toNumber(s) === null) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * One tab of the campaign as CSV: the prospects, or their contacts with each one's Prospect ID
+ * and Company, as the workbook's Contacts tab has them. Every column, hidden ones too. A BOM
+ * up front so Excel reads it as UTF-8.
+ */
+export function exportCsv(campaign: Campaign, rows: ExportRow[], contacts: ExportRow[], kind: "prospects" | "contacts"): string {
+  const ordered = [...rows].sort((a, b) => a.position - b.position);
+  const schema = kind === "contacts" ? contactsTabSchema(campaign.schema) : campaign.schema;
+  const list = kind === "contacts" ? contactExportRows(campaign.schema, ordered, contacts) : ordered;
+  const lines = [
+    schema.columns.map((c) => csvField(c.header)),
+    ...list.map((r) => schema.columns.map((c) => csvField(r.cells[c.key]))),
+  ];
+  return `\uFEFF${lines.map((l) => l.join(",")).join("\r\n")}\r\n`;
+}
+
 /** The thesis tab's rows: every question in order, its answer, and who filled it. */
 function thesisRows(thesis: Thesis): { question: string; answer: string; filledBy: string }[] {
   return THESIS_QUESTIONS.map((q) => ({

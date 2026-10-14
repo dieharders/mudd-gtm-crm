@@ -108,7 +108,9 @@ function csvWorkbook(buf: Uint8Array, fileName: string): ExcelJS.Workbook {
   });
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Prospects");
-  rows.forEach((r, i) => ws.addRow(r.map((v, c) => (i > 0 && numeric[c] && v.trim() ? Number(v.trim()) : v))));
+  // The `'` Mudd's CSV export puts before text Excel would run as a formula comes off again.
+  const unguard = (v: string) => (/^'[=+\-@\t\r]/.test(v) ? v.slice(1) : v);
+  rows.forEach((r, i) => ws.addRow(r.map((v, c) => (i > 0 && numeric[c] && v.trim() ? Number(v.trim()) : unguard(v)))));
   return wb;
 }
 

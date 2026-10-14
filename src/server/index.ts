@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { copySchema, discoverySchema, genericSchema } from "../shared/schema";
 import { IMPORT_EXTENSIONS, type CampaignBundle, type CampaignSchema, type CellEdit, type InspectResult, type Row } from "../shared/types";
-import { exportCampaign } from "../xlsx/export";
+import { exportCampaign, exportCsv } from "../xlsx/export";
 import { importWorkbook, inspectWorkbook, isCsvName, loadWorkbook, type LoadedBook } from "../xlsx/import";
 import * as db from "./db";
 import { registerAiRoutes } from "./ai-routes";
@@ -223,6 +223,18 @@ async function saveFile(id: string, req: Request) {
   return json({ path: target, linked: !b.copy });
 }
 
+/** Export CSV: one tab, prospects or contacts, as a new file in Downloads. Links nothing. */
+async function saveCsv(id: string, req: Request) {
+  const b = await body<{ kind?: string }>(req);
+  if (b.kind !== "prospects" && b.kind !== "contacts") throw new HttpError(400, "Export prospects or contacts.");
+  const c = mustCampaign(id);
+  const text = exportCsv(c, db.listRowsForExport(id), db.listRowsForExport(id, "contacts"), b.kind);
+  fs.mkdirSync(downloadsDir(), { recursive: true });
+  const target = freePath(downloadsDir(), `${safeFileName(c.name)} ${b.kind}.csv`);
+  writeFileSafely(target, new TextEncoder().encode(text));
+  return json({ path: target });
+}
+
 // ---------- router ----------
 
 type Handler = (req: Request, params: string[]) => Promise<Response> | Response;
@@ -301,6 +313,7 @@ on("DELETE", "/api/templates/:id", (_req, [id]) => {
 on("POST", "/api/import/inspect", async (req) => json(await inspect(req)));
 on("POST", "/api/import", async (req) => json(await doImport(req)));
 on("POST", "/api/campaigns/:id/save", async (req, [id]) => saveFile(id!, req));
+on("POST", "/api/campaigns/:id/csv", async (req, [id]) => saveCsv(id!, req));
 // Only the campaign's own linked file, never a path from the request.
 on("POST", "/api/campaigns/:id/reveal", (_req, [id]) => {
   const c = mustCampaign(id!);

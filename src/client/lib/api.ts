@@ -152,6 +152,9 @@ export const api = {
    */
   saveFile: (id: string, opts: { force?: boolean; copy?: boolean } = {}) =>
     call<SaveResult>("POST", `/api/campaigns/${id}/save`, opts),
+  /** Export CSV: the prospects, or their contacts, as a new file in Downloads. Links nothing. */
+  exportCsv: (id: string, kind: "prospects" | "contacts") =>
+    call<{ path: string }>("POST", `/api/campaigns/${id}/csv`, { kind }),
   /** Show the campaign's linked file in its folder. */
   revealFile: (id: string) => call<{ ok: true }>("POST", `/api/campaigns/${id}/reveal`),
 

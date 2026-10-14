@@ -191,6 +191,57 @@ describe("prospects and their contacts", () => {
   });
 });
 
+describe("Export CSV", () => {
+  test("writes each tab to Downloads, guards formulas, and imports back as it was", async () => {
+    const file = path.join(tmp, "docs", "csv.xlsx");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Prospects");
+    ws.addRow(["ID", "Company", "Status", "Notes"]);
+    ws.addRow(["P-001", "Acme, Inc.", "Contacted", 'Said "maybe"\nCall back']);
+    ws.addRow(["P-002", "Beta", "Replied", "=HYPERLINK(\"x\")"]);
+    const people = wb.addWorksheet("Contacts");
+    people.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary"]);
+    people.addRow(["P-001", "Acme, Inc.", "Ann Lee", "Economic Buyer", true]);
+    people.addRow(["P-002", "Beta", "Bo Chen", "Gatekeeper", true]);
+    fs.writeFileSync(file, new Uint8Array(await wb.xlsx.writeBuffer()));
+    const inspected = await call<InspectResult>("POST", "/api/import/inspect", { path: file });
+    const imp = await call<Campaign>("POST", "/api/import", { token: inspected.json.token, prospects: "Prospects", name: "Leads" });
+    const id = imp.json.id;
+
+    const prospects = await call<{ path: string }>("POST", `/api/campaigns/${id}/csv`, { kind: "prospects" });
+    expect(prospects.json.path).toBe(path.join(tmp, "Downloads", "Leads prospects.csv"));
+    const text = fs.readFileSync(prospects.json.path, "utf8");
+    expect(text.startsWith("\uFEFF")).toBe(true);
+    expect(text).toContain('"Acme, Inc."');
+    expect(text).toContain('"Said ""maybe""\nCall back"');
+    expect(text).toContain(`"'=HYPERLINK(""x"")"`);
+    // Exporting again never replaces the first file.
+    expect((await call<{ path: string }>("POST", `/api/campaigns/${id}/csv`, { kind: "prospects" })).json.path).toBe(path.join(tmp, "Downloads", "Leads prospects (2).csv"));
+    // Save file still has no link to change: the campaign is linked to its workbook as before.
+    expect((await call<{ campaign: Campaign }>("GET", `/api/campaigns/${id}`)).json.campaign.sourcePath).toBe(file);
+
+    const contacts = await call<{ path: string }>("POST", `/api/campaigns/${id}/csv`, { kind: "contacts" });
+    const lines = fs.readFileSync(contacts.json.path, "utf8").replace(/^\uFEFF/, "").trim().split("\r\n");
+    expect(lines[0]!.startsWith("Prospect ID,Company,Name,")).toBe(true);
+    expect(lines.slice(1).map((l) => l.split(",")[0])).toEqual(["P-001", "P-002"]);
+
+    // The prospects CSV imported again gives the same cells, the guard taken off.
+    const before = (await call<CampaignBundle>("GET", `/api/campaigns/${id}`)).json;
+    const fd = new FormData();
+    fd.append("file", new File([fs.readFileSync(prospects.json.path)], "Leads prospects.csv"));
+    const again = await call<InspectResult>("POST", "/api/import/inspect", fd);
+    const back = await call<Campaign>("POST", "/api/import", { token: again.json.token, prospects: again.json.sheets[0]!.name, name: "Back" });
+    const after = (await call<CampaignBundle>("GET", `/api/campaigns/${back.json.id}`)).json;
+    const byHeader = (b: CampaignBundle) => b.rows.map((r) => Object.fromEntries(b.campaign.schema.columns.map((c) => [c.header, r.cells[c.key] ?? null])));
+    expect(byHeader(after)).toEqual(byHeader(before));
+  });
+
+  test("refuses anything but prospects or contacts", async () => {
+    const { campaign } = await importPath(path.join(tmp, "docs", "csv.xlsx"));
+    expect((await call("POST", `/api/campaigns/${campaign.id}/csv`, { kind: "templates" })).status).toBe(400);
+  });
+});
+
 describe("requests from other sites", () => {
   const send = (url: string, init: RequestInit = {}) => handler(new Request(url, init));
 
