@@ -29,7 +29,7 @@ import { THESIS_QUESTIONS, THESIS_SHEET } from "../shared/thesis";
 import { ORG_ID_KEY, ORG_KEY, type Campaign, type CampaignSchema, type CellValue, type Column, type Row, type SheetMeta, type Template, type Thesis } from "../shared/types";
 import { orderedContacts, parseFlag, sameValue } from "../shared/values";
 import { colLetter, hrefFor, numFmtFor, parseAppDate, toExcelValue, toNumber } from "./cells";
-import { TEMPLATES_SHEET, THESIS_DRAFT_MARK } from "./import";
+import { CSV_GUARDED, TEMPLATES_SHEET, THESIS_DRAFT_MARK } from "./import";
 import {
   dataStyle, isYours, LIST_FORMULA_MAX, listFormula, pxToChars, STYLE, styleGeneratedSheet, VALIDATION_ROWS, YOURS_FILL,
 } from "./layouts";
@@ -66,6 +66,45 @@ export async function exportCampaign(
   const people = contactExportRows(campaign.schema, ordered, contacts);
   if (!original) return generatedWorkbook(campaign.schema, ordered, tpls, people, thesis);
   return patchWorkbook(campaign, original, ordered, tpls, people, thesis);
+}
+
+// ---------- CSV ----------
+
+/** Text a spreadsheet would run as a formula: `=` or `@` up front, or a tab or CR. */
+const FORMULA_START = /^[=@\t\r]/;
+/**
+ * `+` or `-` up front runs as a formula too, but only one that calls something can do harm: a
+ * function, a DDE link (`cmd|`) or another sheet (`!`). A phone number or a "- call Tue" note
+ * calls nothing, so it goes as it is, with no `'` for other apps to show.
+ */
+const SIGNED_CALL = /^[+-].*(?:[A-Za-z_][\w.]*\s*\(|[|!])/s;
+
+/**
+ * One CSV field. Values go as Mudd stores them (ISO dates, TRUE for a tick), which its CSV
+ * import reads back as they were. Text a spreadsheet would run as a formula gets a leading `'`
+ * (CSV_GUARDED), which the import takes off again.
+ */
+function csvField(v: CellValue | undefined): string {
+  if (v === null || v === undefined) return "";
+  let s = String(v);
+  if (typeof v === "string" && (FORMULA_START.test(s) || SIGNED_CALL.test(s) || CSV_GUARDED.test(s))) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * One tab of the campaign as CSV: the prospects, or their contacts with each one's Prospect ID
+ * and Company, as the workbook's Contacts tab has them. Every column, hidden ones too. A BOM
+ * up front so Excel reads it as UTF-8.
+ */
+export function exportCsv(campaign: Campaign, rows: ExportRow[], contacts: ExportRow[], kind: "prospects" | "contacts"): string {
+  const ordered = [...rows].sort((a, b) => a.position - b.position);
+  const schema = kind === "contacts" ? contactsTabSchema(campaign.schema) : campaign.schema;
+  const list = kind === "contacts" ? contactExportRows(campaign.schema, ordered, contacts) : ordered;
+  const lines = [
+    schema.columns.map((c) => csvField(c.header)),
+    ...list.map((r) => schema.columns.map((c) => csvField(r.cells[c.key]))),
+  ];
+  return `\uFEFF${lines.map((l) => l.join(",")).join("\r\n")}\r\n`;
 }
 
 /** The thesis tab's rows: every question in order, its answer, and who filled it. */

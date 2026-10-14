@@ -7,12 +7,29 @@
  * macOS AppleScript's `choose file`, Linux zenity or kdialog. Where none exists the client falls
  * back to a file input, and Save file then writes to Downloads.
  *
- * No text from the user or a file ever goes into these scripts: they are fixed strings.
+ * No text from the user or a file ever goes into these scripts: they are built from PICKS alone.
  */
 import fs from "node:fs";
 import path from "node:path";
+import type { DialogKind } from "../shared/types";
 
 export type DialogResult = { path: string } | { cancelled: true } | { unsupported: true };
+
+/** Each dialog's title, and the files it offers: a filter label, extensions, and macOS's type IDs for them. */
+const PICKS: Record<DialogKind, { title: string; label: string; exts: string[]; macTypes: string[] }> = {
+  spreadsheet: {
+    title: "Import a spreadsheet into Mudd",
+    label: "Spreadsheets",
+    exts: ["xlsx", "csv", "tsv", "txt"],
+    macTypes: ["org.openxmlformats.spreadsheetml.sheet", "public.comma-separated-values-text", "public.tab-separated-values-text", "public.plain-text"],
+  },
+  contacts: {
+    title: "Import contacts from a CSV",
+    label: "CSV files",
+    exts: ["csv", "tsv", "txt"],
+    macTypes: ["public.comma-separated-values-text", "public.tab-separated-values-text", "public.plain-text"],
+  },
+};
 
 function onPath(bin: string): boolean {
   for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
@@ -46,7 +63,7 @@ async function runPowerShell(script: string): Promise<string> {
 
 // The dialog is parented to a hidden TOPMOST form. Without an owner it opens behind the app's
 // own window, where it looks exactly like a hang.
-const WINDOWS_OPEN = `
+const windowsOpen = ({ title, label, exts }: (typeof PICKS)[DialogKind]) => `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -59,35 +76,37 @@ $owner.Opacity = 0
 $owner.Show()
 $owner.Activate()
 $d = New-Object System.Windows.Forms.OpenFileDialog
-$d.Title = 'Import a spreadsheet into Mudd'
-$d.Filter = 'Spreadsheets (*.xlsx;*.csv;*.tsv;*.txt)|*.xlsx;*.csv;*.tsv;*.txt|All files (*.*)|*.*'
+$d.Title = '${title}'
+$d.Filter = '${label} (${exts.map((e) => `*.${e}`).join(";")})|${exts.map((e) => `*.${e}`).join(";")}|All files (*.*)|*.*'
 $d.Multiselect = $false
 if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }
 $owner.Close()
 `;
 
 // Asked of the frontmost app (Mudd's own window), so the dialog opens in front of it.
-const MAC_OPEN = `
-set kinds to {"org.openxmlformats.spreadsheetml.sheet", "public.comma-separated-values-text", "public.tab-separated-values-text", "public.plain-text"}
+const macOpen = ({ title, macTypes }: (typeof PICKS)[DialogKind]) => `
+set kinds to {${macTypes.map((t) => `"${t}"`).join(", ")}}
 try
   tell application (path to frontmost application as text)
     activate
-    set f to choose file with prompt "Import a spreadsheet into Mudd" of type kinds
+    set f to choose file with prompt "${title}" of type kinds
   end tell
 on error number errNum
   if errNum is -128 then error number -128
-  set f to choose file with prompt "Import a spreadsheet into Mudd" of type kinds
+  set f to choose file with prompt "${title}" of type kinds
 end try
 return POSIX path of f
 `;
 
-export async function openDialog(): Promise<DialogResult> {
+export async function openDialog(kind: DialogKind = "spreadsheet"): Promise<DialogResult> {
+  const pick = PICKS[kind];
+  const globs = pick.exts.map((e) => `*.${e}`).join(" ");
   if (process.platform === "win32") {
-    const out = await runPowerShell(WINDOWS_OPEN);
+    const out = await runPowerShell(windowsOpen(pick));
     return out ? { path: out } : { cancelled: true };
   }
   if (process.platform === "darwin") {
-    const r = await run(["osascript", "-e", MAC_OPEN]);
+    const r = await run(["osascript", "-e", macOpen(pick)]);
     if (r.code === 0 && r.out) return { path: r.out };
     // -128 is "User canceled."
     if (/-128/.test(r.err) || (r.code === 1 && !r.err)) return { cancelled: true };
@@ -95,11 +114,11 @@ export async function openDialog(): Promise<DialogResult> {
   }
   const tool = process.platform === "linux" ? linuxDialog() : null;
   if (tool === "zenity") {
-    const r = await run(["zenity", "--file-selection", "--title=Import a spreadsheet into Mudd", "--file-filter=Spreadsheets | *.xlsx *.csv *.tsv *.txt"]);
+    const r = await run(["zenity", "--file-selection", `--title=${pick.title}`, `--file-filter=${pick.label} | ${globs}`]);
     return r.code === 0 && r.out ? { path: r.out } : { cancelled: true };
   }
   if (tool === "kdialog") {
-    const r = await run(["kdialog", "--getopenfilename", ".", "*.xlsx *.csv *.tsv *.txt|Spreadsheets"]);
+    const r = await run(["kdialog", "--title", pick.title, "--getopenfilename", ".", `${globs}|${pick.label}`]);
     return r.code === 0 && r.out ? { path: r.out } : { cancelled: true };
   }
   return { unsupported: true };

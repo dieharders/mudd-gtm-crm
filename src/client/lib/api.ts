@@ -2,7 +2,7 @@
 import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeDraft, RunKind, SetupEvent, Suggestion, SuggestionStatus } from "../../shared/ai";
 import type { Candidate, DiscoveryKind, DiscoveryRun, EnrichChoice } from "../../shared/sourcing";
 import type {
-  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, ReleaseNotes, Row, Template, Thesis, ThesisId, UpdateInfo,
+  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, DialogKind, InspectResult, Meeting, ReleaseNotes, Row, Template, Thesis, ThesisId, UpdateInfo,
 } from "../../shared/types";
 
 export type { RecipeDraft };
@@ -101,6 +101,17 @@ async function* setupStream(url: string, body: unknown, signal: AbortSignal): As
 
 export type DialogResult = { path: string } | { cancelled: true } | { unsupported: true };
 
+export interface ImportContactsResult {
+  fileName: string;
+  /** The campaign as it now is: the file's new columns joined the contacts'. */
+  campaign: Campaign;
+  /** The contacts added. */
+  contacts: Row[];
+  skipped: number;
+  duplicates: number;
+  mismatched: number;
+}
+
 export interface SaveResult {
   /** Where the file was written. */
   path: string;
@@ -152,10 +163,25 @@ export const api = {
    */
   saveFile: (id: string, opts: { force?: boolean; copy?: boolean } = {}) =>
     call<SaveResult>("POST", `/api/campaigns/${id}/save`, opts),
+  /** Export CSV: the prospects, or their contacts, as a new file in Downloads. Links nothing. */
+  exportCsv: (id: string, kind: "prospects" | "contacts") =>
+    call<{ path: string }>("POST", `/api/campaigns/${id}/csv`, { kind }),
+  /**
+   * Import contacts from a CSV, each linked to its prospect by Prospect ID or Company. `skipped`
+   * match no prospect; `duplicates` are people their prospect already has.
+   */
+  importContacts: (id: string, src: File | { path: string }) => {
+    let payload: FormData | { path: string } = src as { path: string };
+    if (src instanceof File) {
+      payload = new FormData();
+      payload.append("file", src);
+    }
+    return call<ImportContactsResult>("POST", `/api/campaigns/${id}/contacts/import`, payload);
+  },
   /** Show the campaign's linked file in its folder. */
   revealFile: (id: string) => call<{ ok: true }>("POST", `/api/campaigns/${id}/reveal`),
 
-  openDialog: () => call<DialogResult>("POST", "/api/dialog/open"),
+  openDialog: (kind: DialogKind) => call<DialogResult>("POST", "/api/dialog/open", { kind }),
   openUrl: (url: string) => call<{ ok: true }>("POST", "/api/open-url", { url }),
   meetings: () => call<Meeting[]>("GET", "/api/meetings"),
 

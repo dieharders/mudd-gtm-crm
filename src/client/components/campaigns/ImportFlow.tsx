@@ -8,11 +8,12 @@
  *      untouched.
  */
 import { FileSpreadsheet, Info, Upload } from "lucide-react";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { looksLikeScreenedTab } from "../../../shared/schema";
 import { IMPORT_EXTENSIONS, type InspectResult } from "../../../shared/types";
+import { useFilePicker, type PickedFile } from "../../hooks/useFilePicker";
 import { api } from "../../lib/api";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -29,47 +30,18 @@ export function ImportProvider({ children }: { children: ReactNode }) {
   // The last file read stays after its dialog closes, so the dialog can animate out; `n` starts each read afresh.
   const [read, setRead] = useState<{ result: InspectResult; n: number } | null>(null);
   const [mapping, setMapping] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const dialogs = useRef<boolean | null>(null);
 
-  useEffect(() => {
-    api.env().then((e) => (dialogs.current = e.dialogs)).catch(() => (dialogs.current = false));
-  }, []);
-
-  const inspect = useCallback(async (p: Promise<InspectResult>) => {
-    setBusy(true);
+  const inspect = useCallback(async (src: PickedFile) => {
     try {
-      const result = await p;
+      const result = await (src instanceof File ? api.inspectFile(src) : api.inspectPath(src.path));
       setRead((r) => ({ result, n: (r?.n ?? 0) + 1 }));
       setMapping(true);
     } catch (err) {
       toast.error((err as Error).message);
-    } finally {
-      setBusy(false);
     }
   }, []);
-
-  const startImport = useCallback(async () => {
-    if (busy) return;
-    if (dialogs.current) {
-      setBusy(true);
-      try {
-        const pick = await api.openDialog();
-        if ("path" in pick) {
-          await inspect(api.inspectPath(pick.path));
-          return;
-        }
-        if ("cancelled" in pick) return;
-      } catch (err) {
-        toast.error(`Could not open the file dialog: ${(err as Error).message}`);
-      } finally {
-        setBusy(false);
-      }
-    }
-    fileInput.current?.click();
-  }, [busy, inspect]);
+  const { start, take, busy, fileInput } = useFilePicker("spreadsheet", IMPORT_EXTENSIONS, inspect);
 
   // Drop a spreadsheet anywhere in the window.
   useEffect(() => {
@@ -94,7 +66,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       depth = 0;
       setDragging(false);
       const file = e.dataTransfer?.files[0];
-      if (file) void inspect(api.inspectFile(file));
+      if (file) void take(file);
     };
     window.addEventListener("dragenter", enter);
     window.addEventListener("dragleave", leave);
@@ -106,22 +78,12 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("dragover", over);
       window.removeEventListener("drop", drop);
     };
-  }, [inspect]);
+  }, [take]);
 
   return (
-    <Ctx.Provider value={{ startImport: () => fire(startImport()), busy }}>
+    <Ctx.Provider value={{ startImport: () => fire(start()), busy }}>
       {children}
-      <input
-        ref={fileInput}
-        type="file"
-        accept={IMPORT_EXTENSIONS.join(",")}
-        hidden
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = "";
-          if (f) void inspect(api.inspectFile(f));
-        }}
-      />
+      {fileInput}
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-mud/30 p-8 animate-fade-in">
           <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-rim bg-paper px-14 py-10 text-center shadow-hard-lg">
