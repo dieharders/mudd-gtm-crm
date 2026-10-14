@@ -64,7 +64,8 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
   const inPlay = (r: Row) => !isScreened(r, schema);
 
   // Still at Contacted, last contacted a week or more ago, and nobody has replied since. The
-  // dates are the contacts' own; with none, there's no telling how long it has been.
+  // dates are the contacts' own. With none at all, it was moved to Contacted without a date
+  // (Mark sent, the stepper): due, unless someone has replied.
   const contacted = contactedStage(stages);
   const { lastContactedKey, lastReplyKey } = contactSchema(schema);
   if (schema.statusKey && contacted && lastContactedKey) {
@@ -80,14 +81,15 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
     out.push({
       id: "followUp",
       label: "Needs follow-up",
-      title: `At ${contacted} with no reply, last contacted ${FOLLOW_UP_DAYS}+ days ago`,
+      title: `At ${contacted} with no reply, last contacted ${FOLLOW_UP_DAYS}+ days ago or never dated`,
       reads: "contactsOf",
       test: (r, { contactsOf }) => {
         if (!inPlay(r) || statusOf(r, schema).toLowerCase() !== contacted.toLowerCase()) return false;
         const people = contactsOf(r.id);
+        const reply = latest(people, lastReplyKey);
+        if (people.every((p) => blank(p.cells[lastContactedKey]))) return reply === null;
         const sent = latest(people, lastContactedKey);
         if (sent === null || sent > cutoff) return false;
-        const reply = latest(people, lastReplyKey);
         return reply === null || reply < sent;
       },
     });

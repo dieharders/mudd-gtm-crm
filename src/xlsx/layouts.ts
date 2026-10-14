@@ -4,7 +4,8 @@
  * own to patch (and for the columns Mudd appends to one that does).
  */
 import type ExcelJS from "exceljs";
-import { contactRecordKeys, DEFAULT_WIDTH, typeFromHeader } from "../shared/schema";
+import { norm } from "../shared/merge";
+import { DEFAULT_WIDTH, typeFromHeader } from "../shared/schema";
 import { DEAD, type CampaignSchema, type Column, type ColumnType } from "../shared/types";
 import { colLetter, hrefFor, isTimeOnly, numFmtFor, readCellValue, toNumber } from "./cells";
 import { inlineListOptions } from "./ooxml";
@@ -29,6 +30,9 @@ export interface ColumnSample {
   numFmts: (string | undefined)[];
   listOptions?: string[];
 }
+
+/** A header naming a company or a person, whose names can look like links ("notion.so", "linear.app"). */
+const NAME_LIKE = /name|^(company|org|organi[sz]ation|account|business|contact|person|prospect)$/;
 
 export function detectType(s: ColumnSample): Pick<Column, "type" | "options" | "numeric"> {
   const byHeader = typeFromHeader(s.header);
@@ -58,7 +62,8 @@ export function detectType(s: ColumnSample): Pick<Column, "type" | "options" | "
   if (byHeader?.strong) return { type: byHeader.type };
   // Numbers before links: "4.5" is a score, not a website.
   if (vals.length && vals.every((v) => typeof v === "number")) return { type: "number" };
-  if (texts.length && texts.filter((t) => hrefFor(t) && /[/.]/.test(t)).length / texts.length >= 0.6 && texts.every((t) => !/\s/.test(t.trim()))) {
+  const nameLike = NAME_LIKE.test(norm(s.header));
+  if (!nameLike && texts.length && texts.filter((t) => hrefFor(t) && /[/.]/.test(t)).length / texts.length >= 0.6 && texts.every((t) => !/\s/.test(t.trim()))) {
     return { type: "url" };
   }
   const long = texts.filter((t) => t.length > 70).length;
@@ -102,11 +107,11 @@ export const STYLE = {
 export const YOURS_FILL = "FFFFFFF0";
 
 /**
- * Columns that get the "yours" fill: the ones Mudd and its user keep up to date, the contacts'
- * own record (Primary, Last contacted, Last reply) among them, whatever they are renamed to.
+ * Columns that get the "yours" fill: the ones Mudd and its user keep up to date, a contact's
+ * Primary box among them. Last contacted and Last reply have it by their header.
  */
 export function isYours(col: Column, schema: CampaignSchema): boolean {
-  const keys = [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, ...contactRecordKeys(schema)];
+  const keys = [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, schema.contacts?.primaryKey];
   return keys.includes(col.key) || /^(next|notes?|last)/i.test(col.header);
 }
 

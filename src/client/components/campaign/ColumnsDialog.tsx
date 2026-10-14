@@ -2,16 +2,15 @@
  * Add, rename, retype, hide and delete columns.
  *
  * Columns that exist in the spreadsheet can be hidden but not deleted: they are still in the
- * file, and export writes every row back to them. Columns Mudd itself relies on (Status, Company,
- * Intro message, the meeting pair, the Screened out box and its reason, the prospect's ID; a
- * contact's name, Contact type, Primary box, Last contacted and Last reply) can only be hidden:
- * import makes them Mudd's again (header, type and dropdown list), so an edit here wouldn't last.
+ * file, and export writes every row back to them. Columns Mudd itself relies on (its roles, in
+ * schema.ts) can only be hidden: import makes them Mudd's again (header, type and dropdown
+ * list), so an edit here wouldn't last.
  *
  * It edits one list at a time: the prospects' columns, or their contacts'.
  */
 import { Eye, EyeOff, Lock, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { EMPLOYEES_HEADER, isEmployeesHeader, makeKey } from "../../../shared/schema";
+import { contactRoles, EMPLOYEES_HEADER, isEmployeesHeader, makeKey, prospectRoles } from "../../../shared/schema";
 import { COLUMN_TYPES, type CampaignSchema, type Column, type ColumnType, type ContactSchema } from "../../../shared/types";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
@@ -37,15 +36,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
     if (open) setCols(schema.columns.map((c) => ({ ...c })));
   }, [open, schema]);
 
-  const roles: Record<string, string> = kind === "contacts"
-    ? Object.fromEntries([[schema.nameKey, "Contact name"], [schema.typeKey, "Contact type"], [schema.primaryKey, "Primary contact"], [schema.lastContactedKey, "Last contacted"], [schema.lastReplyKey, "Last reply"]].filter(([k]) => k))
-    : Object.fromEntries([
-      [schema.statusKey, "Pipeline status"], [schema.companyKey, "Company"], [schema.introKey, "Intro message"], [schema.meetingAtKey, "Meeting time"],
-      [schema.meetingUrlKey, "Meeting link"], [schema.screenedKey, "Screened out"], [schema.reasonKey, "Screened reason"],
-      [schema.idKey, "Prospect ID: the Contacts tab links by it"],
-    ].filter(([k]) => k));
-  const roleKeys = new Set(Object.keys(roles));
-  const role = (k: string) => roles[k] ?? null;
+  const roles = kind === "contacts" ? contactRoles(schema) : prospectRoles(schema);
 
   // A company's Staff, Headcount or Size is its "# Employees", a number.
   const employees = (header: string) => kind === "prospects" && isEmployeesHeader(header);
@@ -68,7 +59,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
   };
   const dupes = new Set(cols.map((c) => tidy(c).header.toLowerCase()).filter((h, i, a) => a.indexOf(h) !== i));
   // Only a column Mudd alone has: one in the file stays there, one Mudd uses stays in the app.
-  const deletable = (c: Column) => !inSheet.has(c.key) && !roleKeys.has(c.key);
+  const deletable = (c: Column) => !inSheet.has(c.key) && !roles.has(c.key);
   const anyDeletable = cols.some(deletable);
   const colgroup = (
     <colgroup>
@@ -116,7 +107,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
           <tbody className="[&>tr:first-child]:border-t-0">
             {cols.map((c) => {
               // Mudd's own: hidden or shown, nothing else.
-              const fixed = roleKeys.has(c.key);
+              const fixed = roles.has(c.key);
               const why = fixed ? "Mudd relies on this column: it can be hidden, not changed" : undefined;
               const dup = dupes.has(tidy(c).header.toLowerCase());
               return (
@@ -131,7 +122,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
                   <td className="py-1.5 pr-2" title={why}>
                     <input className={cn("field h-8 py-0", dup && "border-rose-300")} value={c.header} disabled={fixed} onChange={(e) => patch(c.key, { header: e.target.value })} />
                     {fixed && (
-                      <span className="mt-0.5 block text-[10px] text-clay-deep"><Lock size={10} className="inline align-[-1px]" /> {role(c.key)}</span>
+                      <span className="mt-0.5 block text-[10px] text-clay-deep"><Lock size={10} className="inline align-[-1px]" /> {roles.get(c.key)}</span>
                     )}
                   </td>
                   <td className="py-1.5 pr-2" title={why}>

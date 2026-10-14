@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { allColumns, contactSchema, orgColumn } from "../../../shared/schema";
 import {
-  DEAD, isChecked, isScreened, ORG_KEY, stagesOf, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
+  DEAD, isChecked, isScreened, ORG_KEY, STAGES, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
 } from "../../../shared/types";
 import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
 import { useConsentGate } from "../../hooks/useConsentGate";
@@ -156,7 +156,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   const campaign = state.campaign!;
   const schema = campaign.schema;
   const { statusKey, screenedKey } = schema;
-  const stages = useMemo(() => stagesOf(schema), [schema]);
+  const stages = STAGES;
   const [params, setParams] = useSearchParams();
   const initialRow = params.get("row");
   const initialDiscover = params.get("discover");

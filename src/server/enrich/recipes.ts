@@ -22,7 +22,8 @@ export type OutputInput = RecipeDraft["outputs"][number];
 /**
  * Point each recipe output at a column, creating the ones that don't exist yet: among the
  * contact columns for a person's detail (`contact`), else the prospect's. New columns are
- * appended (never inserted), so they land after the sheet's last column on export.
+ * appended (never inserted), so they land after the sheet's last column on export. Throws, with
+ * a message fit for the user, for an output aimed at a column nothing is researched into.
  */
 export function resolveOutputs(campaignId: string, outputs: OutputInput[], recipeId: string): RecipeOutput[] {
   const c = db.getCampaign(campaignId)!;
@@ -44,7 +45,9 @@ export function resolveOutputs(campaignId: string, outputs: OutputInput[], recip
     col ??= pool.find((x) => x.header.toLowerCase() === header.toLowerCase() || (employees && isEmployeesHeader(x.header)));
     // The ID is Mudd's own, and the Primary box and the contact dates are the user's own record:
     // nothing is researched into them.
-    if (col && (col.key === schema.idKey || records.has(col.key))) continue;
+    if (col && (col.key === schema.idKey || records.has(col.key))) {
+      throw new Error(`"${col.header}" is ${col.key === schema.idKey ? "Mudd's own" : "yours to keep"}, not researched: pick another output column.`);
+    }
     if (!col) {
       col = { key: newKey(header), header, type: o.type ?? guessType(header, o.hint), origin: "enrichment", recipeId, width: 220, ...(o.options?.length ? { options: o.options } : {}) };
       pool.push(col);

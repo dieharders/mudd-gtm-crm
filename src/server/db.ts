@@ -24,7 +24,7 @@ import { isThesisId, THESIS_IDS } from "../shared/thesis";
 import type {
   Campaign, CampaignSchema, CampaignSummary, CellEdit, CellValue, Meeting, Row, SheetMeta, Template, Thesis, ThesisId,
 } from "../shared/types";
-import { DEAD, isScreened, stagesOf } from "../shared/types";
+import { DEAD, isScreened, STAGES } from "../shared/types";
 import { applyCellEdits, primaryOf, prospectTitle } from "../shared/values";
 
 export function dataDir(): string {
@@ -306,7 +306,7 @@ export function listCampaigns(): CampaignSummary[] {
       sourcePath: c.sourcePath,
       prospects,
       byStatus,
-      stages: stagesOf(c.schema),
+      stages: STAGES,
     };
     summaryCache.set(c.id, { updatedAt: r.updated_at, summary });
     return summary;

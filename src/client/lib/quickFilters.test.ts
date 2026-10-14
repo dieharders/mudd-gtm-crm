@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { EnrichRun, Recipe } from "../../shared/ai";
 import { ensureAppColumns, makeKey } from "../../shared/schema";
-import { CHECKED, stagesOf, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../shared/types";
+import { CHECKED, STAGES, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../shared/types";
 import { contactFilters, prospectFilters, runsThrough, type FilterContext, type QuickFilterId } from "./quickFilters";
 
 function sheet(...cols: [string, ColumnType?][]): CampaignSchema {
@@ -17,7 +17,7 @@ const TODAY = "2026-10-11";
 function filterOf(schema: CampaignSchema, id: QuickFilterId, { contacts = [], recipes = [], ran = () => false, today = TODAY }: {
   contacts?: Row[]; recipes?: Recipe[]; ran?: FilterContext["ran"]; today?: string;
 } = {}) {
-  const f = prospectFilters(schema, stagesOf(schema), recipes, today).find((x) => x.id === id);
+  const f = prospectFilters(schema, STAGES, recipes, today).find((x) => x.id === id);
   const ctx: FilterContext = { contactsOf: (pid) => contacts.filter((c) => c.parentId === pid), ran };
   return f && { ...f, test: (r: Row) => f.test(r, ctx) };
 }
@@ -57,10 +57,12 @@ describe("needs follow-up", () => {
     expect(check("Contacted", [{ [sent]: "2026-09-10", [reply]: "2026-09-03" }])).toBe(true);
   });
 
-  test("contacted but never dated can't be told a week old: no follow-up", () => {
-    expect(check("Contacted", [])).toBe(false);
-    expect(check("Contacted", [{}])).toBe(false);
-    expect(check("Contacted", [{ [reply]: "2026-09-01" }])).toBe(false);
+  test("contacted but never dated is due, unless someone has replied", () => {
+    expect(check("Contacted", [])).toBe(true);
+    expect(check("Contacted", [{}, {}])).toBe(true);
+    expect(check("Contacted", [{}, { [reply]: "2026-09-01" }])).toBe(false);
+    expect(check("Not contacted", [{}])).toBe(false);
+    expect(check("Contacted", [{}], { cells: { [schema.screenedKey!]: CHECKED } })).toBe(false);
   });
 
   test("a date it can't read is passed over, not the whole prospect", () => {

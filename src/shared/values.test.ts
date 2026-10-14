@@ -1,18 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { recipeMode } from "./ai";
 import { PRESETS, presetTargets } from "./presets";
-import { assignRoles, CONTACT_TYPES, ensureAppColumns, genericSchema, makeKey, newProspectId, prospectSchema } from "./schema";
-import { CHECKED, type CampaignSchema, type CellValue } from "./types";
+import { CONTACT_TYPES, ensureAppColumns, genericSchema, makeKey, newProspectId, prospectSchema } from "./schema";
+import { CHECKED, type CampaignSchema, type CellValue, type Column } from "./types";
 import { CompanyIndex, companyKeys, contactLabel, contactOf, isChannel, isEmptyContact, orderedContacts, primaryOf, prospectCells, prospectTitle } from "./values";
 
-/** A schema with these headers, keyed by header ("Job title" → job_title), roles assigned. */
+/**
+ * A schema with these headers, keyed by header ("Job title" → job_title), its Company, Status
+ * and ID being Mudd's. Read as a contact's columns, the name is theirs.
+ */
 function sheet(...headers: string[]): CampaignSchema {
   const taken = new Set<string>();
-  const schema: CampaignSchema = { columns: headers.map((header) => ({ key: makeKey(header, taken), header, type: "text", origin: "sheet" })) };
-  assignRoles(schema);
-  // Read as a contact's columns: the name is theirs.
-  schema.nameKey = schema.columns.find((c) => c.header === "Name")?.key;
-  return schema;
+  const columns = headers.map((header): Column => ({ key: makeKey(header, taken), header, type: "text", origin: "sheet" }));
+  const keyOf = (header: string) => columns.find((c) => c.header === header)?.key;
+  return { columns, companyKey: keyOf("Company"), statusKey: keyOf("Status"), idKey: keyOf("ID"), nameKey: keyOf("Name") };
 }
 /** A campaign whose contacts have these columns, and no columns of its own. */
 const people = (...headers: string[]): CampaignSchema => {
@@ -145,6 +146,19 @@ describe("prospect IDs and contact columns", () => {
     expect(schema.contacts!.nameKey).toBe("name_2");
     ensureAppColumns(schema);
     expect(schema.contacts!.columns.filter((c) => c.header === "Name")).toHaveLength(1);
+  });
+
+  test("of the columns headed like a role's, the one headed as Mudd heads it is the role's", () => {
+    const taken = new Set<string>();
+    const of = (...headers: string[]): CampaignSchema => ({ columns: headers.map((header): Column => ({ key: makeKey(header, taken), header, type: "text", origin: "sheet" })) });
+    const exact = of("Status:", "STATUS", "Status");
+    ensureAppColumns(exact);
+    expect(exact.columns.find((c) => c.key === exact.statusKey)!.header).toBe("Status");
+    expect(exact.columns.slice(0, 3).map((c) => [c.header, c.type])).toEqual([["Status:", "text"], ["STATUS", "text"], ["Status", "select"]]);
+    // Without one, the closest: by case before punctuation.
+    const close = of("Status:", "STATUS");
+    ensureAppColumns(close);
+    expect(close.columns.slice(0, 2).map((c) => [c.header, c.key === close.statusKey])).toEqual([["Status:", false], ["Status", true]]);
   });
 
   test("a contact column Mudd relies on is only the one Mudd heads, and is Mudd's whatever the tab had", () => {

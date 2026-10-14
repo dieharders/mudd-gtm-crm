@@ -55,7 +55,6 @@ test("a person's detail becomes a contact column, keyed apart from every other c
     { header: "Mobile", contact: true },
     { header: "Notes", contact: true },
     { header: "Headcount" },
-    { header: "ID", key: c.schema.idKey },
   ];
   const req = new Request("http://mudd.local/", { method: "POST", body: JSON.stringify({ name: "R", instructions: "Find it.", inputKeys: [], webSearch: false, outputs }) });
   const res = await routes.get("POST /api/campaigns/:id/recipes")!(req, [c.id]);
@@ -67,6 +66,19 @@ test("a person's detail becomes a contact column, keyed apart from every other c
   expect(campaign.schema.columns.some((x) => x.header === "Headcount")).toBe(false);
   const employees = campaign.schema.columns.find((x) => x.header === "# Employees")!;
   expect(employees.type).toBe("number");
-  // The contacts' own Notes, not the company's; nothing is researched into the ID.
+  // The contacts' own Notes, not the company's.
   expect(recipe.outputs.map((o) => o.key)).toEqual(["mobile_2", "notes_2", employees.key]);
+});
+
+test("an output aimed at a column nothing is researched into is refused, saying why", async () => {
+  const c = db.createCampaign({ name: "Test", schema: genericSchema(), sheets: [] });
+  const draft = (outputs: object[]) => ({ name: "R", instructions: "Find it.", inputKeys: [], webSearch: false, outputs });
+  const post = (outputs: object[]) =>
+    routes.get("POST /api/campaigns/:id/recipes")!(new Request("http://mudd.local/", { method: "POST", body: JSON.stringify(draft(outputs)) }), [c.id]);
+  await expect(post([{ header: "Last reply", contact: true }])).rejects.toThrow(`400: "Last reply" is yours to keep, not researched`);
+  await expect(post([{ header: "Notes" }, { header: "ID", key: c.schema.idKey }])).rejects.toThrow(`400: "ID" is Mudd's own`);
+  // Editing a recipe's outputs too.
+  const { recipe } = (await (await post([{ header: "Notes" }])).json()) as { recipe: { id: string } };
+  const patch = new Request("http://mudd.local/", { method: "PATCH", body: JSON.stringify({ outputs: [{ header: "Primary", contact: true }] }) });
+  await expect(routes.get("PATCH /api/recipes/:id")!(patch, [recipe.id])).rejects.toThrow(`400: "Primary" is yours to keep`);
 });

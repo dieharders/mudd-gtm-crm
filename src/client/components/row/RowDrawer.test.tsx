@@ -6,7 +6,7 @@
  */
 import { afterAll, expect, mock, test } from "bun:test";
 import { allColumns, genericSchema } from "../../../shared/schema";
-import { CHECKED, stagesOf, type Row } from "../../../shared/types";
+import { CHECKED, STAGES, type Row } from "../../../shared/types";
 import { failOnConsoleError, installDom } from "../../../test/dom";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
@@ -45,7 +45,7 @@ const enrich = {
 function Panel({ row, contacts, onClose }: { row: Row; contacts: Row[]; onClose: () => void }) {
   const [open, setOpen] = useState<string | null>(null);
   return (
-    <RowDrawer row={row} schema={schema} stages={stagesOf(schema)} templates={[]} state={state} contacts={contacts} openContactId={open} onOpenContact={setOpen}
+    <RowDrawer row={row} schema={schema} stages={STAGES} templates={[]} state={state} contacts={contacts} openContactId={open} onOpenContact={setOpen}
       onClose={onClose} onOpenTemplates={() => {}} enrich={enrich} />
   );
 }
