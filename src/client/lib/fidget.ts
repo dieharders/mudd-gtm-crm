@@ -9,6 +9,12 @@ export function toggleFidget() {
   listeners.forEach((l) => l());
 }
 
+function subscribe(l: () => void) {
+  listeners.add(l);
+  return () => { listeners.delete(l); };
+}
+const getShown = () => shown;
+
 export function useFidgetShown(): boolean {
-  return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => shown);
+  return useSyncExternalStore(subscribe, getShown);
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { cn } from "../../lib/cn";
+import { reducedMotion } from "../../lib/motion";
 
 /**
  * A slider drawn as a red rubber band stretched between two thumbtacks on the board. The left tack
@@ -99,25 +100,39 @@ export function RubberBand({ value, min, max, step = 1, onChange, width = 320, c
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  /** How far the band droops for a given distance between tacks: a slack string hangs as a shallow V. */
-  const sagFor = useCallback((d: number) => (d >= restLen ? 0 : 0.42 * Math.sqrt(restLen * restLen - d * d)), [restLen]);
+  /**
+   * How far the band droops for a given distance between tacks: a slack string hangs as a shallow V.
+   * A ref so a loop already running picks up a new width.
+   */
+  const sagFor = useRef<(d: number) => number>(() => 0);
+  sagFor.current = (d: number) => (d >= restLen ? 0 : 0.42 * Math.sqrt(restLen * restLen - d * d));
 
   const wake = useCallback(() => {
     const s = sim.current;
     if (s.raf) return;
     s.last = performance.now();
+    // Reduced motion: no springs, the thumb and droop land on their targets and the hole closes at once.
+    const still = reducedMotion();
     const tick = (now: number) => {
       const dt = clamp((now - s.last) / 1000, 0, 1 / 30);
       s.last = now;
       if (!s.dragging) {
-        const ax = -X_STIFF * (s.x - restX.current) - X_DAMP * s.vx;
-        s.vx += ax * dt;
-        s.x += s.vx * dt;
+        if (still) {
+          s.x = restX.current; s.vx = 0; s.hole = null;
+        } else {
+          const ax = -X_STIFF * (s.x - restX.current) - X_DAMP * s.vx;
+          s.vx += ax * dt;
+          s.x += s.vx * dt;
+        }
       }
-      const target = sagFor(s.x - FIXED_X);
-      const as = -SAG_STIFF * (s.sag - target) - SAG_DAMP * s.vsag;
-      s.vsag += as * dt;
-      s.sag += s.vsag * dt;
+      const target = sagFor.current(s.x - FIXED_X);
+      if (still) {
+        s.sag = target; s.vsag = 0;
+      } else {
+        const as = -SAG_STIFF * (s.sag - target) - SAG_DAMP * s.vsag;
+        s.vsag += as * dt;
+        s.sag += s.vsag * dt;
+      }
       if (s.hole !== null && !s.dragging) s.holeAge += dt;
       const holeAlpha = s.hole === null ? 0 : s.dragging ? 1 : Math.max(0, 1 - s.holeAge / 0.6);
       if (holeAlpha === 0) s.hole = null;
@@ -133,11 +148,16 @@ export function RubberBand({ value, min, max, step = 1, onChange, width = 320, c
       }
     };
     s.raf = requestAnimationFrame(tick);
-  }, [sagFor]);
+  }, []);
 
   // The value moved from outside (keyboard, a reset): the thumb springs over to it.
   useEffect(() => { wake(); }, [value, width, wake]);
-  useEffect(() => () => { if (sim.current.raf) cancelAnimationFrame(sim.current.raf); }, []);
+  // Clear the handle too, or a remount (StrictMode, Activity) finds it set and never restarts the loop.
+  useEffect(() => () => {
+    const s = sim.current;
+    if (s.raf) cancelAnimationFrame(s.raf);
+    s.raf = 0;
+  }, []);
 
   const onPointerDown = (e: PointerEvent<SVGGElement>) => {
     if (e.button !== 0) return;
@@ -169,7 +189,7 @@ export function RubberBand({ value, min, max, step = 1, onChange, width = 320, c
     wake();
   };
 
-  const onKeyDown = (e: KeyboardEvent<SVGSVGElement>) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLSpanElement>) => {
     const by: Record<string, number> = { ArrowRight: step, ArrowUp: step, ArrowLeft: -step, ArrowDown: -step, PageUp: step * 10, PageDown: -step * 10 };
     const next = e.key === "Home" ? min : e.key === "End" ? max : e.key in by ? clamp(value + by[e.key], min, max) : null;
     if (next === null) return;

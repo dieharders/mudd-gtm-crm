@@ -25,7 +25,7 @@ function greeting(): string {
 /** A small sticky note pinned above a page title. */
 function PinnedNote({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
   return (
-    <span onClick={onClick} className={cn("relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-[15px] shadow-hard-sm select-none", onClick && "cursor-pointer")}>
+    <span onClick={onClick} className={cn("relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-sm shadow-hard-sm select-none", onClick && "cursor-pointer")}>
       <span className="pin scale-75" />
       {children}
     </span>
@@ -78,7 +78,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
                 {campaigns.map((c) => <CampaignCard key={c.id} c={c} onRemove={() => setRemoving(c)} />)}
               </div>
             </div>
-            <aside className="flex flex-col gap-6">
+            <aside>
               <MeetingsCard meetings={meetings} limit={6} />
             </aside>
           </div>

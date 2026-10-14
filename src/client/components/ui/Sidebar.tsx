@@ -14,6 +14,7 @@ import { todayString } from "../../lib/format";
 import { ProviderMark } from "../ai/BrandMarks";
 import { useImport } from "../campaigns/ImportFlow";
 import { useFidgetShown } from "../../lib/fidget";
+import { reducedMotion } from "../../lib/motion";
 import { Button } from "./Button";
 import { Logo, Tile } from "./Logo";
 import { RubberBand } from "./RubberBand";
@@ -166,6 +167,7 @@ function Fidget() {
       <div className="mt-2 flex items-center gap-2">
         <span className="mr-auto font-display text-[1.25rem] leading-none font-bold tabular-nums">{tension}</span>
         <Button size="xs" onClick={(e) => {
+          if (reducedMotion()) return;
           const r = e.currentTarget.getBoundingClientRect();
           confetti({ position: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, count: tension });
         }}>Party!</Button>
