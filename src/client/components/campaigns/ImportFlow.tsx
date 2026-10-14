@@ -138,8 +138,8 @@ export function ImportProvider({ children }: { children: ReactNode }) {
 
 function MappingDialog({ result, open, onClose }: { result: InspectResult; open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
-  // An old Screened-out list is never offered, and never shown; nor are Mudd's own tabs.
-  const candidates = result.sheets.filter((s) => s.guess !== "templates" && s.guess !== "thesis" && !looksLikeScreenedTab(s.name));
+  // An old Screened-out list is never offered, and never shown; nor are Mudd's own tabs, nor the Contacts tab.
+  const candidates = result.sheets.filter((s) => s.guess !== "templates" && s.guess !== "thesis" && s.guess !== "contacts" && !looksLikeScreenedTab(s.name));
   const usable = candidates.filter((s) => !s.hasFormulas);
   const initialP = result.sheets.find((s) => s.guess === "prospects")?.name ?? usable[0]?.name ?? "";
   const [prospects, setProspects] = useState(initialP);
@@ -149,8 +149,8 @@ function MappingDialog({ result, open, onClose }: { result: InspectResult; open:
   const [nameTouched, setNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const contactsTab = result.sheets.find((s) => s.guess === "contacts" && s.name !== prospects);
-  const kept = candidates.filter((s) => s.name !== prospects && s !== contactsTab);
+  const contactsTab = result.sheets.find((s) => s.guess === "contacts");
+  const kept = candidates.filter((s) => s.name !== prospects);
 
   const chooseProspects = (n: string) => {
     setProspects(n);
@@ -222,7 +222,9 @@ function MappingDialog({ result, open, onClose }: { result: InspectResult; open:
         )}
         {!usable.length && (
           <p className="rounded-xl border-2 border-rim/60 bg-note-pink p-4 text-[15px] text-mud">
-            Every tab in this file has formulas, and Mudd can't write into a tab with formulas without breaking them. Save a copy of the prospects tab without formulas and import that.
+            {candidates.length
+              ? "Every tab that could hold prospects has formulas, and Mudd can't write into a tab with formulas without breaking them. Save a copy of the prospects tab without formulas and import that."
+              : "This file has no prospects tab: Mudd reads its tabs as contacts, intro templates or an ICP thesis."}
           </p>
         )}
 

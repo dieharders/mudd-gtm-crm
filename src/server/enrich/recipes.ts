@@ -5,7 +5,7 @@
  */
 import type { Recipe, RecipeDraft, RecipeOutput } from "../../shared/ai";
 import { PRESETS, presetRecipe } from "../../shared/presets";
-import { allColumns, columnOf, EMPLOYEES_HEADER, isEmployeesHeader, makeKey, typeFromHeader } from "../../shared/schema";
+import { allColumns, columnOf, contactRecordKeys, EMPLOYEES_HEADER, isEmployeesHeader, makeKey, typeFromHeader } from "../../shared/schema";
 import type { Campaign, CampaignSchema, ColumnType } from "../../shared/types";
 import * as db from "../db";
 import { publishCampaign, publishRecipes } from "./hub";
@@ -22,13 +22,15 @@ export type OutputInput = RecipeDraft["outputs"][number];
 /**
  * Point each recipe output at a column, creating the ones that don't exist yet: among the
  * contact columns for a person's detail (`contact`), else the prospect's. New columns are
- * appended (never inserted), so they land after the sheet's last column on export.
+ * appended (never inserted), so they land after the sheet's last column on export. Throws, with
+ * a message fit for the user, for an output aimed at a column nothing is researched into.
  */
 export function resolveOutputs(campaignId: string, outputs: OutputInput[], recipeId: string): RecipeOutput[] {
   const c = db.getCampaign(campaignId)!;
   const contacts = c.schema.contacts ? { ...c.schema.contacts, columns: [...c.schema.contacts.columns] } : undefined;
   const schema: CampaignSchema = { ...c.schema, columns: [...c.schema.columns], contacts };
   const before = allColumns(c.schema).length;
+  const records = new Set(contactRecordKeys(schema));
   // Keys in use, and keys a deleted column left values under: a new column must not show a
   // deleted one's data. Read only once a column is actually added.
   let taken: Set<string> | null = null;
@@ -41,9 +43,11 @@ export function resolveOutputs(campaignId: string, outputs: OutputInput[], recip
     const pool = o.contact && contacts ? contacts.columns : schema.columns;
     let col = o.key ? columnOf(schema, o.key) : undefined;
     col ??= pool.find((x) => x.header.toLowerCase() === header.toLowerCase() || (employees && isEmployeesHeader(x.header)));
-    // The ID is Mudd's own, and the Primary box is the user's pick (one per prospect): nothing
-    // is researched into either.
-    if (col && (col.key === schema.idKey || col.key === schema.contacts?.primaryKey)) continue;
+    // The ID is Mudd's own, and the Primary box and the contact dates are the user's own record:
+    // nothing is researched into them.
+    if (col && (col.key === schema.idKey || records.has(col.key))) {
+      throw new Error(`"${col.header}" is ${col.key === schema.idKey ? "Mudd's own" : "yours to keep"}, not researched: pick another output column.`);
+    }
     if (!col) {
       col = { key: newKey(header), header, type: o.type ?? guessType(header, o.hint), origin: "enrichment", recipeId, width: 220, ...(o.options?.length ? { options: o.options } : {}) };
       pool.push(col);

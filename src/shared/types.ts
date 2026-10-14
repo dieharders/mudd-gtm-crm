@@ -73,6 +73,10 @@ export interface ContactSchema {
   typeKey?: string;
   /** Checkbox: the contact intros and templates address. At most one per prospect. */
   primaryKey?: string;
+  /** Date: when the user last reached out to this person. */
+  lastContactedKey?: string;
+  /** Date: when this person last replied. */
+  lastReplyKey?: string;
 }
 
 export interface CampaignSchema {
@@ -274,8 +278,11 @@ export interface CellEdit {
 /** The file types import accepts. Macro workbooks (.xlsm) are refused: saving would drop the macros. */
 export const IMPORT_EXTENSIONS = [".xlsx", ".csv", ".tsv", ".txt"];
 
-/** The Status column's stages when the sheet does not supply its own. */
-export const DEFAULT_STAGES = [
+/**
+ * The pipeline's stages, in order. A campaign's Status column always lists these and Dead,
+ * whatever its sheet had (ensureRoles in schema.ts).
+ */
+export const STAGES = [
   "Not contacted",
   "Contacted",
   "Replied",
@@ -286,13 +293,6 @@ export const DEFAULT_STAGES = [
 ];
 export const DEAD = "Dead";
 export const MEETING_STAGE = "Meeting booked";
-
-/** The pipeline stages for a campaign: its Status dropdown minus "Dead", or the defaults. */
-export function stagesOf(schema: CampaignSchema): string[] {
-  const col = schema.columns.find((c) => c.key === schema.statusKey);
-  const opts = col?.options?.filter((o) => o.toLowerCase() !== DEAD.toLowerCase());
-  return opts && opts.length > 1 ? opts : DEFAULT_STAGES;
-}
 
 /** A checkbox cell is ticked. */
 export function isChecked(v: CellValue | undefined): boolean {

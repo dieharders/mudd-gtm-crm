@@ -18,7 +18,7 @@ import type { Candidate, CandidateContact, DiscoveryKind, DiscoveryRun, EnrichCh
 import { websiteColumn } from "../../shared/schema";
 import { DEAL_ROLES, DEFAULT_ENRICH, FIT_OPTIONS } from "../../shared/sourcing";
 import { canFind, THESIS_IDS } from "../../shared/thesis";
-import { isScreened, stagesOf, type Thesis, type ThesisId } from "../../shared/types";
+import { isScreened, STAGES, type Thesis, type ThesisId } from "../../shared/types";
 import { CompanyIndex, hrefFor } from "../../shared/values";
 import { generateStructured } from "../ai";
 import { getAiSettings } from "../ai/settings";
@@ -233,7 +233,7 @@ export function startDiscovery(input: StartDiscoveryInput): DiscoveryRun {
   const candidates = store.listCandidates(input.campaignId);
   for (const c of candidates) index.add(c.company, c.website, c.id);
   const ex = examples({
-    stages: stagesOf(schema),
+    stages: STAGES,
     prospects: prospects.map((r) => ({
       company: String(schema.companyKey ? r.cells[schema.companyKey] ?? "" : ""),
       status: schema.statusKey ? (r.cells[schema.statusKey] as string | null) ?? null : null,

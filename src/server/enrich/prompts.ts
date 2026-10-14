@@ -11,7 +11,7 @@
 import { z } from "zod";
 import type { Recipe } from "../../shared/ai";
 import { mergeTemplate, norm } from "../../shared/merge";
-import { columnOf, contactSchema, hookColumns, isContactKey, prospectSchema } from "../../shared/schema";
+import { columnOf, contactRecordKeys, contactSchema, hookColumns, isContactKey, prospectSchema } from "../../shared/schema";
 import type { CampaignSchema, CellValue, Column, Template } from "../../shared/types";
 import { clip } from "../ai/prompt";
 
@@ -25,8 +25,9 @@ export const THIS_CONTACT = "Contact";
 export function prospectData(
   schema: CampaignSchema, cells: Record<string, CellValue>, keys?: string[], contactField = CONTACT_FIELD,
 ): Record<string, string | Record<string, string>> {
-  // The ID is Mudd's, not about the prospect; the Primary box says nothing the nesting doesn't.
-  const skip = new Set([schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, schema.idKey, schema.contacts?.primaryKey].filter(Boolean));
+  // The ID is Mudd's, not about the prospect; the Primary box says nothing the nesting doesn't,
+  // and when someone was last contacted or replied is the user's record, not research.
+  const skip = new Set([schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, schema.idKey, ...contactRecordKeys(schema)].filter(Boolean));
   const fields = (cols: Column[], only: string[] | undefined) => {
     const out: Record<string, string> = {};
     for (const col of cols) {

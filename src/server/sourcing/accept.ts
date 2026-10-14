@@ -7,7 +7,7 @@
 import { mergeSources, sourcesColumn, type Source } from "../../shared/ai";
 import { allColumns, columnByHeaders, DISCOVERY_FIELDS, discoveryColumn, EMPLOYEES_HEADER, FIT_OPTIONS, isEmployeesHeader, makeKey, prospectIds, ROLE_HEADERS, websiteColumn } from "../../shared/schema";
 import { DEAL_ROLES, discoveryColumns, type Candidate, type CandidateContact, type EnrichChoice } from "../../shared/sourcing";
-import { CHECKED, stagesOf, type Campaign, type CampaignSchema, type CellValue, type Column, type Row } from "../../shared/types";
+import { CHECKED, STAGES, type Campaign, type CampaignSchema, type CellValue, type Column, type Row } from "../../shared/types";
 import { CompanyIndex } from "../../shared/values";
 import * as db from "../db";
 import { publish, publishCampaign } from "../enrich/hub";
@@ -130,7 +130,6 @@ export function acceptCandidates(campaignId: string, picks: AcceptPick[]): Accep
   const { schema } = campaign;
   const cs = schema.contacts!;
   const intel = discoveryColumns(schema);
-  const stages = stagesOf(schema);
   const website = websiteColumn(schema);
   const location = columnByHeaders(schema.columns, ["location", "city", "hq", "headquarters"]);
   const employees = schema.columns.find((c) => c.header === EMPLOYEES_HEADER) ?? schema.columns.find((c) => isEmployeesHeader(c.header));
@@ -170,7 +169,7 @@ export function acceptCandidates(campaignId: string, picks: AcceptPick[]): Accep
     put(cells, intel.budget, c.budget);
     put(cells, intel.clock, c.clock);
     put(cells, sourceCol, "Discovery");
-    if (schema.statusKey && stages[0]) cells[schema.statusKey] = stages[0];
+    if (schema.statusKey) cells[schema.statusKey] = STAGES[0]!;
     if (sourcesKey) {
       const company: Source[] = c.sources.filter((s) => !c.contacts.some((p) => p.source === s.url));
       let text = mergeSources(null, "Company", company);

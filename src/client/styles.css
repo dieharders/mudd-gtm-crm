@@ -179,6 +179,13 @@
     background-position: right 0.8rem center;
     background-size: 16px 16px;
   }
+  /* Can't be changed: sunk into the page, and no chevron on a dropdown that won't open. */
+  .field:disabled {
+    @apply cursor-not-allowed border-rim/40 bg-paper-deep text-mud-soft;
+  }
+  select.field:disabled {
+    background-image: none;
+  }
   .label {
     @apply mb-1.5 block font-label text-[13px] font-bold text-mud-soft;
   }

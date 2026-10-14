@@ -4,11 +4,11 @@
  * list together, and with the status chip and the search.
  */
 import { isSourcesColumn, type EnrichRun, type Recipe } from "../../shared/ai";
-import { CONTACT_TYPE_HINTS, ECONOMIC_BUYER } from "../../shared/schema";
+import { CONTACT_TYPE_HINTS, contactSchema, ECONOMIC_BUYER } from "../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Row } from "../../shared/types";
 import { primaryOf } from "../../shared/values";
 import { parseLocal, todayString } from "./format";
-import { contactedStage, lastTouchColumn, repliedColumn, sentColumn, stageIndex } from "./pipeline";
+import { contactedStage, stageIndex } from "./pipeline";
 
 export type QuickFilterId = "followUp" | "notReady" | "unenriched" | "buyer";
 
@@ -63,28 +63,34 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
   const out: QuickFilter[] = [];
   const inPlay = (r: Row) => !isScreened(r, schema);
 
-  // Still at Contacted, nothing heard back, and the last touch is a week old (or never dated).
+  // Still at Contacted, last contacted a week or more ago, and nobody has replied since. The
+  // dates are the contacts' own. With none at all, it was moved to Contacted without a date
+  // (Mark sent, the stepper): due, unless someone has replied.
   const contacted = contactedStage(stages);
-  const sent = sentColumn(schema);
-  const last = lastTouchColumn(schema);
-  const replied = repliedColumn(schema);
-  if (schema.statusKey && contacted && (sent || last)) {
+  const { lastContactedKey, lastReplyKey } = contactSchema(schema);
+  if (schema.statusKey && contacted && lastContactedKey) {
     const now = parseLocal(today) ?? new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - FOLLOW_UP_DAYS).getTime();
+    // The latest of a date column across the contacts, by the day: a datetime's hour doesn't put
+    // it on the other side of the cutoff. A date that won't read ("10/10/2026" typed as text)
+    // is passed over; null when none reads.
+    const latest = (people: Row[], key: string | undefined) => {
+      const days = key ? people.flatMap((p) => parseLocal(String(p.cells[key] ?? "").trim()) ?? []).map(startOfDay) : [];
+      return days.length ? Math.max(...days) : null;
+    };
     out.push({
       id: "followUp",
       label: "Needs follow-up",
-      title: `At ${contacted} with no reply, last touched ${FOLLOW_UP_DAYS}+ days ago`,
-      test: (r) => {
+      title: `At ${contacted} with no reply, last contacted ${FOLLOW_UP_DAYS}+ days ago or never dated`,
+      reads: "contactsOf",
+      test: (r, { contactsOf }) => {
         if (!inPlay(r) || statusOf(r, schema).toLowerCase() !== contacted.toLowerCase()) return false;
-        if (replied && !blank(r.cells[replied.key])) return false;
-        const values = [last, sent].map((c) => (c ? String(r.cells[c.key] ?? "").trim() : "")).filter(Boolean);
-        if (!values.length) return true;
-        // A date that won't read ("10/10/2026" typed in a text column) can't be told a week old.
-        const dates = values.map(parseLocal);
-        if (dates.some((d) => !d)) return false;
-        // By the day: a datetime's hour doesn't put it on the other side of the cutoff.
-        return Math.max(...dates.map((d) => startOfDay(d!))) <= cutoff;
+        const people = contactsOf(r.id);
+        const reply = latest(people, lastReplyKey);
+        if (people.every((p) => blank(p.cells[lastContactedKey]))) return reply === null;
+        const sent = latest(people, lastContactedKey);
+        if (sent === null || sent > cutoff) return false;
+        return reply === null || reply < sent;
       },
     });
   }

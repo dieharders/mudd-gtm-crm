@@ -5,7 +5,7 @@
  */
 import type ExcelJS from "exceljs";
 import { norm } from "../shared/merge";
-import { COMPANY_HEADERS, DEFAULT_WIDTH, NAME_HEADERS, typeFromHeader } from "../shared/schema";
+import { DEFAULT_WIDTH, typeFromHeader } from "../shared/schema";
 import { DEAD, type CampaignSchema, type Column, type ColumnType } from "../shared/types";
 import { colLetter, hrefFor, isTimeOnly, numFmtFor, readCellValue, toNumber } from "./cells";
 import { inlineListOptions } from "./ooxml";
@@ -31,10 +31,10 @@ export interface ColumnSample {
   listOptions?: string[];
 }
 
-const FLAG_TEXT = /^(true|false|yes|no|y|n|x|1|0|✓|✔|☑)$/i;
+/** A header naming a company or a person, whose names can look like links ("notion.so", "linear.app"). */
+const NAME_LIKE = /name|^(company|org|organi[sz]ation|account|business|contact|person|prospect)$/;
 
 export function detectType(s: ColumnSample): Pick<Column, "type" | "options" | "numeric"> {
-  const h = norm(s.header);
   const byHeader = typeFromHeader(s.header);
   const vals = s.values.filter((v) => v !== null && v !== undefined && v !== "");
   // Rich text, links and formula results read as the text the sheet shows.
@@ -45,9 +45,6 @@ export function detectType(s: ColumnSample): Pick<Column, "type" | "options" | "
     return { type: "select", options: s.listOptions, numeric: numeric || undefined };
   }
   if (vals.length && vals.every((v) => typeof v === "boolean")) return { type: "checkbox" };
-  if (byHeader?.type === "checkbox" && texts.every((t) => FLAG_TEXT.test(t.trim()))) return { type: "checkbox" };
-  if (/^meeting(at|date|time|datetime|when)$/.test(h)) return { type: "datetime" };
-  if (/^meeting(url|link)$/.test(h)) return { type: "url" };
 
   const fmts = s.numFmts.filter(Boolean) as string[];
   // A time with no date (h:mm) is kept as text ("10:30"), not shown as a day in 1899.
@@ -62,10 +59,10 @@ export function detectType(s: ColumnSample): Pick<Column, "type" | "options" | "
     }
   }
   if (fmts.some((f) => f.includes("$"))) return { type: "currency" };
-  if (byHeader?.strong && byHeader.type !== "checkbox") return { type: byHeader.type };
+  if (byHeader?.strong) return { type: byHeader.type };
   // Numbers before links: "4.5" is a score, not a website.
   if (vals.length && vals.every((v) => typeof v === "number")) return { type: "number" };
-  const nameLike = NAME_HEADERS.includes(h) || COMPANY_HEADERS.includes(h);
+  const nameLike = NAME_LIKE.test(norm(s.header));
   if (!nameLike && texts.length && texts.filter((t) => hrefFor(t) && /[/.]/.test(t)).length / texts.length >= 0.6 && texts.every((t) => !/\s/.test(t.trim()))) {
     return { type: "url" };
   }
@@ -109,9 +106,12 @@ export const STYLE = {
 /** The pale fill base-tracker gives the cells its owner fills in by hand. */
 export const YOURS_FILL = "FFFFFFF0";
 
-/** Columns that get the "yours" fill: the ones Mudd and its user keep up to date. */
+/**
+ * Columns that get the "yours" fill: the ones Mudd and its user keep up to date, a contact's
+ * Primary box among them. Last contacted and Last reply have it by their header.
+ */
 export function isYours(col: Column, schema: CampaignSchema): boolean {
-  const keys = [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey];
+  const keys = [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, schema.contacts?.primaryKey];
   return keys.includes(col.key) || /^(next|notes?|last)/i.test(col.header);
 }
 

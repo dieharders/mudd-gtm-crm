@@ -15,7 +15,7 @@ import { CONTACT_TYPE_HINTS, contactSchema, prospectSchema } from "../../../shar
 import { DEAD, isScreened, MEETING_STAGE, type CampaignSchema, type CellEdit, type Column, type Row, type Template } from "../../../shared/types";
 import { contactLabel, contactOf, orderedContacts, primaryOf, prospectCells, prospectTitle, toLocalInput } from "../../../shared/values";
 import { cn } from "../../lib/cn";
-import { formatDateTime, isSameDay, parseLocal, relative } from "../../lib/format";
+import { formatDate, formatDateTime, isSameDay, parseLocal, relative } from "../../lib/format";
 import { contactedStage, shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
 import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
@@ -68,6 +68,12 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
     if (toastMsg) undoToast(toastMsg, () => state.undo());
   };
 
+  const screenOut = !screened && schema.screenedKey && (
+    <ScreenOutButton count={1} onConfirm={(reason) => {
+      if (state.screenOut([row.id], reason)) undoToast("Screened out", () => state.undo());
+    }} />
+  );
+
   const layer = useInert<HTMLElement>(!!leaving);
   useEffect(() => {
     if (leaving) return;
@@ -102,11 +108,6 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
             {screened && <span className="ml-2 rounded-sm bg-paper-deep px-1.5 py-0.5 text-[10px] font-semibold text-mud-soft uppercase">Screened out</span>}
           </p>
         </div>
-        {!screened && schema.screenedKey && (
-          <ScreenOutButton count={1} align="right" onConfirm={(reason) => {
-            if (state.screenOut([row.id], reason)) undoToast("Screened out", () => state.undo());
-          }} />
-        )}
         <Button size="icon" variant="ghost" onClick={onPrev} disabled={!onPrev} title="Previous (Alt+↑)"><ChevronUp size={16} /></Button>
         <Button size="icon" variant="ghost" onClick={onNext} disabled={!onNext} title="Next (Alt+↓)"><ChevronDown size={16} /></Button>
         <RowMenu row={row} contacts={contacts.length} state={state} onClose={onClose} />
@@ -121,8 +122,10 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
           {!screened && <RowSuggestions row={row} contacts={contacts} schema={schema} enrich={enrich} />}
           {screened ? (
             <ScreenedBanner row={row} schema={schema} state={state} />
+          ) : schema.statusKey ? (
+            <Stepper row={row} schema={schema} stages={stages} onEdit={edit} extra={screenOut} />
           ) : (
-            schema.statusKey && <Stepper row={row} schema={schema} stages={stages} onEdit={edit} />
+            screenOut && <div>{screenOut}</div>
           )}
 
           {/* Sibling sections need keys of their own: with one shared key, React never removes the
@@ -218,6 +221,11 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
             const role = contactOf(c.cells, cs).role;
             const email = emailCols.map((col) => String(c.cells[col.key] ?? "").trim()).find(Boolean) ?? "";
             const type = cs.typeKey ? String(c.cells[cs.typeKey] ?? "").trim() : "";
+            const dated = (key: string | undefined, what: string) => {
+              const v = key ? String(c.cells[key] ?? "").trim() : "";
+              return v && `${what} ${formatDate(v)}`;
+            };
+            const sub = [role, email !== label && email, dated(cs.lastContactedKey, "Contacted"), dated(cs.lastReplyKey, "Replied")].filter(Boolean).join(" · ");
             const pending = enrich.pendingByRow.get(c.id)?.length ?? 0;
             return (
               <li key={c.id}>
@@ -230,7 +238,7 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
                       {c === primary && <PrimaryStar />}
                     </span>
                     {/* A contact with no name is titled by their email: not shown twice. */}
-                    {(role || (email && email !== label)) && <span className="block truncate text-xs text-mud-soft">{[role, email !== label && email].filter(Boolean).join(" · ")}</span>}
+                    {sub && <span className="block truncate text-xs text-mud-soft">{sub}</span>}
                   </span>
                   {pending > 0 && <span className="tag shrink-0 bg-clay text-white">✨ {pending}</span>}
                   {type && <span className={cn("tag shrink-0", typeTone(type, typeCol?.options))}>{type}</span>}
@@ -277,9 +285,16 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
   };
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 scroll-thin">
-      <button onClick={onBack} className="mb-3 inline-flex max-w-full items-center gap-1 text-xs font-medium text-mud-soft hover:text-clay-deep" title="Back to the prospect (Esc)">
-        <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{orgTitle}</span>
-      </button>
+      <div className="mb-3 flex items-center gap-3">
+        <button onClick={onBack} className="inline-flex min-w-0 items-center gap-1 text-xs font-medium text-mud-soft hover:text-clay-deep" title="Back to the prospect (Esc)">
+          <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{orgTitle}</span>
+        </button>
+        {!disabled && (
+          <button onClick={remove} className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-800">
+            <Trash2 size={13} className="shrink-0" /> Delete contact
+          </button>
+        )}
+      </div>
       <div className="flex items-start gap-3">
         <Tile size="lg" className={tileFor(contact.id)}>{label[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
@@ -299,9 +314,6 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
               <Star size={13} /> Make primary
             </Button>
           )}
-          <Button size="sm" variant="ghost" className="ml-auto text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={remove}>
-            <Trash2 size={13} /> Delete contact
-          </Button>
         </div>
       )}
 
@@ -328,13 +340,16 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
 
 // ---------- pipeline ----------
 
-function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSchema; stages: string[]; onEdit: (e: CellEdit[], l: string, t?: string) => void }) {
+function Stepper({ row, schema, stages, onEdit, extra }: {
+  row: Row; schema: CampaignSchema; stages: string[]; onEdit: (e: CellEdit[], l: string, t?: string) => void;
+  /** Shown beside Dropped off: the Screen out button. */
+  extra?: ReactNode;
+}) {
   const status = String(row.cells[schema.statusKey!] ?? "");
   const dead = status === DEAD;
   const cur = stageIndex(status, stages);
   const set = (stage: string) => {
-    const { edits, stamped } = stageEdits(row, schema, stages, stage);
-    onEdit(edits, "Change stage", `${stage || "Stage cleared"}${stamped.length ? ` · ${stamped.join(", ")} set to today` : ""}`);
+    onEdit(stageEdits(row, schema, stage), "Change stage", stage || "Stage cleared");
   };
   return (
     <section>
@@ -372,10 +387,11 @@ function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSc
             <Undo2 size={13} /> Revive — back to {stages[0]}
           </Button>
         ) : (
-          <Button size="sm" variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => set(DEAD)}>
+          <Button size="sm" onClick={() => set(DEAD)}>
             <Ban size={13} /> Dropped off / dead
           </Button>
         )}
+        {extra}
         {dead && <span className="text-xs font-medium text-rose-700">Marked {DEAD}</span>}
       </div>
     </section>
@@ -435,7 +451,7 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
     const next = shouldAdvanceToMeeting(status, stages);
     let msg = "Meeting saved";
     if (next && schema.statusKey) {
-      edits.push(...stageEdits(row, schema, stages, next).edits);
+      edits.push(...stageEdits(row, schema, next));
       msg = `Meeting saved · status set to ${next}`;
     }
     onEdit(edits, "Book meeting", msg);
@@ -497,8 +513,7 @@ function MeetingSection({ row, schema, stages, onEdit }: { row: Row; schema: Cam
             <div className="mt-3 flex items-center gap-2 border-t border-rim/40 pt-3 text-xs text-mud-soft">
               <span>This was {relative(at)}. Did it happen?</span>
               <Button size="sm" variant="subtle" className="ml-auto" onClick={() => {
-                const { edits } = stageEdits(row, schema, stages, heldStage);
-                onEdit(edits, "Change stage", `Status set to ${heldStage}`);
+                onEdit(stageEdits(row, schema, heldStage), "Change stage", `Status set to ${heldStage}`);
               }}>Mark {heldStage}</Button>
               <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>Reschedule</Button>
             </div>
@@ -541,8 +556,7 @@ function IntroSection({ row, primary, schema, stages, templates, onEdit, onOpenT
   };
   const markSent = () => {
     if (!contacted || !schema.statusKey) return;
-    const { edits, stamped } = stageEdits(row, schema, stages, contacted);
-    onEdit(edits, "Mark sent", `Marked ${contacted}${stamped.length ? ` · ${stamped.join(", ")} set to today` : ""}`);
+    onEdit(stageEdits(row, schema, contacted), "Mark sent", `Marked ${contacted}`);
   };
 
   return (

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { EnrichRun, Recipe } from "../../shared/ai";
 import { ensureAppColumns, makeKey } from "../../shared/schema";
-import { CHECKED, stagesOf, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../shared/types";
+import { CHECKED, STAGES, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../shared/types";
 import { contactFilters, prospectFilters, runsThrough, type FilterContext, type QuickFilterId } from "./quickFilters";
 
 function sheet(...cols: [string, ColumnType?][]): CampaignSchema {
@@ -10,7 +10,6 @@ function sheet(...cols: [string, ColumnType?][]): CampaignSchema {
   ensureAppColumns(schema);
   return schema;
 }
-const keyOf = (schema: CampaignSchema, header: string) => schema.columns.find((c) => c.header === header)!.key;
 let n = 0;
 const row = (cells: Record<string, CellValue>, parentId?: string): Row => ({ id: `r${++n}`, position: n, cells, ...(parentId ? { parentId } : {}) });
 const TODAY = "2026-10-11";
@@ -18,7 +17,7 @@ const TODAY = "2026-10-11";
 function filterOf(schema: CampaignSchema, id: QuickFilterId, { contacts = [], recipes = [], ran = () => false, today = TODAY }: {
   contacts?: Row[]; recipes?: Recipe[]; ran?: FilterContext["ran"]; today?: string;
 } = {}) {
-  const f = prospectFilters(schema, stagesOf(schema), recipes, today).find((x) => x.id === id);
+  const f = prospectFilters(schema, STAGES, recipes, today).find((x) => x.id === id);
   const ctx: FilterContext = { contactsOf: (pid) => contacts.filter((c) => c.parentId === pid), ran };
   return f && { ...f, test: (r: Row) => f.test(r, ctx) };
 }
@@ -28,53 +27,65 @@ const recipe = (id: string, ...keys: string[]): Recipe => ({
 });
 
 describe("needs follow-up", () => {
-  const schema = sheet(["Company"], ["Status"], ["Sent", "date"], ["Replied", "date"], ["Last touch", "date"]);
-  const f = filterOf(schema, "followUp")!;
-  const s = schema.statusKey!;
-  const sent = keyOf(schema, "Sent");
-  const replied = keyOf(schema, "Replied");
-  const lasttouch = keyOf(schema, "Last touch");
+  const schema = sheet(["Company"], ["Status"]);
+  const sent = schema.contacts!.lastContactedKey!;
+  const reply = schema.contacts!.lastReplyKey!;
+  /** A prospect at `status` with a contact for each set of cells, and the filter's verdict. */
+  const check = (status: string, people: Record<string, CellValue>[], opts: { today?: string; cells?: Record<string, CellValue> } = {}) => {
+    const org = row({ [schema.statusKey!]: status, ...opts.cells });
+    return filterOf(schema, "followUp", { contacts: people.map((c) => row(c, org.id)), today: opts.today })!.test(org);
+  };
 
   test("contacted a week or more ago, with no reply", () => {
-    expect(f.test(row({ [s]: "Contacted", [sent]: "2026-10-04" }))).toBe(true);
-    expect(f.test(row({ [s]: "contacted", [sent]: "2026-09-01" }))).toBe(true);
-    expect(f.test(row({ [s]: "Contacted", [sent]: "2026-10-05" }))).toBe(false);
+    expect(check("Contacted", [{ [sent]: "2026-10-04" }])).toBe(true);
+    expect(check("contacted", [{ [sent]: "2026-09-01" }])).toBe(true);
+    expect(check("Contacted", [{ [sent]: "2026-10-05" }])).toBe(false);
   });
 
-  test("the latest of Sent and Last touch counts", () => {
-    expect(f.test(row({ [s]: "Contacted", [sent]: "2026-09-01", [lasttouch]: "2026-10-10" }))).toBe(false);
+  test("the latest contact across the people counts", () => {
+    expect(check("Contacted", [{ [sent]: "2026-09-01" }, { [sent]: "2026-10-10" }])).toBe(false);
   });
 
-  test("a reply, another stage, or a screened-out prospect is no follow-up", () => {
-    expect(f.test(row({ [s]: "Contacted", [sent]: "2026-09-01", [replied]: "2026-09-03" }))).toBe(false);
-    expect(f.test(row({ [s]: "Replied", [sent]: "2026-09-01" }))).toBe(false);
-    expect(f.test(row({ [s]: "Contacted", [sent]: "2026-09-01", [schema.screenedKey!]: CHECKED }))).toBe(false);
+  test("a reply since the last contact, another stage, or a screened-out prospect is no follow-up", () => {
+    expect(check("Contacted", [{ [sent]: "2026-09-01", [reply]: "2026-09-03" }])).toBe(false);
+    expect(check("Contacted", [{ [sent]: "2026-09-01" }, { [reply]: "2026-09-01" }])).toBe(false);
+    expect(check("Replied", [{ [sent]: "2026-09-01" }])).toBe(false);
+    expect(check("Contacted", [{ [sent]: "2026-09-01" }], { cells: { [schema.screenedKey!]: CHECKED } })).toBe(false);
   });
 
-  test("contacted but never dated is chased", () => {
-    expect(f.test(row({ [s]: "Contacted" }))).toBe(true);
+  test("a reply older than the last contact is chased again", () => {
+    expect(check("Contacted", [{ [sent]: "2026-09-10", [reply]: "2026-09-03" }])).toBe(true);
   });
 
-  test("a date it can't read is not taken for never dated", () => {
-    const text = sheet(["Company"], ["Status"], ["Last touch"]);
-    const g = filterOf(text, "followUp")!;
-    expect(g.test(row({ [text.statusKey!]: "Contacted", [keyOf(text, "Last touch")]: "10/10/2026" }))).toBe(false);
+  test("contacted but never dated is due, unless someone has replied", () => {
+    expect(check("Contacted", [])).toBe(true);
+    expect(check("Contacted", [{}, {}])).toBe(true);
+    expect(check("Contacted", [{}, { [reply]: "2026-09-01" }])).toBe(false);
+    expect(check("Not contacted", [{}])).toBe(false);
+    expect(check("Contacted", [{}], { cells: { [schema.screenedKey!]: CHECKED } })).toBe(false);
+  });
+
+  test("a date it can't read is passed over, not the whole prospect", () => {
+    expect(check("Contacted", [{ [sent]: "10/10/2026" }])).toBe(false);
+    expect(check("Contacted", [{ [sent]: "2026-09-01" }, { [sent]: "10/10/2026" }])).toBe(true);
+    expect(check("Contacted", [{ [sent]: "2026-09-01" }, { [reply]: "n/a" }])).toBe(true);
   });
 
   test("a datetime counts by its day, not its hour", () => {
-    const timed = sheet(["Company"], ["Status"], ["Sent", "datetime"]);
-    const g = filterOf(timed, "followUp")!;
-    expect(g.test(row({ [timed.statusKey!]: "Contacted", [keyOf(timed, "Sent")]: "2026-10-04T15:00" }))).toBe(true);
-    expect(g.test(row({ [timed.statusKey!]: "Contacted", [keyOf(timed, "Sent")]: "2026-10-05T09:00" }))).toBe(false);
+    expect(check("Contacted", [{ [sent]: "2026-10-04T15:00" }])).toBe(true);
+    expect(check("Contacted", [{ [sent]: "2026-10-05T09:00" }])).toBe(false);
   });
 
   test("the week counts back from the day given", () => {
-    const later = filterOf(schema, "followUp", { today: "2026-10-12" })!;
-    expect(later.test(row({ [s]: "Contacted", [sent]: "2026-10-05" }))).toBe(true);
+    expect(check("Contacted", [{ [sent]: "2026-10-05" }], { today: "2026-10-12" })).toBe(true);
   });
 
-  test("not offered without a Sent or Last touch column", () => {
-    expect(filterOf(sheet(["Company"], ["Status"]), "followUp")).toBeUndefined();
+  test("offered only with a Status column and the contacts' Last contacted", () => {
+    const offered = (s: CampaignSchema) => prospectFilters(s, ["Not contacted", "Contacted"], [], TODAY).some((f) => f.id === "followUp");
+    expect(offered(schema)).toBe(true);
+    expect(offered({ ...schema, statusKey: undefined })).toBe(false);
+    expect(offered({ ...schema, contacts: { ...schema.contacts!, lastContactedKey: undefined } })).toBe(false);
+    expect(offered({ ...schema, contacts: undefined })).toBe(false);
   });
 });
 

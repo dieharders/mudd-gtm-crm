@@ -53,7 +53,12 @@ export function registerAiRoutes(on: On, { json, body, fail }: { json: Json; bod
   on("PATCH", "/api/recipes/:id", async (req, [rid]) => {
     const cur = store.getRecipe(rid!) ?? fail(404, "Recipe not found.");
     const b = await body<{ name?: string; instructions?: string; inputKeys?: string[]; outputs?: OutputInput[]; webSearch?: boolean }>(req);
-    const outputs = b.outputs ? resolveOutputs(cur.campaignId, b.outputs, cur.id) : cur.outputs;
+    let outputs = cur.outputs;
+    try {
+      if (b.outputs) outputs = resolveOutputs(cur.campaignId, b.outputs, cur.id);
+    } catch (err) {
+      return fail(400, (err as Error).message);
+    }
     const recipe = store.saveRecipe({ ...cur, ...b, name: b.name?.trim() || cur.name, instructions: b.instructions?.trim() || cur.instructions, outputs });
     publishRecipes(cur.campaignId);
     return json({ recipe, campaign: db.getCampaign(cur.campaignId) });

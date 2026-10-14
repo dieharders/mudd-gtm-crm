@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { assignRoles, makeKey } from "../../shared/schema";
-import type { CampaignSchema, ColumnType } from "../../shared/types";
+import { makeKey } from "../../shared/schema";
+import type { CampaignSchema, Column, ColumnType } from "../../shared/types";
 import { cardLayout, pinnedCount } from "./listLayout";
 
+/** A schema with these columns, its Company and ID being Mudd's. */
 function sheet(...cols: [string, ColumnType?][]): CampaignSchema {
   const taken = new Set<string>();
-  const schema: CampaignSchema = { columns: cols.map(([header, type = "text"]) => ({ key: makeKey(header, taken), header, type, origin: "sheet" })) };
-  assignRoles(schema);
-  return schema;
+  const columns = cols.map(([header, type = "text"]): Column => ({ key: makeKey(header, taken), header, type, origin: "sheet" }));
+  const keyOf = (header: string) => columns.find((c) => c.header === header)?.key;
+  return { columns, companyKey: keyOf("Company"), idKey: keyOf("ID") };
 }
 const headers = (cols: { header: string }[]) => cols.map((c) => c.header);
 

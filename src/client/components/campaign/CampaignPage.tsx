@@ -7,9 +7,8 @@ import toast from "react-hot-toast";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { allColumns, contactSchema, orgColumn } from "../../../shared/schema";
 import {
-  DEAD, isChecked, isScreened, ORG_KEY, stagesOf, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
+  DEAD, isChecked, isScreened, ORG_KEY, STAGES, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
 } from "../../../shared/types";
-import { sameValue } from "../../../shared/values";
 import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
 import { useConsentGate } from "../../hooks/useConsentGate";
 import { useDiscovery } from "../../hooks/useDiscovery";
@@ -157,7 +156,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   const campaign = state.campaign!;
   const schema = campaign.schema;
   const { statusKey, screenedKey } = schema;
-  const stages = useMemo(() => stagesOf(schema), [schema]);
+  const stages = STAGES;
   const [params, setParams] = useSearchParams();
   const initialRow = params.get("row");
   const initialDiscover = params.get("discover");
@@ -419,30 +418,22 @@ function CampaignView({ state }: { state: CampaignState }) {
 
   const { edit, rows } = state;
   /**
-   * Grid edits, made the way the prospect panel makes them: a new status also stamps the Sent /
-   * Replied / Last touch dates, and unticking Screened out clears the reason, as Restore does.
-   * A value typed or pasted in the same batch wins over either.
+   * Grid edits, made the way the prospect panel makes them: unticking Screened out clears the
+   * reason, as Restore does. A value typed or pasted in the same batch wins.
    */
   const gridEdit = useCallback((edits: CellEdit[], label?: string) => {
     const { reasonKey } = schema;
     const restoring = (e: CellEdit) => e.key === screenedKey && !!reasonKey && !isChecked(e.value);
-    if (!edits.some((e) => (e.key === statusKey && e.value) || restoring(e))) return edit(edits, label);
+    if (!edits.some(restoring)) return edit(edits, label);
     const byId = new Map(rows.map((r) => [r.id, r]));
     const given = new Set(edits.map((e) => `${e.rowId}\u0000${e.key}`));
     const out = [...edits];
-    const add = (e: CellEdit) => {
-      if (!given.has(`${e.rowId}\u0000${e.key}`)) out.push(e);
-    };
     for (const e of edits) {
       const row = byId.get(e.rowId);
-      if (!row) continue;
-      if (e.key === statusKey && typeof e.value === "string" && e.value && !sameValue(row.cells[statusKey], e.value)) {
-        stageEdits(row, schema, stages, e.value).edits.forEach(add);
-      }
-      if (restoring(e) && isScreened(row, schema)) add({ rowId: row.id, key: reasonKey!, value: null });
+      if (row && restoring(e) && isScreened(row, schema) && !given.has(`${row.id}\u0000${reasonKey}`)) out.push({ rowId: row.id, key: reasonKey!, value: null });
     }
     return edit(out, label);
-  }, [edit, rows, schema, screenedKey, stages, statusKey]);
+  }, [edit, rows, schema, screenedKey]);
   const isLocked = useCallback((row: Row) => isScreened(row, schema), [schema]);
 
   // The columns each tab of the workbook has: kept, not deleted, in the Columns dialog.
@@ -916,7 +907,7 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
   const setStatus = (stage: string) => {
     const label = count(active.length);
     onDone();
-    if (state.edit(active.flatMap((r) => stageEdits(r, schema, stages, stage).edits), `Set ${label} to ${stage}`)) {
+    if (state.edit(active.flatMap((r) => stageEdits(r, schema, stage)), `Set ${label} to ${stage}`)) {
       undoToast(`${label} set to ${stage}`, () => state.undo());
     }
   };

@@ -4,7 +4,7 @@
  * header alone says about a column's type.
  */
 import { norm } from "./merge";
-import { CHANNEL, DEAD, DEFAULT_STAGES, ORG_KEY, type CampaignSchema, type Column, type ColumnType, type ContactSchema } from "./types";
+import { CHANNEL, DEAD, ORG_KEY, STAGES, type CampaignSchema, type Column, type ColumnType, type ContactSchema } from "./types";
 
 // Keys are used as plain object keys on a row's cells, so none may shadow Object.prototype
 // ("constructor" would read back as a function on every row that lacks it).
@@ -23,10 +23,6 @@ export function makeKey(header: string, taken: Set<string>): string {
 /** A tab holding an old Screened-out list: never imported, and never shown in the app. */
 export const looksLikeScreenedTab = (name: string) => /screen|disqual|reject|exclu|do.?not|dnc|dropped/i.test(name);
 
-export const NAME_HEADERS =["primarycontact", "contact", "name", "fullname", "contactname", "person", "prospect"];
-export const COMPANY_HEADERS = ["company", "org", "organization", "organisation", "account", "companyname", "business"];
-const SCREENED_HEADERS = ["screenedout", "screened", "screenout"];
-const REASON_HEADERS = ["screenedreason", "screeningreason", "screenoutreason", "reasonscreened", "whyscreened", "whyscreenedout"];
 /** The prospect's hook: the researched reason to write to them, which the intro is built on. */
 export const HOOK_HEADERS = ["hook", "personalization", "icebreaker", "angle"];
 
@@ -78,8 +74,6 @@ export const isHonorific = (v: string) => HONORIFICS.has(v.toLowerCase().replace
 
 // ---------- prospect IDs ----------
 
-/** The Prospects tab's ID column, as Mudd writes it: "ID". */
-export const ID_HEADER = "id";
 /** The Contacts tab's column naming each person's prospect by that ID: "Prospect ID". */
 export const PROSPECT_ID_HEADER = "prospectid";
 
@@ -122,31 +116,77 @@ export const CONTACT_TYPE_HINTS: Record<string, string> = {
   [CHANNEL]: "Not a person: a main line, a general inbox or a program desk. Never greeted by name, and not researched as a person.",
 };
 
-/**
- * Only "Contact type": a Contacts tab's own "Type" or "Persona" column means something else
- * (Mobile/Work, the user's own personas), and turning it into this dropdown would make Excel
- * reject its values.
- */
-const CONTACT_TYPE_HEADER = "contacttype";
-/** "Primary contact" is a name, not this box. */
-const PRIMARY_HEADERS = ["primary", "isprimary"];
-
 /** A column made by Mudd: a key free among `taken` (which it joins), the type's width unless given. */
 function newColumn(taken: Set<string>, header: string, type: ColumnType, extra: Partial<Column> = {}): Column {
   return { key: makeKey(header, taken), header, type, origin: "user", width: DEFAULT_WIDTH[type], ...extra };
 }
 
-/** The three contact columns Mudd relies on, as a new campaign has them and as import adds them. */
-const NAME_COLUMN = { header: "Name", type: "text", width: 180 } as const;
-const TYPE_COLUMN = { header: "Contact type", type: "select", width: 150 } as const;
-const PRIMARY_COLUMN = { header: "Primary", type: "checkbox", width: 90 } as const;
-const roleColumn = (taken: Set<string>, spec: { header: string; type: ColumnType; width: number }, extra: Partial<Column> = {}) =>
-  newColumn(taken, spec.header, spec.type, { width: spec.width, ...(spec.type === "select" ? { options: [...CONTACT_TYPES] } : {}), ...extra });
+/** A column Mudd relies on, as Mudd writes it. */
+type RoleSpec = { header: string; type: ColumnType; width: number; options?: readonly string[]; hidden?: boolean };
+/**
+ * Which key of the schema names each role's column, and what Mudd uses it for (the Columns
+ * dialog says so); `add: false` for one a sheet may lack.
+ */
+type Roles<K extends string> = readonly { key: K; spec: RoleSpec; label: string; add?: false }[];
+const roleColumn = (taken: Set<string>, spec: RoleSpec, extra: Partial<Column> = {}) =>
+  newColumn(taken, spec.header, spec.type, { width: spec.width, ...(spec.options ? { options: [...spec.options] } : {}), ...(spec.hidden ? { hidden: true } : {}), ...extra });
+
+const STATUS_COLUMN: RoleSpec = { header: "Status", type: "select", width: 140, options: [...STAGES, DEAD] };
+const COMPANY_COLUMN: RoleSpec = { header: "Company", type: "text", width: 190 };
+/** The headers Mudd writes for the prospect's status and company, normalised: import looks for them. */
+export const STATUS_HEADER = norm(STATUS_COLUMN.header);
+export const COMPANY_HEADER = norm(COMPANY_COLUMN.header);
+
+/**
+ * The prospect's columns Mudd relies on, in the order it adds the ones a sheet lacks. The
+ * company is only read: a sheet without one doesn't get one.
+ */
+const PROSPECT_ROLES: Roles<"statusKey" | "companyKey" | "meetingUrlKey" | "meetingAtKey" | "introKey" | "screenedKey" | "reasonKey" | "idKey"> = [
+  { key: "statusKey", spec: STATUS_COLUMN, label: "Pipeline status" },
+  { key: "companyKey", spec: COMPANY_COLUMN, label: "Company", add: false },
+  { key: "meetingUrlKey", spec: { header: "Meeting URL", type: "url", width: 220 }, label: "Meeting link" },
+  { key: "meetingAtKey", spec: { header: "Meeting at", type: "datetime", width: 170 }, label: "Meeting time" },
+  { key: "introKey", spec: { header: "Intro message", type: "longtext", width: 320 }, label: "Intro message" },
+  { key: "screenedKey", spec: { header: "Screened out", type: "checkbox", width: 120 }, label: "Screened out" },
+  { key: "reasonKey", spec: { header: "Screened reason", type: "longtext", width: 280 }, label: "Screened reason" },
+  { key: "idKey", spec: { header: "ID", type: "text", width: 90, hidden: true }, label: "Prospect ID: the Contacts tab links by it" },
+];
+
+/** The five contact columns Mudd relies on, as a new campaign has them and as import adds them. */
+const NAME_COLUMN: RoleSpec = { header: "Name", type: "text", width: 180 };
+const TYPE_COLUMN: RoleSpec = { header: "Contact type", type: "select", width: 150, options: CONTACT_TYPES };
+const PRIMARY_COLUMN: RoleSpec = { header: "Primary", type: "checkbox", width: 90 };
+const LAST_CONTACTED_COLUMN: RoleSpec = { header: "Last contacted", type: "date", width: 130 };
+const LAST_REPLY_COLUMN: RoleSpec = { header: "Last reply", type: "date", width: 120 };
+const CONTACT_ROLES: Roles<"nameKey" | "typeKey" | "primaryKey" | "lastContactedKey" | "lastReplyKey"> = [
+  { key: "nameKey", spec: NAME_COLUMN, label: "Contact name" },
+  { key: "typeKey", spec: TYPE_COLUMN, label: "Contact type" },
+  { key: "primaryKey", spec: PRIMARY_COLUMN, label: "Primary contact" },
+  { key: "lastContactedKey", spec: LAST_CONTACTED_COLUMN, label: "Last contacted" },
+  { key: "lastReplyKey", spec: LAST_REPLY_COLUMN, label: "Last reply" },
+];
+
+/** The keys of a list's columns Mudd relies on, each with what Mudd uses it for. */
+function rolesOf<K extends string>(holder: Partial<Record<K, string>>, roles: Roles<K>): Map<string, string> {
+  return new Map(roles.flatMap(({ key, label }) => (holder[key] ? [[holder[key], label] as const] : [])));
+}
+export const prospectRoles = (schema: CampaignSchema) => rolesOf(schema, PROSPECT_ROLES);
+export const contactRoles = (contacts: ContactSchema) => rolesOf(contacts, CONTACT_ROLES);
 
 const NO_CONTACTS: ContactSchema = { columns: [] };
 
 /** A campaign's contact columns: none for a schema that has no contacts. */
 export const contactSchema = (schema: CampaignSchema): ContactSchema => schema.contacts ?? NO_CONTACTS;
+
+/**
+ * The contact columns that are the user's own record, not facts about the person: the Primary
+ * box, Last contacted and Last reply. Nothing is researched into them, and they don't go to the
+ * AI as context.
+ */
+export function contactRecordKeys(schema: CampaignSchema): string[] {
+  const { primaryKey, lastContactedKey, lastReplyKey } = contactSchema(schema);
+  return [primaryKey, lastContactedKey, lastReplyKey].filter((k): k is string => !!k);
+}
 
 /** Every column, the prospect's then its contacts'. */
 export const allColumns = (schema: CampaignSchema): Column[] => [...schema.columns, ...(schema.contacts?.columns ?? [])];
@@ -187,17 +227,38 @@ export function prospectSchema(schema: CampaignSchema): CampaignSchema {
   return view;
 }
 
-export function assignRoles(schema: CampaignSchema): void {
-  const find = (pred: (h: string, c: Column) => boolean) =>
-    schema.columns.find((c) => pred(norm(c.header), c))?.key;
-  schema.statusKey ??= find((h) => h === "status" || h === "stage");
-  schema.companyKey ??= COMPANY_HEADERS.map((n) => find((h) => h === n)).find(Boolean);
-  schema.idKey ??= find((h) => h === ID_HEADER);
-  schema.introKey ??= find((h) => h === "intromessage" || h === "intro" || h === "introductionmessage");
-  schema.meetingUrlKey ??= find((h) => /^meeting(url|link)$/.test(h));
-  schema.meetingAtKey ??= find((h) => /^meeting(at|date|time|datetime|when)$/.test(h));
-  schema.screenedKey ??= find((h, c) => SCREENED_HEADERS.includes(h) && c.type === "checkbox");
-  schema.reasonKey ??= find((h) => REASON_HEADERS.includes(h));
+/**
+ * The column headed as Mudd heads `header`, give or take case and punctuation ("STATUS",
+ * "Status:"). The closest wins: with both "Status:" and "Status", it is "Status", and
+ * "Status:" stays the sheet's own.
+ */
+function roleColumnOf(columns: Column[], header: string): Column | undefined {
+  return columns.find((c) => c.header === header)
+    ?? columns.find((c) => c.header.trim().toLowerCase() === header.toLowerCase())
+    ?? columns.find((c) => norm(c.header) === norm(header));
+}
+
+/**
+ * Give each role the column headed as Mudd heads it, adding one where the sheet has none, and
+ * make that column Mudd's whatever the sheet made it: its header, type and dropdown list. The
+ * cells stay the sheet's, read as that type: a box is ticked only by what reads as a tick (TRUE,
+ * yes, x, ✓, 1), and any other text in it reads as unticked.
+ */
+function ensureRoles<K extends string>(holder: Partial<Record<K, string>>, columns: Column[], roles: Roles<K>, taken: Set<string>): void {
+  for (const { key, spec, add } of roles) {
+    holder[key] ??= roleColumnOf(columns, spec.header)?.key;
+    const col = columns.find((c) => c.key === holder[key]);
+    if (col) {
+      col.header = spec.header;
+      col.type = spec.type;
+      if (spec.options) col.options = [...spec.options];
+      else delete col.options;
+    } else if (add !== false) {
+      const added = roleColumn(taken, spec, { origin: "mudd" });
+      columns.push(added);
+      holder[key] = added.key;
+    }
+  }
 }
 
 /**
@@ -207,33 +268,10 @@ export function assignRoles(schema: CampaignSchema): void {
  * values under, which a new column must not show.
  */
 export function ensureAppColumns(schema: CampaignSchema, extraTaken: Iterable<string> = []): void {
-  assignRoles(schema);
-  const taken = new Set([...schema.columns.map((c) => c.key), ...(schema.contacts?.columns ?? []).map((c) => c.key), ...extraTaken]);
-  const add = (header: string, type: ColumnType, extra: Partial<Column> = {}) => {
-    const col: Column = { key: makeKey(header, taken), header, type, origin: "mudd", ...extra };
-    schema.columns.push(col);
-    return col.key;
-  };
-  const colOf = (key: string) => schema.columns.find((c) => c.key === key)!;
-  if (!schema.statusKey) {
-    schema.statusKey = add("Status", "select", { options: [...DEFAULT_STAGES, DEAD], width: 140 });
-  } else {
-    const status = colOf(schema.statusKey);
-    if (status.type !== "select" || !status.options?.length) {
-      status.type = "select";
-      status.options = [...DEFAULT_STAGES, DEAD];
-    }
-  }
-  if (!schema.meetingUrlKey) schema.meetingUrlKey = add("Meeting URL", "url", { width: 220 });
-  else colOf(schema.meetingUrlKey).type = "url";
-  if (!schema.meetingAtKey) schema.meetingAtKey = add("Meeting at", "datetime", { width: 170 });
-  else colOf(schema.meetingAtKey).type = "datetime";
-  if (!schema.introKey) schema.introKey = add("Intro message", "longtext", { width: 320 });
-  if (!schema.screenedKey) schema.screenedKey = add("Screened out", "checkbox", { width: 120 });
-  else colOf(schema.screenedKey).type = "checkbox";
-  if (!schema.reasonKey) schema.reasonKey = add("Screened reason", "longtext", { width: 280 });
-  if (!schema.idKey) schema.idKey = add("ID", "text", { width: 90, hidden: true });
-  ensureContactColumns(schema, taken);
+  const taken = new Set([...allColumns(schema).map((c) => c.key), ...extraTaken]);
+  ensureRoles(schema, schema.columns, PROSPECT_ROLES, taken);
+  const contacts = (schema.contacts ??= { columns: defaultContactColumns(taken) });
+  ensureRoles(contacts, contacts.columns, CONTACT_ROLES, taken);
 }
 
 /** Contact columns a new campaign starts with. */
@@ -248,45 +286,20 @@ function defaultContactColumns(taken: Set<string>): Column[] {
     newColumn(taken, "Email", "email"),
     newColumn(taken, "Phone", "phone"),
     newColumn(taken, "LinkedIn", "url"),
+    roleColumn(taken, LAST_CONTACTED_COLUMN),
+    roleColumn(taken, LAST_REPLY_COLUMN),
     newColumn(taken, "Notes", "longtext"),
   ];
-}
-
-/** The contact columns Mudd relies on: a name, a Contact type dropdown, the Primary box. */
-function ensureContactColumns(schema: CampaignSchema, taken: Set<string>): void {
-  const contacts = (schema.contacts ??= { columns: defaultContactColumns(taken) });
-  const find = (names: string[]) => names.map((n) => contacts.columns.find((c) => norm(c.header) === n)).find(Boolean)?.key;
-  const colOf = (key: string) => contacts.columns.find((c) => c.key === key)!;
-  const add = (spec: Parameters<typeof roleColumn>[1]) => {
-    const col = roleColumn(taken, spec, { origin: "mudd" });
-    contacts.columns.push(col);
-    return col.key;
-  };
-  contacts.nameKey ??= find(NAME_HEADERS) ?? add(NAME_COLUMN);
-  contacts.typeKey ??= find([CONTACT_TYPE_HEADER]);
-  if (!contacts.typeKey) contacts.typeKey = add(TYPE_COLUMN);
-  else {
-    const type = colOf(contacts.typeKey);
-    if (type.type !== "select" || !type.options?.length) {
-      type.type = "select";
-      type.options = [...CONTACT_TYPES];
-    }
-  }
-  contacts.primaryKey ??= find(PRIMARY_HEADERS);
-  if (!contacts.primaryKey) contacts.primaryKey = add(PRIMARY_COLUMN);
-  else colOf(contacts.primaryKey).type = "checkbox";
 }
 
 /**
  * What a header alone says about its column, for import and for columns an AI recipe creates,
  * so the same header gets the same type either way. A `strong` answer wins over what the values
- * suggest (a "Phone" column of digits is still phones); a weak one only breaks a tie.
+ * suggest (a "Phone" column of digits is still phones); a weak one only breaks a tie. The
+ * columns Mudd relies on aren't here: they are Mudd's type whatever the sheet says (ensureRoles).
  */
 export function typeFromHeader(header: string): { type: ColumnType; strong: boolean } | null {
   const h = norm(header);
-  if (/^meeting(at|date|time|datetime|when)$/.test(h)) return { type: "datetime", strong: true };
-  if (/^meeting(url|link)$/.test(h)) return { type: "url", strong: true };
-  if (SCREENED_HEADERS.includes(h)) return { type: "checkbox", strong: true };
   if (h.includes("email") && !/source|status|verified|sent|opened|bounced|count/.test(h)) return { type: "email", strong: true };
   if (/phone|mobile|telephone|^tel$|^cell$/.test(h)) return { type: "phone", strong: true };
   if (/linkedin|website|url|link|domain/.test(h)) return { type: "url", strong: true };
@@ -315,9 +328,7 @@ export function genericSchema(): CampaignSchema {
     c("Location", "text"),
     c("Website", "url"),
     c(EMPLOYEES_HEADER, "number"),
-    c("Status", "select", { options: [...DEFAULT_STAGES, DEAD] }),
-    c("Last touch", "date"),
-    c("Next step", "text", { width: 200 }),
+    c("Status", "select", { options: [...STAGES, DEAD] }),
     c("Meeting URL", "url"),
     c("Meeting at", "datetime"),
     c("Hook", "longtext"),
@@ -385,9 +396,7 @@ export function discoverySchema(): CampaignSchema {
     c("Location", "text"),
     c(EMPLOYEES_HEADER, "number"),
     ...DISCOVERY_FIELDS.filter((f) => !f.person).map(intel),
-    c("Status", "select", { options: [...DEFAULT_STAGES, DEAD] }),
-    c("Last touch", "date"),
-    c("Next step", "text", { width: 200 }),
+    c("Status", "select", { options: [...STAGES, DEAD] }),
     c("Meeting URL", "url"),
     c("Meeting at", "datetime"),
     c("Hook", "longtext"),
