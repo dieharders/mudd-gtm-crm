@@ -314,7 +314,7 @@ function ContactPanel({ contact, org, orgTitle, schema, templates, state, enrich
         </button>
         {!disabled && (
           <button onClick={remove} disabled={drafting} title={drafting ? "Their intro is being written: stop it or wait for it first" : undefined}
-            className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-45">
+            className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-coral-700 hover:text-coral-800 disabled:cursor-not-allowed disabled:opacity-45">
             <Trash2 size={13} className="shrink-0" /> Delete contact
           </button>
         )}

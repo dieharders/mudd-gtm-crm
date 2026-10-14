@@ -503,7 +503,7 @@ function CampaignView({ state }: { state: CampaignState }) {
             ];
             const file: Omit<PinCardProps, "index">[] = [
               ...(campaign.sourcePath ? [{ icon: <FolderOpen size={18} />, label: "Show in folder", hint: campaign.sourcePath, title: campaign.sourcePath, onClick: pick(() => fire(api.revealFile(campaign.id))) }] : []),
-              { tone: "bg-note-pink", danger: true, icon: <Trash2 size={18} />, label: "Remove from App", hint: "The file stays", onClick: pick(() => setRemoving(true)) },
+              { tone: "bg-coral-100", danger: true, icon: <Trash2 size={18} />, label: "Remove from App", hint: "The file stays", onClick: pick(() => setRemoving(true)) },
             ];
             return (
               <>

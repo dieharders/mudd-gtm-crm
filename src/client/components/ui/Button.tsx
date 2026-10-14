@@ -12,7 +12,7 @@ const VARIANTS: Record<Variant, string> = {
   primary: "btn btn-primary",
   secondary: "btn",
   subtle: "btn text-clay-deep hover:bg-clay-soft disabled:hover:bg-paper",
-  danger: "btn text-rose-700 hover:bg-note-pink disabled:hover:bg-paper",
+  danger: "btn text-coral-700 hover:bg-coral-100 disabled:hover:bg-paper",
   ghost:
     "inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl border-2 border-transparent px-4 font-sans text-[15px] font-bold whitespace-nowrap text-mud-soft transition select-none hover:bg-paper-deep hover:text-mud disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-mud-soft",
 };

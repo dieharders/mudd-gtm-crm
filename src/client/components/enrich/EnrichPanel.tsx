@@ -206,7 +206,7 @@ export function EnrichPanel({ state, enrich, selectedIds, selectionLabel, filter
                         </span>
                         <span className="block truncate text-[11px] text-mud-faint">Fills {r.outputs.map((o) => o.header).join(", ")}</span>
                       </button>
-                      <button title="Delete recipe" className="absolute top-2 right-1.5 rounded-sm p-1 text-mud-faint opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                      <button title="Delete recipe" className="absolute top-2 right-1.5 rounded-sm p-1 text-mud-faint opacity-0 group-hover:opacity-100 hover:bg-coral-50 hover:text-coral-600"
                         onClick={() => fire(enrich.deleteRecipe(r.id).then(() => {
                           if (sel?.kind === "recipe" && sel.id === r.id) setSel(null);
                         }))}>
@@ -371,7 +371,7 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
                 )}
               </div>
               <input className="field h-8 py-0 text-xs" placeholder="Guidance for this field (optional)" value={o.hint} onChange={(e) => setOutput(i, { hint: e.target.value })} />
-              <button className="mt-1 rounded-sm p-1 text-mud-faint hover:bg-rose-50 hover:text-rose-600" title="Remove" onClick={() => onChange({ outputs: draft.outputs.filter((_, j) => j !== i) })}>
+              <button className="mt-1 rounded-sm p-1 text-mud-faint hover:bg-coral-50 hover:text-coral-600" title="Remove" onClick={() => onChange({ outputs: draft.outputs.filter((_, j) => j !== i) })}>
                 <X size={14} />
               </button>
             </div>
