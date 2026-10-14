@@ -6,7 +6,7 @@
  */
 import {
   ArchiveRestore, ArrowLeft, Ban, CalendarPlus, Check, ChevronDown, ChevronRight, ChevronUp, ClipboardCopy, Copy, ExternalLink, MoreHorizontal,
-  Pencil, Reply, Send, Star, Trash2, Undo2, UserPlus, Video, X,
+  Pencil, Send, Star, Trash2, Undo2, UserPlus, Video, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -21,7 +21,6 @@ import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useInert } from "../../hooks/useLeaving";
-import { useToday } from "../../hooks/useToday";
 import { AiIntro, RowSuggestions } from "./AiSections";
 import { hrefOf, openLink } from "../grid/cells";
 import { Button } from "../ui/Button";
@@ -69,6 +68,12 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
     if (toastMsg) undoToast(toastMsg, () => state.undo());
   };
 
+  const screenOut = !screened && schema.screenedKey && (
+    <ScreenOutButton count={1} onConfirm={(reason) => {
+      if (state.screenOut([row.id], reason)) undoToast("Screened out", () => state.undo());
+    }} />
+  );
+
   const layer = useInert<HTMLElement>(!!leaving);
   useEffect(() => {
     if (leaving) return;
@@ -103,11 +108,6 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
             {screened && <span className="ml-2 rounded-sm bg-paper-deep px-1.5 py-0.5 text-[10px] font-semibold text-mud-soft uppercase">Screened out</span>}
           </p>
         </div>
-        {!screened && schema.screenedKey && (
-          <ScreenOutButton count={1} align="right" onConfirm={(reason) => {
-            if (state.screenOut([row.id], reason)) undoToast("Screened out", () => state.undo());
-          }} />
-        )}
         <Button size="icon" variant="ghost" onClick={onPrev} disabled={!onPrev} title="Previous (Alt+↑)"><ChevronUp size={16} /></Button>
         <Button size="icon" variant="ghost" onClick={onNext} disabled={!onNext} title="Next (Alt+↓)"><ChevronDown size={16} /></Button>
         <RowMenu row={row} contacts={contacts.length} state={state} onClose={onClose} />
@@ -122,8 +122,10 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
           {!screened && <RowSuggestions row={row} contacts={contacts} schema={schema} enrich={enrich} />}
           {screened ? (
             <ScreenedBanner row={row} schema={schema} state={state} />
+          ) : schema.statusKey ? (
+            <Stepper row={row} schema={schema} stages={stages} onEdit={edit} extra={screenOut} />
           ) : (
-            schema.statusKey && <Stepper row={row} schema={schema} stages={stages} onEdit={edit} />
+            screenOut && <div>{screenOut}</div>
           )}
 
           {/* Sibling sections need keys of their own: with one shared key, React never removes the
@@ -283,9 +285,16 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
   };
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 scroll-thin">
-      <button onClick={onBack} className="mb-3 inline-flex max-w-full items-center gap-1 text-xs font-medium text-mud-soft hover:text-clay-deep" title="Back to the prospect (Esc)">
-        <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{orgTitle}</span>
-      </button>
+      <div className="mb-3 flex items-center gap-3">
+        <button onClick={onBack} className="inline-flex min-w-0 items-center gap-1 text-xs font-medium text-mud-soft hover:text-clay-deep" title="Back to the prospect (Esc)">
+          <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{orgTitle}</span>
+        </button>
+        {!disabled && (
+          <button onClick={remove} className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-800">
+            <Trash2 size={13} className="shrink-0" /> Delete contact
+          </button>
+        )}
+      </div>
       <div className="flex items-start gap-3">
         <Tile size="lg" className={tileFor(contact.id)}>{label[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
@@ -305,11 +314,6 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
               <Star size={13} /> Make primary
             </Button>
           )}
-          {cs.lastContactedKey && <TodayButton contact={contact} dateKey={cs.lastContactedKey} label="Contacted today" icon={<Send size={13} />} onEdit={onEdit} />}
-          {cs.lastReplyKey && <TodayButton contact={contact} dateKey={cs.lastReplyKey} label="Replied today" icon={<Reply size={13} />} onEdit={onEdit} />}
-          <Button size="sm" variant="ghost" className="ml-auto text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={remove}>
-            <Trash2 size={13} /> Delete contact
-          </Button>
         </div>
       )}
 
@@ -334,23 +338,13 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
   );
 }
 
-/** Sets one of the contact's dates (Last contacted, Last reply) to today; a tag once it is. */
-function TodayButton({ contact, dateKey, label, icon, onEdit }: {
-  contact: Row; dateKey: string; label: string; icon: ReactNode; onEdit: (edits: CellEdit[], l: string) => void;
-}) {
-  const today = useToday();
-  const set = parseLocal(String(contact.cells[dateKey] ?? ""));
-  if (set && isSameDay(set, parseLocal(today)!)) return <span className="tag bg-emerald-100 text-emerald-800"><Check size={11} /> {label}</span>;
-  return (
-    <Button size="sm" variant="subtle" onClick={() => onEdit([{ rowId: contact.id, key: dateKey, value: today }], label)}>
-      {icon} {label}
-    </Button>
-  );
-}
-
 // ---------- pipeline ----------
 
-function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSchema; stages: string[]; onEdit: (e: CellEdit[], l: string, t?: string) => void }) {
+function Stepper({ row, schema, stages, onEdit, extra }: {
+  row: Row; schema: CampaignSchema; stages: string[]; onEdit: (e: CellEdit[], l: string, t?: string) => void;
+  /** Shown beside Dropped off: the Screen out button. */
+  extra?: ReactNode;
+}) {
   const status = String(row.cells[schema.statusKey!] ?? "");
   const dead = status === DEAD;
   const cur = stageIndex(status, stages);
@@ -393,10 +387,11 @@ function Stepper({ row, schema, stages, onEdit }: { row: Row; schema: CampaignSc
             <Undo2 size={13} /> Revive — back to {stages[0]}
           </Button>
         ) : (
-          <Button size="sm" variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => set(DEAD)}>
+          <Button size="sm" onClick={() => set(DEAD)}>
             <Ban size={13} /> Dropped off / dead
           </Button>
         )}
+        {extra}
         {dead && <span className="text-xs font-medium text-rose-700">Marked {DEAD}</span>}
       </div>
     </section>
