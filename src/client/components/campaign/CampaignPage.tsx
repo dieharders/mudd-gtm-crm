@@ -538,7 +538,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               <div className="flex flex-wrap items-center gap-2">
                 <Chip active={!picked.size} onClick={() => setPicked(NO_PICKS)} label="All" count={state.rows.length} />
                 {counts.screened > 0 || picked.has(IN_PLAY) ? (
-                  <Chip active={picked.has(IN_PLAY)} onClick={() => pick(IN_PLAY)} label="In play" count={state.rows.length - counts.screened} title="Everything but the screened-out prospects" />
+                  <Chip active={picked.has(IN_PLAY)} onClick={() => pick(IN_PLAY)} label="Prospects" count={state.rows.length - counts.screened} title="Everything but the screened-out prospects" />
                 ) : null}
                 {[...stages, DEAD].map((s) => (counts.byStatus[s] || picked.has(s) ? (
                   <Chip key={s} active={picked.has(s)} onClick={() => pick(s)} label={s} count={counts.byStatus[s] ?? 0} />
