@@ -1,4 +1,3 @@
-import confetti from "@hiseb/confetti";
 import {
   ArrowRight, CalendarClock, Download, FileSpreadsheet, FolderOpen, MoreHorizontal, Plus, Sparkles, Trash2, Video, Workflow,
 } from "lucide-react";
@@ -13,10 +12,10 @@ import { campaignTileFor, toneFor } from "../../lib/stages";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
 import { MenuItem, Popover } from "../ui/Menu";
-import { RubberBand } from "../ui/RubberBand";
 import { useImport } from "./ImportFlow";
 import { RemoveCampaignDialog } from "./RemoveCampaignDialog";
 import { fire } from "../../lib/fire";
+import { toggleFidget } from "../../lib/fidget";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -24,9 +23,9 @@ function greeting(): string {
 }
 
 /** A small sticky note pinned above a page title. */
-function PinnedNote({ children }: { children: ReactNode }) {
+function PinnedNote({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
   return (
-    <span className="relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-[15px] shadow-hard-sm select-none">
+    <span onClick={onClick} className={cn("relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-[15px] shadow-hard-sm select-none", onClick && "cursor-pointer")}>
       <span className="pin scale-75" />
       {children}
     </span>
@@ -50,7 +49,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
       <div className="mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
         <div className="mb-10 flex flex-wrap items-end gap-4">
           <div className="mr-auto">
-            <PinnedNote>{greeting()} 👋</PinnedNote>
+            <PinnedNote onClick={toggleFidget}>{greeting()} 👋</PinnedNote>
             <h1 className="font-display text-[40px] leading-none font-bold tracking-tight">Your campaigns</h1>
           </div>
           <Button onClick={startImport} disabled={busy}>
@@ -81,7 +80,6 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
             </div>
             <aside className="flex flex-col gap-6">
               <MeetingsCard meetings={meetings} limit={6} />
-              <FidgetCard />
             </aside>
           </div>
         )}
@@ -101,22 +99,6 @@ export function MeetingsPage() {
         <h1 className="mb-8 font-display text-[40px] leading-none font-bold tracking-tight">Meetings</h1>
         <MeetingsCard meetings={meetings} />
       </div>
-    </div>
-  );
-}
-
-/** A rubber band slider to play with; the readout shows its value, and Party! bursts that many confetti. */
-function FidgetCard() {
-  const [tension, setTension] = useState(50);
-  return (
-    <div className="card mb-8 flex flex-wrap items-center gap-6 px-6 py-4 select-none">
-      <div className="font-label text-sm text-mud-soft">Fidget</div>
-      <RubberBand value={tension} min={0} max={100} onChange={setTension} width={250} aria-label="Tension" />
-      <Button size="xs" onClick={(e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        confetti({ position: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, count: tension });
-      }}>Party!</Button>
-      <div className="ml-auto font-display text-[30px] leading-none font-bold tabular-nums">{tension}</div>
     </div>
   );
 }
