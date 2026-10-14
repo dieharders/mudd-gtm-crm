@@ -364,7 +364,7 @@ function Stepper({ row, schema, stages, onEdit, extra }: {
           const tone = toneFor(s, stages);
           return (
             <li key={s} className="relative flex min-w-0 flex-1 flex-col items-center">
-              {i > 0 && <span className={cn("absolute top-[9px] right-1/2 h-0.5 w-full", done ? tone.bar : "bg-paper-deep")} />}
+              {i > 0 && <span className={cn("absolute top-[9px] right-[calc(50%+10px)] h-0.5 w-[calc(100%-20px)]", done ? tone.bar : "bg-paper-deep")} />}
               <button
                 onClick={() => set(here ? "" : s)}
                 title={here ? `Clear ${s}` : `Set to ${s}`}
