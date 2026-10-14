@@ -969,7 +969,11 @@ function EmptyContacts() {
 
 /** The selection count. */
 function SelectionCount({ n }: { n: number }) {
-  return <span className="text-[15px] font-extrabold">{n} selected</span>;
+  return (
+    <div className="flex rounded-xl border-2 border-transparent bg-paper-deep/60 p-1.5">
+      <span className="inline-flex h-8 items-center rounded-lg border-2 border-transparent px-3 text-sm font-bold text-mud-faint">{n} selected</span>
+    </div>
+  );
 }
 
 /** Actions on the selected contacts. */
