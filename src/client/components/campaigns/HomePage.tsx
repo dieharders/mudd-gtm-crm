@@ -46,18 +46,21 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
   return (
     <div className="h-full overflow-y-auto bg-board scroll-thin">
       {/* The content rises in, not the page: a transform would pin the dialogs below to it while it runs. */}
-      <div className="mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
-        <div className="mb-10 flex flex-wrap items-end gap-4">
+      {/* Breakpoints are container queries: the page sits beside the sidebar, so the viewport overstates its width. */}
+      <div className="@container mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
+        <div className="mb-10 flex flex-wrap items-end gap-x-4 gap-y-8">
           <div className="mr-auto">
             <PinnedNote onClick={toggleFidget}>{greeting()} 👋</PinnedNote>
             <h1 className="font-display text-[40px] leading-none font-bold tracking-tight">Your campaigns</h1>
           </div>
-          <Button onClick={startImport} disabled={busy}>
-            <FolderOpen size={18} /> {busy ? "Opening…" : "Import sheet"}
-          </Button>
-          <Button variant="primary" onClick={onNewCampaign}>
-            <Plus size={18} /> New campaign
-          </Button>
+          <div className="flex flex-wrap gap-4">
+            <Button onClick={startImport} disabled={busy}>
+              <FolderOpen size={18} /> {busy ? "Opening…" : "Import sheet"}
+            </Button>
+            <Button variant="primary" onClick={onNewCampaign}>
+              <Plus size={18} /> New campaign
+            </Button>
+          </div>
         </div>
 
         {campaigns === null ? (
@@ -67,14 +70,14 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
         ) : campaigns.length === 0 ? (
           <Onboarding />
         ) : (
-          <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
-            <div className="min-w-0 space-y-6">
-              <div className="grid gap-5 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-8 @4xl:grid-cols-[minmax(0,1fr)_21.25rem]">
+            <div className="@container min-w-0 space-y-6">
+              <div className="grid gap-5 @sm:grid-cols-3">
                 <StatCard tile="bg-clay-soft" icon={<Sparkles size={18} />} value={totals.prospects} label="total prospects" />
                 <StatCard tile="bg-note" icon={<CalendarClock size={18} />} value={totals.meetings} label="meetings booked" />
                 <StatCard tile="bg-note-mint" icon={<Workflow size={18} />} value={totals.signed} label="signed" />
               </div>
-              <div className="grid gap-6 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 @2xl:grid-cols-2">
                 {campaigns.map((c) => <CampaignCard key={c.id} c={c} onRemove={() => setRemoving(c)} />)}
               </div>
             </div>
@@ -105,11 +108,14 @@ export function MeetingsPage() {
 
 function StatCard({ tile, icon, value, label }: { tile: string; icon: ReactNode; value: number; label: string }) {
   return (
-    <div className="card flex items-center gap-4 px-5 py-4">
-      <Tile size="lg" className={cn("border-2 border-rim text-mud", tile)}>{icon}</Tile>
-      <div>
-        <div className="font-display text-[30px] leading-none font-bold tabular-nums">{value}</div>
-        <div className="mt-1.5 font-label text-sm text-mud-soft">{label}</div>
+    // Narrow cards stack the tile over the number rather than squeezing them side by side.
+    <div className="card @container min-w-0 px-5 py-4">
+      <div className="flex flex-col items-start gap-3 @[12rem]:flex-row @[12rem]:items-center @[12rem]:gap-4">
+        <Tile size="lg" className={cn("border-2 border-rim text-mud", tile)}>{icon}</Tile>
+        <div className="min-w-0">
+          <div className="font-display text-[30px] leading-none font-bold tabular-nums">{value}</div>
+          <div className="mt-1.5 font-label text-sm text-mud-soft">{label}</div>
+        </div>
       </div>
     </div>
   );
