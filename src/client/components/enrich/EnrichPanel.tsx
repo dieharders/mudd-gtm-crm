@@ -105,12 +105,13 @@ function toApi(d: Draft): RecipeDraft {
   };
 }
 
-export function EnrichPanel({ state, enrich, selectedIds, selectionLabel, filteredIds, onClose, onOpenReview, onOpenRow }: {
+/** The rows a run is first offered for, and what that scope is called ("Selected rows", "This prospect"). */
+export interface EnrichSelection { ids: string[]; label: string }
+
+export function EnrichPanel({ state, enrich, selection, filteredIds, onClose, onOpenReview, onOpenRow }: {
   state: CampaignState;
   enrich: EnrichmentState;
-  selectedIds: string[];
-  /** What the selection scope is called: "Selected rows" unless said otherwise. */
-  selectionLabel?: string;
+  selection: EnrichSelection;
   filteredIds: string[];
   onClose: () => void;
   onOpenReview: () => void;
@@ -274,8 +275,7 @@ export function EnrichPanel({ state, enrich, selectedIds, selectionLabel, filter
                   schema={schema}
                   rows={state.rows}
                   contactsOf={state.contactsOf}
-                  selectedIds={selectedIds}
-                  selectionLabel={selectionLabel}
+                  selection={selection}
                   filteredIds={filteredIds}
                   ready={ready}
                   onSetup={() => ai.setOpen(true)}
@@ -407,13 +407,12 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
   );
 }
 
-function RunBox({ draft, schema, rows, contactsOf, selectedIds, selectionLabel = "Selected rows", filteredIds, ready, onSetup, onRun, busy }: {
+function RunBox({ draft, schema, rows, contactsOf, selection, filteredIds, ready, onSetup, onRun, busy }: {
   draft: Draft;
   schema: CampaignSchema;
   rows: Row[];
   contactsOf: (orgId: string) => Row[];
-  selectedIds: string[];
-  selectionLabel?: string;
+  selection: EnrichSelection;
   filteredIds: string[];
   ready: boolean;
   onSetup: () => void;
@@ -423,7 +422,7 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, selectionLabel =
   // Screened-out prospects are left out of every scope: the run would only skip them.
   const prospects = useMemo(() => rows.filter((r) => !isScreened(r, schema)), [rows, schema]);
   const inPlay = new Set(prospects.map((r) => r.id));
-  const selected = selectedIds.filter((id) => inPlay.has(id));
+  const selected = selection.ids.filter((id) => inPlay.has(id));
   const filtered = filteredIds.filter((id) => inPlay.has(id));
   // The outputs as Run saves them (an unnamed new column is dropped), so the mode is the run's.
   const outputs = toApi(draft).outputs;
@@ -458,7 +457,7 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, selectionLabel =
   // The selection can shrink while this is open (a test's rows leaving the view). Its scope then
   // stays while it is the one chosen, down to none, rather than the run widening to another unasked.
   const scopes = [
-    ...(selected.length || scope === "selected" ? [{ id: "selected", label: selectionLabel, ids: selected }] : []),
+    ...(selected.length || scope === "selected" ? [{ id: "selected", label: selection.label, ids: selected }] : []),
     { id: "missing", label: "Prospects missing these fields", ids: missing.map((r) => r.id) },
     ...(filtered.length !== prospects.length ? [{ id: "filtered", label: "Rows in the current view", ids: filtered }] : []),
     { id: "all", label: "All prospects", ids: prospects.map((r) => r.id) },

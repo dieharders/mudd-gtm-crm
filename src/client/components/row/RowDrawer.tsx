@@ -20,7 +20,7 @@ import { shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeli
 import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
-import { useFocusReturn, useInert } from "../../hooks/useLeaving";
+import { dialogsOutside, useFocusReturn, useInert } from "../../hooks/useLeaving";
 import { AiIntro, RowSuggestions } from "./AiSections";
 import { hrefOf, openLink } from "../grid/cells";
 import { Button } from "../ui/Button";
@@ -46,7 +46,7 @@ interface Props {
   onNext?: () => void;
   onOpenTemplates: () => void;
   /** Open Enrich with AI on this prospect alone. */
-  onEnrich: () => void;
+  onEnrich: (rowId: string) => void;
   enrich: EnrichmentState;
   /** Closed and sliding away: shown as it was, but inert, no longer answering keys or clicks. */
   leaving?: boolean;
@@ -85,6 +85,9 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, select")) return;
+      // A dialog open over the panel has the keys: Alt+↑/↓ would change the prospect behind it,
+      // under Enrich still set to run on the one it was opened for.
+      if (dialogsOutside(layer.current).length) return;
       // Esc steps back from a contact to its prospect, and only then closes.
       if (e.key === "Escape") {
         if (inContact) onOpenContact(null);
@@ -95,7 +98,7 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [leaving, inContact, onOpenContact, onClose, onNext, onPrev]);
+  }, [leaving, layer, inContact, onOpenContact, onClose, onNext, onPrev]);
 
   return (
     <aside
@@ -188,7 +191,7 @@ function RowMenu({ row, contacts, drafting, state, onClose, onEnrich }: {
   drafting: boolean;
   state: CampaignState; onClose: () => void;
   /** Absent for a screened-out prospect: a run would only skip it. */
-  onEnrich?: () => void;
+  onEnrich?: (rowId: string) => void;
 }) {
   return (
     <Popover align="right" trigger={({ toggle }) => (
@@ -196,7 +199,7 @@ function RowMenu({ row, contacts, drafting, state, onClose, onEnrich }: {
     )}>
       {(close) => (
         <>
-          {onEnrich && <MenuItem icon={<Sparkles size={15} />} onClick={() => { close(); onEnrich(); }}>Enrich with AI</MenuItem>}
+          {onEnrich && <MenuItem icon={<Sparkles size={15} />} onClick={() => { close(); onEnrich(row.id); }}>Enrich with AI</MenuItem>}
           <MenuItem icon={<Copy size={15} />} onClick={() => { close(); state.duplicateRow(row.id); toast.success("Duplicated"); }}>Duplicate row</MenuItem>
           <MenuItem danger disabled={drafting} hint={drafting ? "An intro to one of its contacts is being written" : undefined} icon={<Trash2 size={15} />} onClick={() => {
             close();

@@ -56,7 +56,7 @@ if (typeof document !== "undefined") {
 }
 
 /** The modal dialogs open outside `layer`, any leaving (inert) aside. */
-const dialogsOutside = (layer: HTMLElement | null) =>
+export const dialogsOutside = (layer: HTMLElement | null) =>
   [...document.querySelectorAll('[aria-modal="true"]')].filter((d) => !layer?.contains(d) && !d.closest("[inert]"));
 
 /**

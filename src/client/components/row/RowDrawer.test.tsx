@@ -42,11 +42,13 @@ const enrich = {
 } as unknown as EnrichmentState;
 
 /** The panel with its contact drill-down kept in state, as the campaign page keeps it. */
-function Panel({ row, contacts, onClose }: { row: Row; contacts: Row[]; onClose: () => void }) {
+function Panel({ row, contacts, onClose, onEnrich, onNext }: {
+  row: Row; contacts: Row[]; onClose: () => void; onEnrich: (rowId: string) => void; onNext: () => void;
+}) {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <RowDrawer row={row} schema={schema} stages={STAGES} templates={[]} state={state} contacts={contacts} openContactId={open} onOpenContact={setOpen}
-      onClose={onClose} onOpenTemplates={() => {}} onEnrich={() => {}} enrich={enrich} />
+      onClose={onClose} onNext={onNext} onOpenTemplates={() => {}} onEnrich={onEnrich} enrich={enrich} />
   );
 }
 
@@ -55,7 +57,11 @@ async function mount() {
   document.body.appendChild(el);
   const root = createRoot(el);
   let closed = 0;
-  const show = (row: Row, contacts: Row[] = []) => act(() => root.render(<Panel row={row} contacts={contacts} onClose={() => closed++} />));
+  let nexts = 0;
+  const enriched: string[] = [];
+  const show = (row: Row, contacts: Row[] = []) => act(() => root.render(
+    <Panel row={row} contacts={contacts} onClose={() => closed++} onEnrich={(id) => enriched.push(id)} onNext={() => nexts++} />,
+  ));
   const sections = (title: string) => [...el.querySelectorAll("h3")].filter((h) => h.textContent?.startsWith(title)).length;
   const unmount = async () => {
     await act(() => root.unmount());
@@ -66,8 +72,57 @@ async function mount() {
   const esc = () => act(() => {
     document.body.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }) as unknown as Event);
   });
-  return { el, show, sections, unmount, button, click, esc, closed: () => closed };
+  const altDown = () => act(() => {
+    document.body.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", altKey: true, bubbles: true }) as unknown as Event);
+  });
+  return { el, show, sections, unmount, button, click, esc, altDown, closed: () => closed, nexts: () => nexts, enriched };
 }
+
+test("the More menu enriches a prospect in play, by its id, and offers nothing for a screened-out one", async () => {
+  const restoreConsole = failOnConsoleError();
+  const ui = await mount();
+  const more = () => act(() => (ui.el.querySelector('button[title="More"]') as HTMLButtonElement).click());
+  try {
+    await ui.show(prospect(0, "Acme"));
+    await more();
+    await ui.click("Enrich with AI");
+    expect(ui.enriched).toEqual(["r0"]);
+    // The menu closed with it.
+    expect(ui.button("Enrich with AI")).toBeUndefined();
+    // A run would only skip a screened-out prospect.
+    await ui.show(prospect(1, "Beta", { [key("Screened out")]: CHECKED }));
+    await more();
+    expect(ui.button("Duplicate row")).toBeDefined();
+    expect(ui.button("Enrich with AI")).toBeUndefined();
+  } finally {
+    await ui.unmount();
+    restoreConsole();
+  }
+});
+
+test("Alt+↓ moves to the next prospect, but not with a dialog open over the panel", async () => {
+  const restoreConsole = failOnConsoleError();
+  const ui = await mount();
+  // Stands in for Enrich, opened on this prospect.
+  const dialog = document.createElement("div");
+  dialog.setAttribute("aria-modal", "true");
+  try {
+    await ui.show(prospect(0, "Acme"));
+    await ui.altDown();
+    expect(ui.nexts()).toBe(1);
+    document.body.appendChild(dialog);
+    await ui.altDown();
+    expect(ui.nexts()).toBe(1);
+    // One going (inert) no longer holds the keys.
+    dialog.toggleAttribute("inert", true);
+    await ui.altDown();
+    expect(ui.nexts()).toBe(2);
+  } finally {
+    dialog.remove();
+    await ui.unmount();
+    restoreConsole();
+  }
+});
 
 test("opening one prospect after another shows one Meeting section", async () => {
   const restoreConsole = failOnConsoleError();

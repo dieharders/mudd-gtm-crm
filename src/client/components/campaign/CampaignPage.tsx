@@ -196,10 +196,9 @@ function CampaignView({ state }: { state: CampaignState }) {
   const [contactSort, setContactSort] = useState<SortState | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
-  const [showEnrich, setShowEnrich] = useState(false);
-  // Enrich opened from a prospect's panel: it runs on that prospect, not the table's selection.
-  const [enrichRowId, setEnrichRowId] = useState<string | null>(null);
-  const openEnrich = (rowId: string | null = null) => { setEnrichRowId(rowId); setShowEnrich(true); };
+  // The Enrich panel, while open. Opened from a prospect's panel, it runs on that prospect, not the
+  // table's selection.
+  const [enrichFor, setEnrichFor] = useState<{ rowId?: string } | null>(null);
   const [showReview, setShowReview] = useState(false);
   // The Discover panel, open on one of its sections.
   const [showDiscover, setShowDiscover] = useState<DiscoverSection | null>(null);
@@ -363,8 +362,8 @@ function CampaignView({ state }: { state: CampaignState }) {
   );
   // The prospects in play in the view, for Enrich's scopes: worked out only while it is open.
   const filteredActiveIds = useMemo(
-    () => (showEnrich ? filtered.filter((r) => !isScreened(r, schema)).map((r) => r.id) : NO_IDS),
-    [showEnrich, filtered, schema],
+    () => (enrichFor ? filtered.filter((r) => !isScreened(r, schema)).map((r) => r.id) : NO_IDS),
+    [enrichFor, filtered, schema],
   );
 
   // Ctrl+Z anywhere outside a text field.
@@ -469,7 +468,7 @@ function CampaignView({ state }: { state: CampaignState }) {
           <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />
         </div>
         {liveRun && (
-          <button onClick={() => openEnrich()} className="tag h-9 rounded-lg bg-lake-soft px-3 font-bold text-lake-deep hover:bg-lake-soft/70" title="Open the running enrichment">
+          <button onClick={() => setEnrichFor({})} className="tag h-9 rounded-lg bg-lake-soft px-3 font-bold text-lake-deep hover:bg-lake-soft/70" title="Open the running enrichment">
             <Spinner size={12} className={liveRun.status === "running" ? "animate-spin" : ""} />
             {liveRun.label}: {liveRun.completed + liveRun.failed}/{liveRun.total}{liveRun.status === "paused" ? " · paused" : ""}
           </button>
@@ -525,7 +524,7 @@ function CampaignView({ state }: { state: CampaignState }) {
             stages={stages}
             state={state}
             enrich={enrich}
-            onEnrich={() => openEnrich()}
+            onEnrich={() => setEnrichFor({})}
             onDone={() => setSelected(new Set())}
           />
         ) : (
@@ -658,7 +657,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               onPrev={prevRow ? () => showRow(prevRow.id) : undefined}
               onNext={nextRow ? () => showRow(nextRow.id) : undefined}
               onOpenTemplates={() => setShowTemplates(true)}
-              onEnrich={() => openEnrich(drawer.last!.row.id)}
+              onEnrich={(rowId) => setEnrichFor({ rowId })}
               enrich={enrich}
             />
           )}
@@ -668,12 +667,12 @@ function CampaignView({ state }: { state: CampaignState }) {
       <PanelGate open={showTemplates}>
         <TemplatesPanel schema={schema} rows={state.rows} contactsOf={contactsOf} templates={state.templates} thesis={state.thesis} consent={consent} state={state} previewRowId={openRowId} onClose={() => setShowTemplates(false)} />
       </PanelGate>
-      <PanelGate open={showEnrich}>
-        <EnrichPanel state={state} enrich={enrich} selectedIds={enrichRowId ? [enrichRowId] : selectedActiveIds}
-          selectionLabel={enrichRowId ? "This prospect" : undefined} filteredIds={filteredActiveIds}
-          onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }}
+      <PanelGate open={!!enrichFor}>
+        <EnrichPanel state={state} enrich={enrich} filteredIds={filteredActiveIds}
+          selection={enrichFor?.rowId ? { ids: [enrichFor.rowId], label: "This prospect" } : { ids: selectedActiveIds, label: "Selected rows" }}
+          onClose={() => setEnrichFor(null)} onOpenReview={() => { setEnrichFor(null); setShowReview(true); }}
           onOpenRow={(id) => {
-            setShowEnrich(false);
+            setEnrichFor(null);
             // An intro run's rows are contacts: each opens as itself.
             if (rowById.get(id)?.parentId) openContact(id);
             else showRow(id);
@@ -967,11 +966,14 @@ function EmptyContacts() {
   );
 }
 
-/** The selection count. */
-function SelectionCount({ n }: { n: number }) {
+/** The selection count, set like the toolbar's switches, as the one that clears it. */
+function SelectionCount({ n, onClear }: { n: number; onClear: () => void }) {
   return (
     <div className="flex rounded-xl border-2 border-transparent bg-paper-deep/60 p-1.5">
-      <span className="inline-flex h-8 items-center rounded-lg border-2 border-transparent px-3 text-sm font-bold text-mud-faint">{n} selected</span>
+      <button onClick={onClear} title="Clear selection"
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-bold text-mud-faint transition hover:bg-paper hover:text-mud">
+        {n} selected <X size={14} />
+      </button>
     </div>
   );
 }
@@ -984,7 +986,7 @@ function ContactBulkBar({ rows, state, enrich, onDone }: { rows: Row[]; state: C
   const drafting = rows.some((r) => enrich.drafting.has(r.id));
   return (
     <>
-      <SelectionCount n={n} />
+      <SelectionCount n={n} onClear={onDone} />
       <Button size="sm" variant="danger" disabled={drafting} title={drafting ? "An intro to one of them is being written: stop it or wait for it first" : undefined} onClick={() => {
         state.deleteRows(rows.map((r) => r.id), `Delete ${label}`);
         onDone();
@@ -1020,7 +1022,7 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
   };
   return (
     <>
-      <SelectionCount n={rows.length} />
+      <SelectionCount n={rows.length} onClear={onDone} />
       {activeIds.length > 0 && (
         <>
           <ScreenOutButton count={activeIds.length} onConfirm={(reason) => {
