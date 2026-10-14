@@ -147,6 +147,21 @@ describe("prospect IDs and contact columns", () => {
     ensureAppColumns(schema);
     expect(schema.contacts!.columns.filter((c) => c.header === "Name")).toHaveLength(1);
   });
+
+  test("a contact date is only the column Mudd writes, and is a date whatever the tab had", () => {
+    const schema = sheet("Company", "Status");
+    schema.contacts = { columns: [
+      { key: "last_contact", header: "Last contact", type: "text", origin: "sheet" },
+      { key: "last_reply", header: "Last reply", type: "select", options: ["Yes", "No"], origin: "sheet" },
+    ] };
+    ensureAppColumns(schema);
+    const cs = schema.contacts;
+    // "Last contact" is the tab's own column; Mudd adds its own "Last contacted".
+    expect(cs.columns.find((c) => c.key === "last_contact")!.type).toBe("text");
+    expect(cs.columns.find((c) => c.key === cs.lastContactedKey)).toMatchObject({ header: "Last contacted", type: "date", origin: "mudd" });
+    expect(cs.lastReplyKey).toBe("last_reply");
+    expect(cs.columns.find((c) => c.key === "last_reply")).toEqual({ key: "last_reply", header: "Last reply", type: "date", origin: "sheet" });
+  });
 });
 
 describe("telling companies apart", () => {

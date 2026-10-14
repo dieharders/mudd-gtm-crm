@@ -31,10 +31,9 @@ describe("needs follow-up", () => {
   const sent = schema.contacts!.lastContactedKey!;
   const reply = schema.contacts!.lastReplyKey!;
   /** A prospect at `status` with a contact for each set of cells, and the filter's verdict. */
-  const check = (status: string, people: Record<string, CellValue>[], opts: { today?: string; cells?: Record<string, CellValue>; of?: CampaignSchema } = {}) => {
-    const of = opts.of ?? schema;
-    const org = row({ [of.statusKey!]: status, ...opts.cells });
-    return filterOf(of, "followUp", { contacts: people.map((c) => row(c, org.id)), today: opts.today })!.test(org);
+  const check = (status: string, people: Record<string, CellValue>[], opts: { today?: string; cells?: Record<string, CellValue> } = {}) => {
+    const org = row({ [schema.statusKey!]: status, ...opts.cells });
+    return filterOf(schema, "followUp", { contacts: people.map((c) => row(c, org.id)), today: opts.today })!.test(org);
   };
 
   test("contacted a week or more ago, with no reply", () => {
@@ -58,13 +57,16 @@ describe("needs follow-up", () => {
     expect(check("Contacted", [{ [sent]: "2026-09-10", [reply]: "2026-09-03" }])).toBe(true);
   });
 
-  test("contacted but never dated is chased, with or without people", () => {
-    expect(check("Contacted", [])).toBe(true);
-    expect(check("Contacted", [{}])).toBe(true);
+  test("contacted but never dated can't be told a week old: no follow-up", () => {
+    expect(check("Contacted", [])).toBe(false);
+    expect(check("Contacted", [{}])).toBe(false);
+    expect(check("Contacted", [{ [reply]: "2026-09-01" }])).toBe(false);
   });
 
-  test("a date it can't read is not taken for never dated", () => {
+  test("a date it can't read is passed over, not the whole prospect", () => {
     expect(check("Contacted", [{ [sent]: "10/10/2026" }])).toBe(false);
+    expect(check("Contacted", [{ [sent]: "2026-09-01" }, { [sent]: "10/10/2026" }])).toBe(true);
+    expect(check("Contacted", [{ [sent]: "2026-09-01" }, { [reply]: "n/a" }])).toBe(true);
   });
 
   test("a datetime counts by its day, not its hour", () => {
@@ -76,9 +78,12 @@ describe("needs follow-up", () => {
     expect(check("Contacted", [{ [sent]: "2026-10-05" }], { today: "2026-10-12" })).toBe(true);
   });
 
-  test("not offered without a Status column", () => {
-    const none: CampaignSchema = { columns: [], contacts: { columns: [], lastContactedKey: "x" } };
-    expect(prospectFilters(none, ["Not contacted", "Contacted"], [], TODAY).find((f) => f.id === "followUp")).toBeUndefined();
+  test("offered only with a Status column and the contacts' Last contacted", () => {
+    const offered = (s: CampaignSchema) => prospectFilters(s, ["Not contacted", "Contacted"], [], TODAY).some((f) => f.id === "followUp");
+    expect(offered(schema)).toBe(true);
+    expect(offered({ ...schema, statusKey: undefined })).toBe(false);
+    expect(offered({ ...schema, contacts: { ...schema.contacts!, lastContactedKey: undefined } })).toBe(false);
+    expect(offered({ ...schema, contacts: undefined })).toBe(false);
   });
 });
 

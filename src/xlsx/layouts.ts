@@ -5,7 +5,7 @@
  */
 import type ExcelJS from "exceljs";
 import { norm } from "../shared/merge";
-import { COMPANY_HEADERS, DEFAULT_WIDTH, NAME_HEADERS, typeFromHeader } from "../shared/schema";
+import { COMPANY_HEADERS, contactRecordKeys, DEFAULT_WIDTH, NAME_HEADERS, typeFromHeader } from "../shared/schema";
 import { DEAD, type CampaignSchema, type Column, type ColumnType } from "../shared/types";
 import { colLetter, hrefFor, isTimeOnly, numFmtFor, readCellValue, toNumber } from "./cells";
 import { inlineListOptions } from "./ooxml";
@@ -109,9 +109,12 @@ export const STYLE = {
 /** The pale fill base-tracker gives the cells its owner fills in by hand. */
 export const YOURS_FILL = "FFFFFFF0";
 
-/** Columns that get the "yours" fill: the ones Mudd and its user keep up to date. */
+/**
+ * Columns that get the "yours" fill: the ones Mudd and its user keep up to date, the contacts'
+ * own record (Primary, Last contacted, Last reply) among them, whatever they are renamed to.
+ */
 export function isYours(col: Column, schema: CampaignSchema): boolean {
-  const keys = [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey];
+  const keys = [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, ...contactRecordKeys(schema)];
   return keys.includes(col.key) || /^(next|notes?|last)/i.test(col.header);
 }
 

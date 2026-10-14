@@ -130,8 +130,6 @@ export const CONTACT_TYPE_HINTS: Record<string, string> = {
 const CONTACT_TYPE_HEADER = "contacttype";
 /** "Primary contact" is a name, not this box. */
 const PRIMARY_HEADERS = ["primary", "isprimary"];
-const LAST_CONTACTED_HEADERS = ["lastcontacted", "lastcontact", "lastcontactdate", "lastcontacteddate", "datelastcontacted"];
-const LAST_REPLY_HEADERS = ["lastreply", "lastreplied", "lastreplydate", "lastresponse"];
 
 /** A column made by Mudd: a key free among `taken` (which it joins), the type's width unless given. */
 function newColumn(taken: Set<string>, header: string, type: ColumnType, extra: Partial<Column> = {}): Column {
@@ -144,13 +142,36 @@ const TYPE_COLUMN = { header: "Contact type", type: "select", width: 150 } as co
 const PRIMARY_COLUMN = { header: "Primary", type: "checkbox", width: 90 } as const;
 const LAST_CONTACTED_COLUMN = { header: "Last contacted", type: "date", width: 130 } as const;
 const LAST_REPLY_COLUMN = { header: "Last reply", type: "date", width: 120 } as const;
-const roleColumn = (taken: Set<string>, spec: { header: string; type: ColumnType; width: number }, extra: Partial<Column> = {}) =>
+type RoleSpec = { header: string; type: ColumnType; width: number };
+const roleColumn = (taken: Set<string>, spec: RoleSpec, extra: Partial<Column> = {}) =>
   newColumn(taken, spec.header, spec.type, { width: spec.width, ...(spec.type === "select" ? { options: [...CONTACT_TYPES] } : {}), ...extra });
+
+/**
+ * Each contact role: the headers a column of the tab is taken for it by, and the column added
+ * when none is. Found, it is made the role's type, except the name, which is whatever it is.
+ */
+const CONTACT_ROLES: { key: "nameKey" | "typeKey" | "primaryKey" | "lastContactedKey" | "lastReplyKey"; headers: string[]; spec: RoleSpec; typed: boolean }[] = [
+  { key: "nameKey", headers: NAME_HEADERS, spec: NAME_COLUMN, typed: false },
+  { key: "typeKey", headers: [CONTACT_TYPE_HEADER], spec: TYPE_COLUMN, typed: true },
+  { key: "primaryKey", headers: PRIMARY_HEADERS, spec: PRIMARY_COLUMN, typed: true },
+  { key: "lastContactedKey", headers: [norm(LAST_CONTACTED_COLUMN.header)], spec: LAST_CONTACTED_COLUMN, typed: true },
+  { key: "lastReplyKey", headers: [norm(LAST_REPLY_COLUMN.header)], spec: LAST_REPLY_COLUMN, typed: true },
+];
 
 const NO_CONTACTS: ContactSchema = { columns: [] };
 
 /** A campaign's contact columns: none for a schema that has no contacts. */
 export const contactSchema = (schema: CampaignSchema): ContactSchema => schema.contacts ?? NO_CONTACTS;
+
+/**
+ * The contact columns that are the user's own record, not facts about the person: the Primary
+ * box, Last contacted and Last reply. Nothing is researched into them, and they don't go to the
+ * AI as context.
+ */
+export function contactRecordKeys(schema: CampaignSchema): string[] {
+  const { primaryKey, lastContactedKey, lastReplyKey } = contactSchema(schema);
+  return [primaryKey, lastContactedKey, lastReplyKey].filter((k): k is string => !!k);
+}
 
 /** Every column, the prospect's then its contacts'. */
 export const allColumns = (schema: CampaignSchema): Column[] => [...schema.columns, ...(schema.contacts?.columns ?? [])];
@@ -263,30 +284,22 @@ function ensureContactColumns(schema: CampaignSchema, taken: Set<string>): void 
   const contacts = (schema.contacts ??= { columns: defaultContactColumns(taken) });
   const find = (names: string[]) => names.map((n) => contacts.columns.find((c) => norm(c.header) === n)).find(Boolean)?.key;
   const colOf = (key: string) => contacts.columns.find((c) => c.key === key)!;
-  const add = (spec: Parameters<typeof roleColumn>[1]) => {
-    const col = roleColumn(taken, spec, { origin: "mudd" });
-    contacts.columns.push(col);
-    return col.key;
-  };
-  contacts.nameKey ??= find(NAME_HEADERS) ?? add(NAME_COLUMN);
-  contacts.typeKey ??= find([CONTACT_TYPE_HEADER]);
-  if (!contacts.typeKey) contacts.typeKey = add(TYPE_COLUMN);
-  else {
-    const type = colOf(contacts.typeKey);
-    if (type.type !== "select" || !type.options?.length) {
-      type.type = "select";
-      type.options = [...CONTACT_TYPES];
+  for (const { key, headers, spec, typed } of CONTACT_ROLES) {
+    const found = (contacts[key] ??= find(headers));
+    if (!found) {
+      const col = roleColumn(taken, spec, { origin: "mudd" });
+      contacts.columns.push(col);
+      contacts[key] = col.key;
+      continue;
     }
+    if (!typed) continue;
+    const col = colOf(found);
+    // A dropdown keeps the sheet's own list; any other role's type wins over what the sheet had.
+    if (spec.type === "select") {
+      if (col.type !== "select" || !col.options?.length) col.options = [...CONTACT_TYPES];
+    } else delete col.options;
+    col.type = spec.type;
   }
-  contacts.primaryKey ??= find(PRIMARY_HEADERS);
-  if (!contacts.primaryKey) contacts.primaryKey = add(PRIMARY_COLUMN);
-  else colOf(contacts.primaryKey).type = "checkbox";
-  contacts.lastContactedKey ??= find(LAST_CONTACTED_HEADERS);
-  if (!contacts.lastContactedKey) contacts.lastContactedKey = add(LAST_CONTACTED_COLUMN);
-  else colOf(contacts.lastContactedKey).type = "date";
-  contacts.lastReplyKey ??= find(LAST_REPLY_HEADERS);
-  if (!contacts.lastReplyKey) contacts.lastReplyKey = add(LAST_REPLY_COLUMN);
-  else colOf(contacts.lastReplyKey).type = "date";
 }
 
 /**

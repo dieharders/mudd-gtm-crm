@@ -4,7 +4,7 @@
  * list together, and with the status chip and the search.
  */
 import { isSourcesColumn, type EnrichRun, type Recipe } from "../../shared/ai";
-import { CONTACT_TYPE_HINTS, ECONOMIC_BUYER } from "../../shared/schema";
+import { CONTACT_TYPE_HINTS, contactSchema, ECONOMIC_BUYER } from "../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Row } from "../../shared/types";
 import { primaryOf } from "../../shared/values";
 import { parseLocal, todayString } from "./format";
@@ -63,20 +63,19 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
   const out: QuickFilter[] = [];
   const inPlay = (r: Row) => !isScreened(r, schema);
 
-  // Still at Contacted, nobody has replied since they were last contacted, and that was a week
-  // ago (or was never dated). The dates are the contacts' own.
+  // Still at Contacted, last contacted a week or more ago, and nobody has replied since. The
+  // dates are the contacts' own; with none, there's no telling how long it has been.
   const contacted = contactedStage(stages);
-  const { lastContactedKey, lastReplyKey } = schema.contacts ?? {};
+  const { lastContactedKey, lastReplyKey } = contactSchema(schema);
   if (schema.statusKey && contacted && lastContactedKey) {
     const now = parseLocal(today) ?? new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - FOLLOW_UP_DAYS).getTime();
     // The latest of a date column across the contacts, by the day: a datetime's hour doesn't put
-    // it on the other side of the cutoff. NaN when one won't read ("10/10/2026" typed as text).
+    // it on the other side of the cutoff. A date that won't read ("10/10/2026" typed as text)
+    // is passed over; null when none reads.
     const latest = (people: Row[], key: string | undefined) => {
-      const values = key ? people.map((p) => String(p.cells[key] ?? "").trim()).filter(Boolean) : [];
-      if (!values.length) return null;
-      const dates = values.map(parseLocal);
-      return dates.some((d) => !d) ? NaN : Math.max(...dates.map((d) => startOfDay(d!)));
+      const days = key ? people.flatMap((p) => parseLocal(String(p.cells[key] ?? "").trim()) ?? []).map(startOfDay) : [];
+      return days.length ? Math.max(...days) : null;
     };
     out.push({
       id: "followUp",
@@ -87,11 +86,9 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
         if (!inPlay(r) || statusOf(r, schema).toLowerCase() !== contacted.toLowerCase()) return false;
         const people = contactsOf(r.id);
         const sent = latest(people, lastContactedKey);
+        if (sent === null || sent > cutoff) return false;
         const reply = latest(people, lastReplyKey);
-        // A date that won't read can't be told a week old, nor a reply told older than the message.
-        if (Number.isNaN(sent) || Number.isNaN(reply)) return false;
-        if (reply !== null && (sent === null || reply >= sent)) return false;
-        return sent === null || sent <= cutoff;
+        return reply === null || reply < sent;
       },
     });
   }

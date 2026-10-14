@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { presetRecipe, PRESETS, type Preset } from "../../../shared/presets";
 import { isSourcesColumn, recipeMode, type EnrichRun, type Recipe } from "../../../shared/ai";
-import { allColumns, columnOf, contactSchema, typeFromHeader } from "../../../shared/schema";
+import { allColumns, columnOf, contactRecordKeys, contactSchema, typeFromHeader } from "../../../shared/schema";
 import { COLUMN_TYPES, isScreened, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../../shared/types";
 import { primaryOf, researchedContacts } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
@@ -303,12 +303,12 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
 }
 
 function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: CampaignSchema; onChange: (p: Partial<Draft>) => void }) {
-  const skipInputs = new Set([schema.introKey, schema.reasonKey, schema.screenedKey, schema.idKey, schema.contacts?.primaryKey]);
+  const records = new Set(contactRecordKeys(schema));
+  const skipInputs = new Set([schema.introKey, schema.reasonKey, schema.screenedKey, schema.idKey, ...records]);
   // The primary contact's columns go along as context too.
   const inputCols = allColumns(schema).filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
   const orgTargets = schema.columns.filter((c) => !isSourcesColumn(c) && c.key !== schema.idKey);
-  const { primaryKey, lastContactedKey, lastReplyKey } = contactSchema(schema);
-  const contactTargets = contactSchema(schema).columns.filter((c) => c.key !== primaryKey && c.key !== lastContactedKey && c.key !== lastReplyKey);
+  const contactTargets = contactSchema(schema).columns.filter((c) => !records.has(c.key));
   const [showInputs, setShowInputs] = useState(draft.inputKeys.length > 0);
   const setOutput = (i: number, patch: Partial<OutputDraft>) => onChange({ outputs: draft.outputs.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
 

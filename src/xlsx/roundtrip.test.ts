@@ -13,6 +13,7 @@ import { allColumns, discoverySchema, genericSchema } from "../shared/schema";
 import { CHECKED, isScreened, type Campaign, type Template, type Thesis, type ThesisId } from "../shared/types";
 import { exportCampaign, type ExportRow } from "./export";
 import { importWorkbook, inspectWorkbook, loadWorkbook } from "./import";
+import { YOURS_FILL } from "./layouts";
 
 const FIXTURE = path.join(import.meta.dir, "fixtures", "base-tracker.generated.xlsx");
 
@@ -595,6 +596,21 @@ describe("campaigns created in Mudd", () => {
     expect([ann.cells[cs.lastContactedKey!], ann.cells[cs.lastReplyKey!]]).toEqual(["2026-09-28", "2026-10-01"]);
     expect(again.contacts.find((c) => c.cells[cs.nameKey!] === "Bo Chen")!.parentId).toBe(byCompany("Beta").id);
     expect(again.skipped).toBe(0);
+  });
+
+  test("the contacts' own record keeps the hand-kept fill, renamed or not", async () => {
+    const schema = genericSchema();
+    const cs = schema.contacts!;
+    cs.columns.find((c) => c.key === cs.lastContactedKey)!.header = "Contacted on";
+    const k = (h: string) => allColumns(schema).find((c) => c.header === h)!.key;
+    const rows: ExportRow[] = [{ id: "a", position: 0, cells: { [k("ID")]: "P-001", [k("Company")]: "Acme" } }];
+    const contacts: ExportRow[] = [{ id: "x", position: 1, parentId: "a", cells: { [k("Name")]: "Al Ng" } }];
+    const campaign: Campaign = { id: "c", name: "Fresh", createdAt: 0, updatedAt: 0, sourceName: null, sourcePath: null, hasOriginal: false, schema, sheets: [] };
+    const people = (await read(await exportCampaign(campaign, null, rows, [], contacts, null))).getWorksheet("Contacts")!;
+    const fillOf = (header: string) => (people.getCell(2, (people.getRow(1).values as unknown[]).indexOf(header)).fill as ExcelJS.FillPattern | undefined)?.fgColor?.argb;
+    expect(fillOf("Contacted on")).toBe(YOURS_FILL);
+    expect(fillOf("Last reply")).toBe(YOURS_FILL);
+    expect(fillOf("Email")).not.toBe(YOURS_FILL);
   });
 
   test("a Discovery campaign's workbook carries its thesis, intel columns and the Champion type", async () => {

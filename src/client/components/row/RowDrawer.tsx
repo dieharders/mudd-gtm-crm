@@ -15,12 +15,13 @@ import { CONTACT_TYPE_HINTS, contactSchema, prospectSchema } from "../../../shar
 import { DEAD, isScreened, MEETING_STAGE, type CampaignSchema, type CellEdit, type Column, type Row, type Template } from "../../../shared/types";
 import { contactLabel, contactOf, orderedContacts, primaryOf, prospectCells, prospectTitle, toLocalInput } from "../../../shared/values";
 import { cn } from "../../lib/cn";
-import { formatDate, formatDateTime, isSameDay, parseLocal, relative, todayString } from "../../lib/format";
+import { formatDate, formatDateTime, isSameDay, parseLocal, relative } from "../../lib/format";
 import { contactedStage, shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
 import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useInert } from "../../hooks/useLeaving";
+import { useToday } from "../../hooks/useToday";
 import { AiIntro, RowSuggestions } from "./AiSections";
 import { hrefOf, openLink } from "../grid/cells";
 import { Button } from "../ui/Button";
@@ -337,8 +338,9 @@ function ContactPanel({ contact, orgTitle, schema, state, enrich, disabled, isPr
 function TodayButton({ contact, dateKey, label, icon, onEdit }: {
   contact: Row; dateKey: string; label: string; icon: ReactNode; onEdit: (edits: CellEdit[], l: string) => void;
 }) {
-  const today = todayString();
-  if (contact.cells[dateKey] === today) return <span className="tag bg-emerald-100 text-emerald-800"><Check size={11} /> {label}</span>;
+  const today = useToday();
+  const set = parseLocal(String(contact.cells[dateKey] ?? ""));
+  if (set && isSameDay(set, parseLocal(today)!)) return <span className="tag bg-emerald-100 text-emerald-800"><Check size={11} /> {label}</span>;
   return (
     <Button size="sm" variant="subtle" onClick={() => onEdit([{ rowId: contact.id, key: dateKey, value: today }], label)}>
       {icon} {label}

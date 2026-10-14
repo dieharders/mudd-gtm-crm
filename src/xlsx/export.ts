@@ -82,7 +82,8 @@ const hasAnswers = (thesis: Thesis | null): thesis is Thesis => !!thesis && Obje
 /**
  * The Contacts tab's columns: the prospect's ID (what the tab links by) and its company (to read
  * by, when the prospects have a Company column), both from the prospect, then the contact's own.
- * A Company column the tab has that isn't among these is left as it is.
+ * A Company column the tab has that isn't among these is left as it is. The contacts' roles go
+ * along, for the columns' look (isYours).
  */
 function contactsTabSchema(schema: CampaignSchema): CampaignSchema {
   const id = schema.columns.find((c) => c.key === schema.idKey);
@@ -93,6 +94,7 @@ function contactsTabSchema(schema: CampaignSchema): CampaignSchema {
       ...(org ? [org] : []),
       ...contactSchema(schema).columns,
     ],
+    contacts: schema.contacts,
   };
 }
 
