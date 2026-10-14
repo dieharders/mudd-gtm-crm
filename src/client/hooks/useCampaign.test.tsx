@@ -56,6 +56,13 @@ void mock.module("../lib/api", () => ({
       inserted.push(rows);
       return Promise.resolve(rows);
     },
+    // What the server added, and the campaign with the file's new column: nothing is fetched again.
+    importContacts: () => {
+      const campaign = bundle("P").campaign;
+      const schema = { ...people, contacts: { ...people.contacts!, columns: [...people.contacts!.columns, { key: "twitter", header: "Twitter", type: "text" as const }] } };
+      const contacts: Row[] = [{ id: "bo", position: 4, parentId: "beta", cells: { name: "Bo" } }, { id: "bea", position: 5, parentId: "beta", cells: { name: "Bea", twitter: "@bea" } }];
+      return Promise.resolve({ fileName: "people.csv", campaign: { ...campaign, schema }, contacts, skipped: 0, duplicates: 0, mismatched: 0 });
+    },
     deleteRows: (_id: string, ids: string[]) => {
       deleted.push(ids);
       return Promise.resolve({ ok: true });
@@ -229,4 +236,19 @@ test("a prospect and its contacts that arrive in one batch (a Discovery accept) 
     expect(s().rows.map((r) => r.id)).toEqual(["acme", "beta", "gamma"]);
     expect(s().contactsOf("gamma").map((c) => c.id)).toEqual(["gil", "gus"]);
     expect(s().thesis).toBeNull();
+  }));
+
+test("contacts imported from a CSV are shown, and one undo step takes them all out", () =>
+  withCampaign("P", async (s) => {
+    await act(async () => {
+      await s().importContacts({ path: "/tmp/people.csv" });
+    });
+    expect(s().contactsOf("beta").map((c) => c.id)).toEqual(["bo", "bea"]);
+    expect(s().contactsOf("acme").map((c) => c.id)).toEqual(["ann", "al"]);
+    expect(s().campaign!.schema.contacts!.columns.map((c) => c.header)).toContain("Twitter");
+    await act(() => {
+      expect(s().undo()).toBe("Import 2 contacts");
+    });
+    expect(s().contactsOf("beta")).toEqual([]);
+    expect(deleted.at(-1)!.sort()).toEqual(["bea", "bo"]);
   }));

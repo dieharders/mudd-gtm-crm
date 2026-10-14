@@ -15,9 +15,9 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { norm } from "../shared/merge";
-import { COMPANY_HEADER, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds, STATUS_HEADER } from "../shared/schema";
+import { allColumns, columnByHeaders, COMPANY_HEADER, contactRecordKeys, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds, STATUS_HEADER } from "../shared/schema";
 import { questionByLabel } from "../shared/thesis";
-import { ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole, type Thesis, type ThesisId } from "../shared/types";
+import { isChecked, ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole, type Thesis, type ThesisId } from "../shared/types";
 import { colLetter, readCellValue } from "./cells";
 import { charsToPx, detectType, parseListFormula, type ColumnSample } from "./layouts";
 import {
@@ -30,6 +30,13 @@ export const TEMPLATES_SHEET = "Intro templates";
 export function isCsvName(name: string): boolean {
   return /\.(csv|tsv|txt)$/i.test(name);
 }
+
+/**
+ * A guarded CSV field: `'` before text a spreadsheet would run as a formula. Reading one takes
+ * the first `'` off. Mudd's export also guards text that already looks guarded (a stored `'=x`
+ * goes as `''=x`), so what it writes comes back exactly.
+ */
+export const CSV_GUARDED = /^'+[=+\-@\t\r]/;
 
 // ---------- CSV ----------
 
@@ -108,7 +115,9 @@ function csvWorkbook(buf: Uint8Array, fileName: string): ExcelJS.Workbook {
   });
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Prospects");
-  rows.forEach((r, i) => ws.addRow(r.map((v, c) => (i > 0 && numeric[c] && v.trim() ? Number(v.trim()) : v))));
+  // Any file's: a `'` up front is how a CSV keeps a formula from running, Mudd's export's included.
+  const unguard = (v: string) => (CSV_GUARDED.test(v) ? v.slice(1) : v);
+  rows.forEach((r, i) => ws.addRow(r.map((v, c) => (i > 0 && numeric[c] && v.trim() ? Number(v.trim()) : unguard(v)))));
   return wb;
 }
 
@@ -637,4 +646,136 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
     break;
   }
   return { schema, sheets, rows, contacts, skippedContacts, mismatchedContacts, templates, thesis };
+}
+
+// ---------- contacts into a campaign ----------
+
+export interface ImportedContacts {
+  /** The campaign's schema with the file's other columns added to the contacts'. */
+  schema: CampaignSchema;
+  contacts: { parentId: string; cells: Record<string, CellValue> }[];
+  /** Rows that match no prospect in the campaign. */
+  skipped: number;
+  /** Rows for someone the prospect already has (sameContact). */
+  duplicates: number;
+  /** Linked by Prospect ID, but their Company names another company than that prospect's, and no prospect of this campaign. */
+  mismatched: number;
+}
+
+/**
+ * Whether two of a prospect's contacts are one: the same name (or both none) and no email, phone
+ * or link that differs. Without a name (a channel) they also need one of those in common, or,
+ * with none, the same cells in `keys`: the file's columns, the user's own record aside.
+ */
+function sameContact(a: Record<string, CellValue>, b: Record<string, CellValue>, nameKey: string | undefined, details: string[], keys: string[]): boolean {
+  const name = (c: Record<string, CellValue>) => (nameKey ? linkKey(c[nameKey]) : "");
+  if (name(a) !== name(b)) return false;
+  let shared = false;
+  for (const k of details) {
+    const x = linkKey(a[k]);
+    const y = linkKey(b[k]);
+    if (x && y && x !== y) return false;
+    if (x && x === y) shared = true;
+  }
+  if (name(a) || shared) return true;
+  return keys.every((k) => linkKey(a[k]) === linkKey(b[k]));
+}
+
+/**
+ * A contacts CSV into a campaign that has prospects: each row goes to its prospect as the
+ * Contacts tab's do, by Prospect ID, or by Company when it has none. A column is the contacts'
+ * column of that header when there is one, otherwise a new contact column. `taken` holds the
+ * keys any row has a value for (db.allCellKeys), which a new column must not take.
+ *
+ * Each campaign numbers its own prospects P-001 up, so a file from another campaign can name
+ * the wrong one by ID: a row whose ID points at a prospect of another Company goes to the
+ * prospect of its own Company instead, when there is one, and so does one whose ID is not here.
+ * A prospect keeps at most one Primary: a tick in the file is dropped when it has one already.
+ */
+export function readContactsCsv(book: LoadedBook, schema: CampaignSchema, prospects: Row[], existing: Row[], taken: Iterable<string>): ImportedContacts {
+  const ws = book.wb.worksheets[0];
+  const t = ws ? readSheet(ws, book) : null;
+  if (!ws || !t?.rows.length) throw new Error("This file has no contacts in it.");
+  const link = linkColumns(t);
+  if (link.id < 0 && link.company < 0) {
+    throw new Error("A contacts file needs a Prospect ID or Company column, to tell whose people they are.");
+  }
+
+  const next: CampaignSchema = structuredClone(schema);
+  const cs = (next.contacts ??= { columns: [] });
+  const keys = new Set([...allColumns(next).map((c) => c.key), ...taken]);
+  const map: Record<string, number> = {};
+  const used = new Set<string>();
+  t.samples.forEach((s, i) => {
+    if (i === link.id || i === link.company) return;
+    const free = cs.columns.filter((c) => !used.has(c.key));
+    let col = free.find((c) => c.header === s.header) ?? columnByHeaders(free, [norm(s.header)]);
+    if (!col) cs.columns.push((col = sheetColumn(ws, s, i, keys)));
+    used.add(col.key);
+    map[col.key] = i + 1;
+  });
+  ensureAppColumns(next, keys);
+
+  const byId = new Map<string, Row>();
+  const byCompany = new Map<string, Row>();
+  for (const p of prospects) {
+    const id = next.idKey ? linkKey(p.cells[next.idKey]) : "";
+    if (id && !byId.has(id)) byId.set(id, p);
+    const company = next.companyKey ? linkKey(p.cells[next.companyKey]) : "";
+    if (company && !byCompany.has(company)) byCompany.set(company, p);
+  }
+
+  // Who each prospect already has, and which of them have a Primary.
+  const { nameKey, primaryKey } = cs;
+  const record = new Set(contactRecordKeys(next));
+  const details = cs.columns.filter((c) => c.type === "email" || c.type === "phone" || c.type === "url").map((c) => c.key);
+  const compared = Object.keys(map).filter((k) => !record.has(k));
+  const known = new Map<string, Record<string, CellValue>[]>();
+  const know = (parentId: string, cells: Record<string, CellValue>) => {
+    const list = known.get(parentId);
+    if (list) list.push(cells);
+    else known.set(parentId, [cells]);
+  };
+  const hasPrimary = new Set<string>();
+  for (const c of existing) {
+    if (!c.parentId) continue;
+    know(c.parentId, c.cells);
+    if (primaryKey && isChecked(c.cells[primaryKey])) hasPrimary.add(c.parentId);
+  }
+
+  const companyOf = (p: Row) => (next.companyKey ? linkKey(p.cells[next.companyKey]) : "");
+  const out: ImportedContacts = { schema: next, contacts: [], skipped: 0, duplicates: 0, mismatched: 0 };
+  for (const r of t.rows) {
+    const id = link.id >= 0 ? linkKey(readCellValue(r.values[link.id] ?? null)) : "";
+    const company = link.company >= 0 ? linkKey(readCellValue(r.values[link.company] ?? null)) : "";
+    const atId = id ? byId.get(id) : undefined;
+    const atCompany = company ? byCompany.get(company) : undefined;
+    // The ID when its prospect is this Company: else the Company's prospect, then the ID after all
+    // (a renamed company leaves the file's name stale).
+    const agrees = !!atId && (!company || !companyOf(atId) || companyOf(atId) === company);
+    const parent = agrees ? atId : (atCompany ?? atId);
+    if (!parent) {
+      out.skipped++;
+      continue;
+    }
+    const cells: Record<string, CellValue> = {};
+    for (const col of cs.columns) {
+      const idx = map[col.key];
+      if (!idx) continue;
+      const v = readCellValue(r.values[idx - 1] ?? null, col.type, { preferLink: col.type === "url" || col.type === "email" });
+      if (v !== null) cells[col.key] = v;
+    }
+    if (known.get(parent.id)?.some((c) => sameContact(c, cells, nameKey, details, compared))) {
+      out.duplicates++;
+      continue;
+    }
+    know(parent.id, cells);
+    if (primaryKey && isChecked(cells[primaryKey])) {
+      if (hasPrimary.has(parent.id)) delete cells[primaryKey];
+      else hasPrimary.add(parent.id);
+    }
+    if (!agrees && parent === atId) out.mismatched++;
+    out.contacts.push({ parentId: parent.id, cells });
+  }
+  return out;
 }

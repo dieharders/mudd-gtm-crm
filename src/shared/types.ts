@@ -280,6 +280,11 @@ export interface CellEdit {
 
 /** The file types import accepts. Macro workbooks (.xlsm) are refused: saving would drop the macros. */
 export const IMPORT_EXTENSIONS = [".xlsx", ".csv", ".tsv", ".txt"];
+/** The file types Import contacts accepts: text files only, no workbook. */
+export const CONTACTS_EXTENSIONS = [".csv", ".tsv", ".txt"];
+
+/** What the native Open dialog is picking: a spreadsheet to import as a campaign, or a contacts CSV. */
+export type DialogKind = "spreadsheet" | "contacts";
 
 /**
  * The pipeline's stages, in order. A campaign's Status column always lists these and Dead,

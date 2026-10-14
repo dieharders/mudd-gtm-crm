@@ -2,8 +2,9 @@
  * Save file: write the campaign back over the file it was imported from, with no dialog. When
  * Mudd does not know where that file is, it goes to Downloads, and later saves go there too.
  * Waits for pending edits first, so the file always has the latest change.
+ * Export CSV writes one tab, prospects or contacts, as a new .csv in Downloads.
  */
-import { ChevronDown, CloudUpload, Save } from "lucide-react";
+import { ChevronDown, CloudUpload, FileText, Save } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import type { Campaign } from "../../../shared/types";
@@ -36,6 +37,19 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
     }
   };
 
+  const exportCsv = async (kind: "prospects" | "contacts") => {
+    setBusy(true);
+    try {
+      await state.flush();
+      const r = await api.exportCsv(campaign.id, kind);
+      toast.success(`Exported ${baseName(r.path)} to Downloads`);
+    } catch (err) {
+      toast.error((err as Error).message, { duration: 8000 });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const linked = campaign.sourcePath;
   return (
     <>
@@ -58,6 +72,12 @@ export function ExportMenu({ campaign, state }: { campaign: Campaign; state: Cam
             <>
               <MenuItem icon={<Save size={15} />} onClick={() => { close(); void save(); }} hint={linked ? baseName(linked) : "To Downloads"}>
                 Save file
+              </MenuItem>
+              <MenuItem icon={<FileText size={15} />} onClick={() => { close(); void exportCsv("prospects"); }} hint="To Downloads">
+                Export prospects as CSV
+              </MenuItem>
+              <MenuItem icon={<FileText size={15} />} disabled={!state.contacts.length} onClick={() => { close(); void exportCsv("contacts"); }} hint={state.contacts.length ? "To Downloads" : "No contacts yet"}>
+                Export contacts as CSV
               </MenuItem>
               <MenuItem icon={<CloudUpload size={15} />} disabled onClick={() => {}} hint="Coming soon">
                 Save to cloud
