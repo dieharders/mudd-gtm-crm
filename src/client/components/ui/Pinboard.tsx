@@ -107,3 +107,36 @@ export function PinCard({ icon, label, hint, count, tone = "bg-paper", danger, i
     </div>
   );
 }
+
+export interface PinToggleProps {
+  label: string;
+  count: number;
+  active: boolean;
+  index?: number;
+  onClick: () => void;
+  title?: string;
+}
+
+/** A filter on the board: a pinned card turned on and off, coloured as the filter chips were, yellow while on. */
+export function PinToggle({ label, count, active, index = 0, onClick, title }: PinToggleProps) {
+  return (
+    <div className="animate-pop" style={{ animationDelay: `${60 + index * 35}ms` }}>
+      <button
+        type="button"
+        onClick={onClick}
+        title={title}
+        aria-pressed={active}
+        className={cn(
+          "relative flex h-full w-full flex-col items-start gap-1 rounded-xl border-2 px-4 pt-5 pb-3.5 text-left font-label transition",
+          "border-rim shadow-hard hover:-translate-y-0.5 hover:rotate-0 hover:shadow-hard-lg active:translate-y-0.5 active:shadow-hard-sm",
+          TILTS[index % TILTS.length],
+          active ? "bg-note text-mud" : "bg-paper-deep text-mud-soft hover:text-mud",
+        )}
+      >
+        <span className={cn("text-[15px] leading-tight [overflow-wrap:anywhere]", active && "font-bold")}>{label}</span>
+        <span className="text-[22px] leading-none opacity-70 tabular-nums">{count}</span>
+        <span className="pin scale-75" />
+      </button>
+    </div>
+  );
+}

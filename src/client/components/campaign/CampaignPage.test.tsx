@@ -73,9 +73,12 @@ async function mount(id: string) {
   // The overflow drawer's cards: a label, then a hint under it.
   const card = (label: string) => [...el.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.startsWith(label));
   const openMore = () => act(() => (el.querySelector('[aria-label="Campaign menu"]') as HTMLButtonElement).click());
-  // A filter chip: its label, then its count.
-  const chip = (label: string) => [...el.querySelectorAll("button[aria-pressed]")].find((b) => b.firstChild?.textContent === label) as HTMLButtonElement | undefined;
   const click = (b: Element | null | undefined) => act(() => (b as HTMLElement).click());
+  // A filter card in the filter drawer, opened first if it isn't: its label, then its count.
+  const chip = async (label: string) => {
+    if (!el.querySelector('[role="dialog"][aria-label^="Filter"]')) await click([...el.querySelectorAll("button")].find((b) => b.textContent?.trim().startsWith("Filter")));
+    return [...el.querySelectorAll('[role="dialog"] button[aria-pressed]')].find((b) => b.firstChild?.textContent === label) as HTMLButtonElement | undefined;
+  };
   const selectAll = () => click(el.querySelector('[aria-label="Select all rows"]'));
   return { el, button, card, openMore, chip, click, selectAll, unmount: async () => { await act(() => root.unmount()); el.remove(); } };
 }
@@ -91,12 +94,12 @@ test("the selection is let go once a change takes rows off the list, or a bulk s
     expect(page.el.textContent).not.toContain("selected");
 
     // Selected under the Contacted chip, then undone back to Not contacted: off the list, and let go.
-    await page.click(page.chip("Contacted"));
+    await page.click(await page.chip("Contacted"));
     await page.selectAll();
     expect(page.el.textContent).toContain("3 selected");
     await page.click(page.el.querySelector('[title="Undo (Ctrl+Z)"]'));
     expect(page.el.textContent).not.toContain("selected");
-    expect(page.chip("Contacted")?.getAttribute("aria-pressed")).toBe("true");
+    expect((await page.chip("Contacted"))?.getAttribute("aria-pressed")).toBe("true");
     expect(page.el.textContent).toContain("No rows match");
   } finally {
     await page.unmount();
@@ -120,7 +123,7 @@ test("only the selected rows that leave the list are let go; a switch of view le
     await undo();
 
     // Under Not contacted: a, b and a new one, all selected. Undoing the add takes it off the list, and only it.
-    await page.click(page.chip("Not contacted"));
+    await page.click(await page.chip("Not contacted"));
     await page.click(page.button("Add prospect"));
     await page.selectAll();
     expect(page.el.textContent).toContain("3 selected");
@@ -138,11 +141,11 @@ test("a prospect added under No status is left without one, and the chip stays o
   const restoreConsole = failOnConsoleError();
   const page = await mount("pipeline");
   try {
-    await page.click(page.chip("No status"));
+    await page.click(await page.chip("No status"));
     await page.click(page.button("Add prospect"));
-    expect(page.chip("No status")?.getAttribute("aria-pressed")).toBe("true");
-    expect(page.chip("No status")?.textContent).toBe("No status2");
-    expect(page.chip("All")?.getAttribute("aria-pressed")).toBe("false");
+    expect((await page.chip("No status"))?.getAttribute("aria-pressed")).toBe("true");
+    expect((await page.chip("No status"))?.textContent).toBe("No status2");
+    expect((await page.chip("All"))?.getAttribute("aria-pressed")).toBe("false");
   } finally {
     await page.unmount();
     restoreConsole();
