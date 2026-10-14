@@ -13,7 +13,7 @@ import toast from "react-hot-toast";
 import { mergeTemplate, placeholderNames } from "../../../shared/merge";
 import { CONTACT_TYPE_HINTS, contactSchema, introColumn, prospectSchema } from "../../../shared/schema";
 import { DEAD, isScreened, MEETING_STAGE, type CampaignSchema, type CellEdit, type Column, type Row, type Template } from "../../../shared/types";
-import { contactLabel, contactOf, orderedContacts, primaryOf, prospectCells, prospectTitle, toLocalInput } from "../../../shared/values";
+import { contactLabel, contactOf, hasIntro, orderedContacts, primaryOf, prospectCells, prospectTitle, toLocalInput } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { formatDate, formatDateTime, isSameDay, parseLocal, relative } from "../../lib/format";
 import { shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeline";
@@ -63,7 +63,7 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
     [schema.statusKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean),
   );
   const fields = notesLast(schema.columns.filter((c) => !special.has(c.key)));
-  const edit =(edits: CellEdit[], label: string, toastMsg?: string) => {
+  const edit = (edits: CellEdit[], label: string, toastMsg?: string) => {
     state.edit(edits, label);
     if (toastMsg) undoToast(toastMsg, () => state.undo());
   };
@@ -110,7 +110,7 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
         </div>
         <Button size="icon" variant="ghost" onClick={onPrev} disabled={!onPrev} title="Previous (Alt+↑)"><ChevronUp size={16} /></Button>
         <Button size="icon" variant="ghost" onClick={onNext} disabled={!onNext} title="Next (Alt+↓)"><ChevronDown size={16} /></Button>
-        <RowMenu row={row} contacts={contacts.length} state={state} onClose={onClose} />
+        <RowMenu row={row} contacts={contacts.length} drafting={contacts.some((c) => enrich.drafting.has(c.id))} state={state} onClose={onClose} />
         <Button size="icon" variant="ghost" onClick={onClose} title="Close (Esc)" aria-label="Close prospect"><X size={16} /></Button>
       </div>
 
@@ -176,7 +176,12 @@ function Field({ col, row, onEdit, disabled, autoFocus }: { col: Column; row: Ro
   );
 }
 
-function RowMenu({ row, contacts, state, onClose }: { row: Row; contacts: number; state: CampaignState; onClose: () => void }) {
+function RowMenu({ row, contacts, drafting, state, onClose }: {
+  row: Row; contacts: number;
+  /** An intro to one of its contacts is being written: the row stays until it's done. */
+  drafting: boolean;
+  state: CampaignState; onClose: () => void;
+}) {
   return (
     <Popover align="right" trigger={({ toggle }) => (
       <Button size="icon" variant="ghost" onClick={toggle} title="More"><MoreHorizontal size={16} /></Button>
@@ -184,7 +189,7 @@ function RowMenu({ row, contacts, state, onClose }: { row: Row; contacts: number
       {(close) => (
         <>
           <MenuItem icon={<Copy size={15} />} onClick={() => { close(); state.duplicateRow(row.id); toast.success("Duplicated"); }}>Duplicate row</MenuItem>
-          <MenuItem danger icon={<Trash2 size={15} />} onClick={() => {
+          <MenuItem danger disabled={drafting} hint={drafting ? "An intro to one of its contacts is being written" : undefined} icon={<Trash2 size={15} />} onClick={() => {
             close();
             state.deleteRows([row.id]);
             onClose();
@@ -205,7 +210,6 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
 }) {
   const cs = contactSchema(schema);
   const typeCol = cs.columns.find((c) => c.key === cs.typeKey);
-  const introKey = cs.introKey;
   const emailCols = cs.columns.filter((c) => c.type === "email");
   const add = () => onOpenContact(state.addContact(org.id).id);
   return (
@@ -238,7 +242,7 @@ function ContactsSection({ org, contacts, primary, schema, state, enrich, disabl
                     <span className="flex items-center gap-1.5">
                       <span className="truncate text-sm font-medium">{label}</span>
                       {c === primary && <PrimaryStar />}
-                      {introKey && String(c.cells[introKey] ?? "").trim() && (
+                      {hasIntro(c, schema) && (
                         <span className="shrink-0 text-lake-deep" title="Intro written"><MessageSquareText size={12} /></span>
                       )}
                     </span>
@@ -286,6 +290,8 @@ function ContactPanel({ contact, org, orgTitle, schema, templates, state, enrich
   // Primary is the button below, and the intro its own section: neither is a field.
   const fields = notesLast(cs.columns.filter((c) => c.key !== cs.primaryKey && c.key !== cs.introKey));
   const onEdit = (edits: CellEdit[], l: string) => state.editContacts(edits, l);
+  // Their intro is being written: they stay until it's done.
+  const drafting = enrich.drafting.has(contact.id);
   const remove = () => {
     state.deleteRows([contact.id], "Delete contact");
     onBack();
@@ -298,7 +304,8 @@ function ContactPanel({ contact, org, orgTitle, schema, templates, state, enrich
           <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{orgTitle}</span>
         </button>
         {!disabled && (
-          <button onClick={remove} className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-800">
+          <button onClick={remove} disabled={drafting} title={drafting ? "Their intro is being written: stop it or wait for it first" : undefined}
+            className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-45">
             <Trash2 size={13} className="shrink-0" /> Delete contact
           </button>
         )}

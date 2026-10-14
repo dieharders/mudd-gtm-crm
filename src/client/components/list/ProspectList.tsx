@@ -8,7 +8,7 @@ import { AlertTriangle, Ban, CalendarClock, ExternalLink, Mail, MessageSquareTex
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { contactSchema } from "../../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Column, type Row } from "../../../shared/types";
-import { contactLabel, orderedContacts, primaryOf, toNumber } from "../../../shared/values";
+import { contactLabel, hasIntro, orderedContacts, primaryOf, toNumber } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { cueFor } from "../../lib/cues";
 import { formatDate, formatDateTime, relative } from "../../lib/format";
@@ -129,8 +129,7 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
   const paragraphs = layout.paragraphs.map((col) => ({ col, v: txt(col.key) })).filter((p) => p.v);
   const facts = layout.facts.map((col) => ({ col, v: txt(col.key) })).filter((f) => f.v);
   const meetingAt = txt(schema.meetingAtKey);
-  const introKey = schema.contacts?.introKey;
-  const intros = introKey ? contacts.filter((p) => display(p.cells[introKey]).trim()).length : 0;
+  const intros = contacts.filter((p) => hasIntro(p, schema)).length;
   const screened = isScreened(row, schema);
   const reason = screened ? txt(schema.reasonKey) : "";
   const dead = status === DEAD;

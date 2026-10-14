@@ -134,7 +134,7 @@ Rules:
 - Fill every {{placeholder}} from the prospect data. Placeholders name spreadsheet columns, the prospect's or the contact's; {{First name}} is the contact's first name; {{Column|fallback}} uses the fallback when the value is missing. If a value is missing and there is no fallback, rewrite that phrase so it reads naturally without it.
 - A contact whose Contact type is "Channel" is a way in (a main line, a general inbox), not a person: never greet it by its name; write to the team.
 - If a Hook is given, it is the researched reason to write to this prospect: make it the inspiration for the message and work it in naturally (where its placeholder is, if the template has one), in the user's voice, rather than pasting it word for word. Report it in "hooks" with the source given for it (null if none).
-- Without a Hook, add one or two specific, true hooks about this prospect ${web ? "that you verified with a web search" : "from the prospect data"} (a recent contract, launch, hire, talk or post). Each must be backed by a source URL.
+- Without a Hook, find one specific, true hook about this prospect ${web ? "that you verified with a web search" : "from the prospect data"} (a recent contract, launch, hire, talk or post), backed by a source URL, and report it in "hooks" as one short sentence. It becomes the prospect's Hook, used in the messages to all its people: make it about the prospect, not only the person you write to.
 - Never invent facts, numbers, names or shared history.
 - Keep bracketed notes the user left for themselves (like "[Your name]") exactly as they are.
 - Plain text only, no markdown. Do not add a subject line unless the template has one.
@@ -198,5 +198,5 @@ Answer as JSON: {"templateId": the id you used, "message": the finished message,
     message: z.string().min(1),
     hooks: z.array(z.object({ text: z.string(), source: z.string().nullable().optional().default(null) })).catch([]),
   });
-  return { system: INTRO_RULES(web), prompt, jsonSchema, schema: schemaZ, templates: pool };
+  return { system: INTRO_RULES(web), prompt, jsonSchema, schema: schemaZ, templates: pool, hook };
 }

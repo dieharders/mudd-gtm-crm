@@ -1,6 +1,6 @@
 import {
   ArchiveRestore, Building2, Columns3, FileSpreadsheet, FolderOpen, Inbox, ListChecks, Loader2, MessageSquareText, MoreHorizontal, Plus,
-  Loader2 as Spinner, MessageSquarePlus, Radar, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
+  Loader2 as Spinner, Radar, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -9,7 +9,6 @@ import { allColumns, contactSchema, orgColumn } from "../../../shared/schema";
 import {
   DEAD, isChecked, isScreened, ORG_KEY, STAGES, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
 } from "../../../shared/types";
-import { isEmptyContact } from "../../../shared/values";
 import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
 import { useConsentGate } from "../../hooks/useConsentGate";
 import { useDiscovery } from "../../hooks/useDiscovery";
@@ -510,7 +509,7 @@ function CampaignView({ state }: { state: CampaignState }) {
       {/* toolbar: what the sheet shows */}
       <div className="flex min-h-16 flex-wrap items-center gap-3 px-6 pt-3 pb-16 motion-safe:animate-page-in">
         {onContacts && selectedContactRows.length > 0 ? (
-          <ContactBulkBar rows={selectedContactRows} schema={schema} state={state} enrich={enrich} onDone={() => setSelectedContacts(new Set())} />
+          <ContactBulkBar rows={selectedContactRows} state={state} enrich={enrich} onDone={() => setSelectedContacts(new Set())} />
         ) : !onContacts && selectedRows.length > 0 ? (
           <BulkBar
             rows={selectedRows}
@@ -683,7 +682,13 @@ function CampaignView({ state }: { state: CampaignState }) {
       </PanelGate>
       <PanelGate open={showEnrich}>
         <EnrichPanel state={state} enrich={enrich} selectedIds={selectedActiveIds} filteredIds={filteredActiveIds}
-          onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }} onOpenRow={(id) => { setShowEnrich(false); showRow(id); }} />
+          onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }}
+          onOpenRow={(id) => {
+            setShowEnrich(false);
+            // An intro run's rows are contacts: each opens as itself.
+            if (rowById.get(id)?.parentId) openContact(id);
+            else showRow(id);
+          }} />
       </PanelGate>
       <PanelGate open={showReview}>
         <ReviewPanel state={state} enrich={enrich} onClose={() => setShowReview(false)} onOpenRow={showRow} />
@@ -876,14 +881,15 @@ function SelectionCount({ n }: { n: number }) {
 }
 
 /** Actions on the selected contacts. */
-function ContactBulkBar({ rows, schema, state, enrich, onDone }: { rows: Row[]; schema: CampaignSchema; state: CampaignState; enrich: EnrichmentState; onDone: () => void }) {
+function ContactBulkBar({ rows, state, enrich, onDone }: { rows: Row[]; state: CampaignState; enrich: EnrichmentState; onDone: () => void }) {
   const n = rows.length;
   const label = `${n} ${n === 1 ? "contact" : "contacts"}`;
+  // A contact whose intro is being written stays until it's done.
+  const drafting = rows.some((r) => enrich.drafting.has(r.id));
   return (
     <>
       <SelectionCount n={n} />
-      <DraftIntrosButton contacts={rows} schema={schema} state={state} enrich={enrich} title="Write an intro to each selected contact from your templates" />
-      <Button size="sm" variant="danger" onClick={() => {
+      <Button size="sm" variant="danger" disabled={drafting} title={drafting ? "An intro to one of them is being written: stop it or wait for it first" : undefined} onClick={() => {
         state.deleteRows(rows.map((r) => r.id), `Delete ${label}`);
         onDone();
         undoToast(`Deleted ${label}`, () => state.undo());
@@ -894,27 +900,10 @@ function ContactBulkBar({ rows, schema, state, enrich, onDone }: { rows: Row[]; 
   );
 }
 
-/** Draft an intro to each of these contacts with AI, from the templates: they wait under Review. */
-function DraftIntrosButton({ contacts, schema, state, enrich, title }: {
-  contacts: Row[]; schema: CampaignSchema; state: CampaignState; enrich: EnrichmentState; title: string;
-}) {
-  if (!schema.contacts?.introKey) return null;
-  const ids = contacts.map((c) => c.id);
-  const tip = !state.templates.length ? "Add an intro template first" : !ids.length ? "Every contact here has an intro already" : title;
-  return (
-    <Button size="sm" variant="subtle" disabled={!state.templates.length || !ids.length} title={tip}
-      onClick={() => fire(enrich.start({ kind: "intro", rowIds: ids, intro: { templateId: "auto" }, concurrency: 2 }).then((run) => {
-        if (run) toast.success(`Drafting ${ids.length} intro${ids.length === 1 ? "" : "s"}. They'll appear under Review.`);
-      }))}>
-      <MessageSquarePlus size={13} /> Draft intros{ids.length ? ` (${ids.length})` : ""}
-    </Button>
-  );
-}
-
 /**
  * Actions on the selected rows. A selection can mix prospects in play with screened-out ones:
- * Screen out, Set status, Enrich and Draft intros take the ones in play, Restore the screened-out
- * ones, Delete all of them.
+ * Screen out, Set status and Enrich take the ones in play, Restore the screened-out ones, Delete
+ * all of them.
  */
 function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
   rows: Row[]; schema: CampaignSchema; stages: string[]; state: CampaignState; enrich: EnrichmentState; onEnrich: () => void; onDone: () => void;
@@ -922,6 +911,9 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
   const active = rows.filter((r) => !isScreened(r, schema));
   const activeIds = active.map((r) => r.id);
   const screenedIds = rows.filter((r) => isScreened(r, schema)).map((r) => r.id);
+  // A prospect with an intro being written to one of its contacts stays until it's done.
+  const draftingOrgs = new Set([...enrich.drafting].map((id) => state.rowById.get(id)?.parentId));
+  const drafting = draftingOrgs.size > 0 && rows.some((r) => draftingOrgs.has(r.id));
   const count = (n: number) => `${n} ${n === 1 ? "row" : "rows"}`;
   const setStatus = (stage: string) => {
     const label = count(active.length);
@@ -951,9 +943,6 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
             </Popover>
           )}
           <Button size="sm" variant="subtle" onClick={onEnrich}><Sparkles size={13} /> Enrich</Button>
-          {/* Each prospect's contacts that have no intro yet, a contact that holds nothing aside. */}
-          <DraftIntrosButton schema={schema} state={state} enrich={enrich} title="Write an intro to each contact of the selected prospects that has none yet"
-            contacts={active.flatMap((r) => state.contactsOf(r.id)).filter((c) => !isEmptyContact(c, schema) && !display(c.cells[schema.contacts?.introKey ?? ""]).trim())} />
         </>
       )}
       {screenedIds.length > 0 && (
@@ -964,7 +953,7 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
           <ArchiveRestore size={13} /> Restore{activeIds.length > 0 ? ` ${screenedIds.length}` : ""}
         </Button>
       )}
-      <Button size="sm" variant="danger" onClick={() => {
+      <Button size="sm" variant="danger" disabled={drafting} title={drafting ? "An intro to one of their contacts is being written: stop it or wait for it first" : undefined} onClick={() => {
         state.deleteRows(rows.map((r) => r.id));
         onDone();
         undoToast(`Deleted ${count(rows.length)}`, () => state.undo());

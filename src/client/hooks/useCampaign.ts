@@ -18,7 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { newProspectId } from "../../shared/schema";
+import { contactRecordKeys, newProspectId } from "../../shared/schema";
 import { CHECKED, isChecked, type Campaign, type CampaignSchema, type CellEdit, type CellValue, type Row, type Template, type Thesis } from "../../shared/types";
 import { applyCellEdits, sameValue } from "../../shared/values";
 import { api } from "../lib/api";
@@ -214,8 +214,10 @@ export function useCampaign(id: string) {
     const s = campaignRef.current?.schema;
     // A copy of a prospect is another prospect: its own ID, and none of its contacts.
     const cells = { ...src.cells, ...(src.parentId ? {} : nextId(rowsRef.current, s)) };
-    // A copy of a contact is someone else: the intro was written to the original.
-    for (const k of [s?.contacts?.introKey, s?.meetingAtKey, s?.meetingUrlKey]) if (k) delete cells[k];
+    // A copy of a contact is someone else: the Primary tick, when they were contacted and replied,
+    // and the intro written to them are the original's.
+    const theirs = src.parentId ? (s ? contactRecordKeys(s) : []) : [s?.meetingAtKey, s?.meetingUrlKey];
+    for (const k of theirs) if (k) delete cells[k];
     const row: Row = { id: newRowId(), position, cells, sourceSheet: null, sourceRow: null, ...(src.parentId ? { parentId: src.parentId } : {}) };
     setRows((prev) => [...prev, row]);
     pushUndo({ kind: "insert", label: "Duplicate row", ids: [row.id] });
@@ -265,7 +267,7 @@ export function useCampaign(id: string) {
     return edit(out, label);
   }, [edit]);
 
-  /** Make a contact the one intros and templates address. */
+  /** Make a contact the prospect's main person. */
   const makePrimary = useCallback((contactId: string) => {
     const primaryKey = campaignRef.current?.schema.contacts?.primaryKey;
     return primaryKey ? editContacts([{ rowId: contactId, key: primaryKey, value: CHECKED }], "Make primary") : false;

@@ -94,7 +94,7 @@ describe("not ready to send", () => {
   const s = schema.statusKey!;
   const intro = schema.contacts!.introKey!;
 
-  test("a prospect not yet contacted whose first contact has no intro, or with no one to address", () => {
+  test("a prospect not yet contacted with no intro to any of its contacts, or no one to address", () => {
     const ready = row({ [s]: "Not contacted" });
     const nobody = row({ [s]: "Not contacted" });
     const noIntro = row({});
@@ -105,9 +105,11 @@ describe("not ready to send", () => {
     expect(f.test(noIntro)).toBe(true);
   });
 
-  test("a contact without the Primary tick is still someone to address", () => {
+  test("an intro to anyone counts, the primary contact or not, as the card's badge does", () => {
     const p = row({ [s]: "Not contacted" });
-    expect(filterOf(schema, "notReady", { contacts: [row({ [schema.contacts!.primaryKey!]: null, [intro]: "Hi" }, p.id)] })!.test(p)).toBe(false);
+    const primary = row({ [schema.contacts!.primaryKey!]: CHECKED }, p.id);
+    expect(filterOf(schema, "notReady", { contacts: [primary, row({ [intro]: "Hi" }, p.id)] })!.test(p)).toBe(false);
+    expect(filterOf(schema, "notReady", { contacts: [primary, row({ [intro]: "  " }, p.id)] })!.test(p)).toBe(true);
   });
 
   test("once contacted, or dead, it is past sending", () => {

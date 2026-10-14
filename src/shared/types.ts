@@ -71,7 +71,7 @@ export interface ContactSchema {
   nameKey?: string;
   /** What kind of stakeholder they are: Economic Buyer, Gatekeeper… */
   typeKey?: string;
-  /** Checkbox: the contact intros and templates address. At most one per prospect. */
+  /** Checkbox: the prospect's main person, named under it and seen with it in research. At most one per prospect. */
   primaryKey?: string;
   /** Date: when the user last reached out to this person. */
   lastContactedKey?: string;

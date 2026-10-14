@@ -4,8 +4,9 @@
  * A run is a list of prospects worked by a few parallel workers. Each is one research turn on
  * the user's CLI, which sees the prospect with its primary contact; or, for a recipe that fills
  * in people's details, one turn per contact, each seeing the prospect with that person (see
- * recipeMode). An intro run is a list of contacts instead: each gets its own message, written
- * seeing its prospect with that person. Pause lets the in-flight prospects finish and starts no more; Stop aborts them.
+ * recipeMode). An intro run is one contact instead, started from their panel: one message,
+ * written seeing its prospect with that person, around the prospect's Hook (see doIntro).
+ * Pause lets the in-flight prospects finish and starts no more; Stop aborts them.
  * An answer never overwrites a cell on its own: it becomes a SUGGESTION to accept or reject,
  * except with auto-fill on, which fills cells that are EMPTY and nothing else. A person's
  * findings go on the contact the turn was about, or, from a recipe that finds someone, on the
@@ -22,7 +23,7 @@ import { enrichRequest, introRequest } from "./prompts";
 import * as store from "./store";
 import { publish, publishCampaign } from "./hub";
 import { mergeSources, recipeMode, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type ProviderId, type RunKind, type Source, type Suggestion } from "../../shared/ai";
-import { allColumns, columnOf, introColumn, isContactKey, makeKey } from "../../shared/schema";
+import { allColumns, columnOf, hookColumns, introColumn, isContactKey, makeKey } from "../../shared/schema";
 import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../shared/types";
 import { contactLabel, parseFlag, primaryOf, prospectCells, researchedContacts, sameValue, samePerson, toNumber } from "../../shared/values";
 import { generateStructured } from "../ai";
@@ -84,19 +85,27 @@ function emitRow(ctrl: Controller, rowId: string): void {
   saveSoon(ctrl);
 }
 
-/** The shared "Enrichment sources" column, created the first time anything needs it. */
-export function ensureSourcesColumn(campaignId: string): string {
+/** A prospect column Mudd adds the first time something needs it: its key, either way. */
+function ensureColumn(campaignId: string, find: (schema: CampaignSchema) => Column | undefined, col: Omit<Column, "key">): string {
   const c = db.getCampaign(campaignId)!;
-  const existing = sourcesColumn(c.schema);
+  const existing = find(c.schema);
   if (existing) return existing.key;
   // Not a key a deleted column left values under: the new column would show them.
-  const taken = new Set([...allColumns(c.schema).map((col) => col.key), ...db.allCellKeys(campaignId)]);
-  const key = makeKey("enrichment_sources", taken);
-  const schema: CampaignSchema = { ...c.schema, columns: [...c.schema.columns, { key, header: SOURCES_HEADER, type: "longtext", origin: "enrichment", width: 320 }] };
+  const taken = new Set([...allColumns(c.schema).map((x) => x.key), ...db.allCellKeys(campaignId)]);
+  const key = makeKey(col.header, taken);
+  const schema: CampaignSchema = { ...c.schema, columns: [...c.schema.columns, { key, ...col }] };
   db.updateCampaign(campaignId, { schema });
   publishCampaign(campaignId);
   return key;
 }
+
+/** The shared "Enrichment sources" column. */
+export const ensureSourcesColumn = (campaignId: string): string =>
+  ensureColumn(campaignId, sourcesColumn, { header: SOURCES_HEADER, type: "longtext", origin: "enrichment", width: 320 });
+
+/** The prospects' Hook, which the intros to their people are built on. */
+const ensureHookColumn = (campaignId: string): string =>
+  ensureColumn(campaignId, (schema) => hookColumns(schema)[0], { header: "Hook", type: "longtext", origin: "enrichment", width: 320 });
 
 /** The campaign's recent runs, a live one as it is now (its stored copy lags). */
 export function recentRuns(campaignId: string): EnrichRun[] {
@@ -133,7 +142,10 @@ export function startRun(input: StartRunInput): EnrichRun {
   if (input.kind === "intro" && !db.listTemplates(input.campaignId).length) throw new Error("Add an intro template first: the AI writes from your templates.");
   const rowIds = [...new Set(input.rowIds)];
   if (!rowIds.length) throw new Error("No rows to run on.");
+  // An intro is drafted from the contact's own panel, never in bulk.
+  if (input.kind === "intro" && rowIds.length > 1) throw new Error("An intro is written to one contact at a time.");
   if (input.kind === "enrich") ensureSourcesColumn(input.campaignId);
+  else ensureHookColumn(input.campaignId);
   const run: EnrichRun = {
     id: db.newId(),
     campaignId: input.campaignId,
@@ -396,12 +408,9 @@ export function normaliseValue(col: Pick<Column, "type" | "options">, raw: strin
  * contact's name, since an earlier run made it), or on a new one, never on anyone else. The
  * sources always go on the prospect, marked with the person's name. Null when it is gone.
  */
-function recordResults(
-  run: EnrichRun,
-  rowId: string,
-  results: { col: Column; value: CellValue; sources: Source[]; confidence: Suggestion["confidence"]; note: string | null }[],
-  contactId?: string,
-): number | null {
+type Finding = { col: Column; value: CellValue; sources: Source[]; confidence: Suggestion["confidence"]; note: string | null };
+
+function recordResults(run: EnrichRun, rowId: string, results: Finding[], contactId?: string): number | null {
   const schema = db.getCampaign(run.campaignId)?.schema;
   const row = schema ? db.getRow(run.campaignId, rowId) : null;
   if (!schema || !row) return null;
@@ -489,7 +498,7 @@ async function doEnrich(run: EnrichRun, schema: CampaignSchema, turn: Turn, rowI
   if (!req.columns.length) throw new Error("This recipe's output columns were deleted.");
   const { data, costUsd } = await generateStructured({ ...req, webSearch: recipe.webSearch, signal, onStep });
   if (costUsd !== null) run.costUsd = (run.costUsd ?? 0) + costUsd;
-  const results = [];
+  const results: Finding[] = [];
   for (const col of req.columns) {
     const f = data.fields[col.key];
     if (!f) continue;
@@ -508,16 +517,23 @@ async function doEnrich(run: EnrichRun, schema: CampaignSchema, turn: Turn, rowI
   return recordResults(run, rowId, results, turn.contact?.id);
 }
 
-/** One contact's intro: a suggestion on that contact, its hooks' sources on the prospect. */
+/**
+ * One contact's intro: a suggestion on that contact. It is built on the prospect's Hook, one for
+ * all its people: the one it holds, else the one an earlier intro found that still waits for
+ * review. With neither, the turn finds it, and it waits for review on the prospect.
+ */
 async function doIntro(run: EnrichRun, schema: CampaignSchema, turn: Turn, signal: AbortSignal, onStep: (s: string) => void): Promise<number | null> {
   const col = introColumn(schema);
   if (!col) throw new Error("This campaign has no Intro message column.");
-  const { cells, contact } = turn;
-  const orgId = contact!.parentId!;
+  const contact = turn.contact!;
+  const orgId = contact.parentId!;
   const templates = db.listTemplates(run.campaignId);
   const choice = run.intro?.templateId ?? "auto";
-  // The Hook is the prospect's.
-  const sourceOf = (key: string) => store.sourceOfValue(run.campaignId, orgId, key, cells[key] ?? null);
+  const hookCol = hookColumns(schema)[0];
+  const held = hookColumns(schema).some((c) => String(turn.cells[c.key] ?? "").trim());
+  const waiting = hookCol && !held ? store.pendingFor(run.campaignId, orgId, hookCol.key) : null;
+  const cells = waiting ? { ...turn.cells, [hookCol!.key]: waiting.value } : turn.cells;
+  const sourceOf = (key: string) => (waiting && key === hookCol!.key ? waiting.sources[0]?.url ?? null : store.sourceOfValue(run.campaignId, orgId, key, cells[key] ?? null));
   const req = introRequest(templates, choice, run.intro?.guidance, schema, cells, true, sourceOf);
   if (!req.templates.length) throw new Error("That template no longer exists.");
   const { data, costUsd } = await generateStructured({ ...req, webSearch: true, signal, onStep });
@@ -526,11 +542,24 @@ async function doIntro(run: EnrichRun, schema: CampaignSchema, turn: Turn, signa
   // One line each: the note lists them by line, and the page matches each to its source by text.
   const hooks = data.hooks.map((h) => ({ ...h, text: h.text.replace(/\s+/g, " ").trim() })).filter((h) => h.text);
   const note = [`Template: ${used.name}`, ...hooks.map((h) => `Hook: ${h.text}`)].join("\n");
-  return recordResults(run, orgId, [{
+  const results: Finding[] = [{
     col,
     value: data.message.trim(),
     sources: hooks.filter((h) => h.source).map((h) => ({ url: h.source!, title: h.text })),
     confidence: null,
     note,
-  }], contact!.id);
+  }];
+  const found = !req.hook && hookCol ? hooks[0] : undefined;
+  if (found) {
+    results.push({
+      col: hookCol!,
+      value: normaliseValue(hookCol!, found.text),
+      sources: found.source ? [{ url: found.source }] : [],
+      confidence: null,
+      note: `Found writing the intro to ${contactLabel(contact, schema)}.`,
+    });
+  }
+  // Deleted during the turn: the draft has no one to go to.
+  if (!db.getRow(run.campaignId, contact.id)) return null;
+  return recordResults(run, orgId, results, contact.id);
 }

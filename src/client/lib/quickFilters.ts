@@ -6,7 +6,7 @@
 import { isSourcesColumn, type EnrichRun, type Recipe } from "../../shared/ai";
 import { CONTACT_TYPE_HINTS, contactSchema, ECONOMIC_BUYER } from "../../shared/schema";
 import { DEAD, isScreened, type CampaignSchema, type CellValue, type Row } from "../../shared/types";
-import { primaryOf } from "../../shared/values";
+import { hasIntro } from "../../shared/values";
 import { parseLocal, todayString } from "./format";
 import { contactedStage, stageIndex } from "./pipeline";
 
@@ -95,8 +95,8 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
     });
   }
 
-  // Not contacted yet, and missing what outreach needs: someone to address, or an intro to them.
-  // Someone is whoever is reached first (primaryOf), Primary ticked or not.
+  // Not contacted yet, and missing what outreach needs: anyone to write to, or an intro written
+  // to any of them.
   const introKey = schema.contacts?.introKey;
   if (schema.contacts) {
     const before = contacted ? stageIndex(contacted, stages) : stages.length;
@@ -112,8 +112,8 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
           const i = stageIndex(s, stages);
           if (i < 0 || i >= before) return false;
         }
-        const primary = primaryOf(contactsOf(r.id), schema);
-        return !primary || (!!introKey && blank(primary.cells[introKey]));
+        const people = contactsOf(r.id);
+        return !people.length || (!!introKey && !people.some((p) => hasIntro(p, schema)));
       },
     });
   }

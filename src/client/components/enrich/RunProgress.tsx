@@ -73,7 +73,7 @@ export function RunProgress({ run, rowById, schema, contactsOf, onAction, onRevi
           const t = row ? titleOf(row) : "Deleted row";
           return (
             <li key={id}>
-              <button onClick={() => row && onOpenRow(row.parentId ?? id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-paper-deep/60">
+              <button onClick={() => row && onOpenRow(id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-paper-deep/60">
                 <RowIcon state={rs.state} />
                 <span className="w-44 shrink-0 truncate font-medium">{t}</span>
                 <span className={cn("min-w-0 flex-1 truncate", rs.state === "error" ? "text-rose-700" : "text-mud-faint")}>

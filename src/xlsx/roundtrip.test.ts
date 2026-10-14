@@ -643,6 +643,7 @@ describe("campaigns created in Mudd", () => {
     expect(fillOf("Primary")).toBe(YOURS_FILL);
     expect(fillOf("Last contacted")).toBe(YOURS_FILL);
     expect(fillOf("Last reply")).toBe(YOURS_FILL);
+    expect(fillOf("Intro message")).toBe(YOURS_FILL);
     expect(fillOf("Email")).not.toBe(YOURS_FILL);
   });
 
@@ -801,6 +802,27 @@ describe("the Contacts tab", () => {
     expect(again.contacts.map((c) => [c.cells[cs2.nameKey!], c.cells[cs2.typeKey!], c.parentId])).toEqual([["Cy Dee", "Influencer", again.rows[2]!.id]]);
   });
 
+  test("an intro to a contact is saved in the tab's Intro message column, added after its last one when it has none", async () => {
+    const original = await xlsxOf((wb) => {
+      const ws = wb.addWorksheet("Prospects");
+      ws.addRow(["ID", "Company"]);
+      ws.addRow(["P-001", "Acme"]);
+      const c = wb.addWorksheet("Contacts");
+      c.addRow(["Prospect ID", "Company", "Name", "Notes"]);
+      c.addRow(["P-001", "Acme", "Ann Lee", "Met at AUSA"]);
+    });
+    const { campaign, rows, contacts } = await importFrom(original);
+    contacts[0]!.cells[campaign.schema.contacts!.introKey!] = "Hi Ann,\nshort intro.";
+    const out = await exportCampaign(campaign, original, rows, [], contacts, null);
+    const ws = (await read(out)).getWorksheet("Contacts")!;
+    const header = (ws.getRow(1).values as unknown[]).slice(1);
+    expect(header.slice(0, 4)).toEqual(["Prospect ID", "Company", "Name", "Notes"]);
+    expect(header.at(-1)).toBe("Intro message");
+    expect(ws.getCell(2, header.length).value).toBe("Hi Ann,\nshort intro.");
+    const again = await importFrom(out);
+    expect(again.contacts[0]!.cells[again.campaign.schema.contacts!.introKey!]).toBe("Hi Ann,\nshort intro.");
+  });
+
   test("a missing or repeated prospect ID gets the next one, and the next save writes it in", async () => {
     const original = await xlsxOf((wb) => {
       const ws = wb.addWorksheet("Prospects");
@@ -908,6 +930,8 @@ describe("round trip with the whole tracker fixture", () => {
     first!.cells[s.meetingUrlKey!] = "https://meet.google.com/abc-defg-hij";
     third!.cells[s.screenedKey!] = CHECKED;
     third!.cells[s.reasonKey!] = "Has an agency of record";
+    const ann = contacts.find((c) => c.parentId === first!.id)!;
+    ann.cells[s.contacts!.introKey!] = "Hi there,\nshort intro.";
     const kept = rows.filter((r) => r.id !== second!.id);
     kept.push({ id: "new", position: 9_999, cells: { [s.companyKey!]: "New Co", [s.statusKey!]: "Contacted" } });
     const out = await exportCampaign(campaign, original, kept, [tpl("Warm", "Hi {{First name}}", 0)], contacts, null);
@@ -916,6 +940,8 @@ describe("round trip with the whole tracker fixture", () => {
     const s2 = again.campaign.schema;
     const back = again.rows.find((r) => r.sourceRow === first!.sourceRow)!;
     expect(back.cells[s2.meetingAtKey!]).toBe("2026-10-02T14:30");
+    // The intro is the contact's, on the Contacts tab.
+    expect(again.contacts.find((c) => c.sourceRow === ann.sourceRow)!.cells[s2.contacts!.introKey!]).toBe("Hi there,\nshort intro.");
     expect(isScreened(again.rows.find((r) => r.sourceRow === third!.sourceRow)!, s2)).toBe(true);
     expect(again.rows.some((r) => r.sourceRow === second!.sourceRow)).toBe(false);
     expect(again.rows.some((r) => r.cells[s2.companyKey!] === "New Co")).toBe(true);

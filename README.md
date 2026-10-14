@@ -9,7 +9,7 @@ Search for and find new cold prospects and their contact information for free us
 Open your Excel or CSV lead tracker in Mudd (pronounced Mud-d) and edit it like a CRM. Track each company and its contacts through your pipeline, let AI research the gaps and draft personal intros. The spreadsheet acts as the source of truth.
 
 - **AI enrichment with sources**: Mudd researches each prospect on the web and fills columns you choose, such as industry, headcount or a decision-maker's name. Every suggestion links to its source, and you accept or reject it.
-- **Intros that sound like you**: write templates with `{{First name}}`-style placeholders, and AI fills them in with one or two real, checkable hooks per prospect.
+- **Intros that sound like you**: write templates with `{{First name}}`-style placeholders, and AI fills them in for each person around one real, checkable hook per prospect.
 - **Private by design**: your data stays on your computer. There's no account, no cloud service and no API key. The AI runs through your own Claude Code or Codex sign-in and bills the plan you already pay for.
 - **Free**: for Windows, macOS and Linux.
 
@@ -108,9 +108,10 @@ Open **AI settings** from the bottom of the sidebar to pick the provider, model 
 
 ![Intro message templates: a template with placeholders and its preview filled in for one prospect](docs/screenshots/outbound-templates.webp)
 
-- **Write with AI** (prospect panel → a contact → Intro message): let the AI pick the best-fitting template, or choose one. Each contact gets their own intro.
-  - It fills the placeholders, researches 1–2 verifiable hooks and shows a draft with those sources. Use it, try again, or discard it.
-  - **Draft intros** in the bulk bar does the same for each selected contact, or, with prospects selected, for each of their contacts that has no intro yet.
+- **Write with AI** (prospect panel → a contact → Intro message): let the AI pick the best-fitting template, or choose one. Each contact gets their own intro, one at a time: intros are never drafted in bulk, and enrichment never writes them.
+  - It fills the placeholders around the prospect's `Hook` and shows a draft with its source. Use it, try again, or discard it.
+  - A prospect has one hook for all its people. With none yet, the first intro researches one verifiable hook, which waits for review as the prospect's `Hook` (using the draft accepts it too) and is what the intros to its other people are built on. A campaign without a `Hook` column gets one.
+  - A contact can't be deleted while their intro is being written.
 
 ### Discover
 

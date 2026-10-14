@@ -260,7 +260,7 @@ function MappingDialog({ result, open, onClose }: { result: InspectResult; open:
                 Left as they are in the file: <strong>{kept.map((s) => s.name).join(", ")}</strong>.
               </p>
             )}
-            <p>Meeting, Intro message, Screened out and ID columns are added after your last column when the tab lacks them, so formulas that point at existing columns keep working.</p>
+            <p>Meeting, Screened out and ID columns are added after your last column when the tab lacks them, so formulas that point at existing columns keep working. The intro you write to each person goes in an Intro message column on the Contacts tab.</p>
             {result.templates > 0 && <p>{result.templates} intro template{result.templates === 1 ? "" : "s"} found and will be restored.</p>}
             {result.thesis > 0 && <p>An ICP thesis with {result.thesis} answer{result.thesis === 1 ? "" : "s"} was found: this comes back as a Discovery campaign.</p>}
             {!result.path && (

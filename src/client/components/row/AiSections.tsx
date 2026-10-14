@@ -3,7 +3,7 @@ import { CheckCheck, ExternalLink, Loader2, RotateCcw, Sparkles, Square, Wand2 }
 import { useState } from "react";
 import { columnOf } from "../../../shared/schema";
 import type { CampaignSchema, Row, Template } from "../../../shared/types";
-import { contactLabel } from "../../../shared/values";
+import { contactLabel, isEmptyContact } from "../../../shared/values";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
 import { hrefOf, openLink } from "../grid/cells";
@@ -41,7 +41,10 @@ export function RowSuggestions({ row, contacts, schema, enrich }: { row: Row; co
   );
 }
 
-/** Write a contact's intro with AI: pick a template (or let it pick), research hooks, review the draft. */
+/**
+ * Write a contact's intro with AI: pick a template (or let it pick), review the draft. It is built
+ * on the prospect's Hook; a prospect with none gets one researched, kept for all its people.
+ */
 export function AiIntro({ contact: row, schema, templates, enrich }: { contact: Row; schema: CampaignSchema; templates: Template[]; enrich: EnrichmentState }) {
   const ai = useAi();
   const { ready } = useActiveProvider();
@@ -49,9 +52,13 @@ export function AiIntro({ contact: row, schema, templates, enrich }: { contact: 
   const [guidance, setGuidance] = useState("");
   const [showGuidance, setShowGuidance] = useState(false);
   const draft = (enrich.pendingByRow.get(row.id) ?? []).find((s) => s.key === schema.contacts?.introKey);
+  // The prospect's Hook, when the draft's own run found it.
+  const newHook = draft && enrich.suggestions.find((s) => s.runId === draft.runId && s.rowId === row.parentId);
   const run = enrich.activeRuns.find((r) => r.kind === "intro" && r.rows[row.id] && (r.rows[row.id]!.state === "running" || r.rows[row.id]!.state === "pending"));
   const rowState = run?.rows[row.id];
   const lastError = enrich.runs.find((r) => r.kind === "intro" && r.rows[row.id]?.state === "error")?.rows[row.id]?.error;
+  // Nobody to write to yet: no name, no email, nothing.
+  const nobody = isEmptyContact(row, schema);
 
   const write = () =>
     enrich.start({ kind: "intro", rowIds: [row.id], intro: { templateId, guidance: guidance.trim() || undefined }, concurrency: 1, autoFill: false });
@@ -89,9 +96,10 @@ export function AiIntro({ contact: row, schema, templates, enrich }: { contact: 
             })}
           </ul>
         )}
+        {newHook && <p className="mt-2 text-[11px] text-mud-faint">Using this draft also makes its hook the prospect’s Hook, for the intros to its other people.</p>}
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <Button size="sm" variant="primary" onClick={() => fire(enrich.accept([draft]))}>Use this draft</Button>
-          <Button size="sm" onClick={() => fire(enrich.reject([draft]).then(() => write()))} disabled={!!run}><RotateCcw size={12} /> Try again</Button>
+          <Button size="sm" variant="primary" onClick={() => fire(enrich.accept(newHook ? [draft, newHook] : [draft]))}>Use this draft</Button>
+          <Button size="sm" onClick={() => fire(enrich.reject([draft]).then(() => write()))} disabled={!!run || nobody}><RotateCcw size={12} /> Try again</Button>
           <Button size="sm" variant="ghost" onClick={() => fire(enrich.reject([draft]))}>Discard</Button>
         </div>
       </div>
@@ -114,7 +122,9 @@ export function AiIntro({ contact: row, schema, templates, enrich }: { contact: 
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             {ready ? (
-              <Button size="sm" variant="primary" onClick={() => fire(write())}><Wand2 size={13} /> Write with AI</Button>
+              <Button size="sm" variant="primary" disabled={nobody} title={nobody ? "Add who they are first: a name, or how to reach them" : undefined} onClick={() => fire(write())}>
+                <Wand2 size={13} /> Write with AI
+              </Button>
             ) : (
               <Button size="sm" onClick={() => ai.setOpen(true)}>Set up AI</Button>
             )}
@@ -125,7 +135,7 @@ export function AiIntro({ contact: row, schema, templates, enrich }: { contact: 
             <button className="mt-1.5 text-[11px] text-clay-deep hover:underline" onClick={() => setShowGuidance(true)}>+ Add guidance</button>
           )}
           {lastError && <p className="mt-1.5 text-[11px] text-rose-700">Last try failed: {lastError}</p>}
-          <p className="mt-1.5 text-[11px] text-mud-faint">Fills your template for {contactLabel(row, schema)}, around the prospect’s Hook, or researches 1–2 hooks when it has none, with sources. You review before it goes in.</p>
+          <p className="mt-1.5 text-[11px] text-mud-faint">Fills your template for {contactLabel(row, schema)}, around the prospect’s Hook. A prospect with no Hook gets one researched, with its source, and keeps it for its other people. You review before it goes in.</p>
         </>
       )}
     </div>

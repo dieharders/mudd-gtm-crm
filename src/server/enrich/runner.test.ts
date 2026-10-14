@@ -255,6 +255,60 @@ describe("runs", () => {
     expect(draft!.sources).toEqual([{ url: "https://x.io", title: "Hired a CTO" }]);
   });
 
+  test("a prospect has one hook: the first intro finds it, for review, and the next intro is built on it", async () => {
+    const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme" } }]);
+    db.insertRows(id, [{ id: "c1", parentId: "r1", cells: { [k("Name")]: "Ann Lee" } }, { id: "c2", parentId: "r1", cells: { [k("Name")]: "Bo Chen" } }]);
+    db.createTemplate(id, "Warm", "Hi {{First name}}");
+    const prompts: string[] = [];
+    fakeTurn = async (req) => {
+      prompts.push(req.prompt);
+      return { data: { templateId: "?", message: "Hi there", hooks: [{ text: "Won an AFWERX contract", source: "https://afwerx.mil/acme" }] }, costUsd: null };
+    };
+    const first = startRun({ campaignId: id, kind: "intro", rowIds: ["c1"], test: false, autoFill: false, concurrency: 1 });
+    await until(() => first.status === "done");
+    const hook = store.listSuggestions(id, "pending").find((s) => s.rowId === "r1");
+    expect(hook).toMatchObject({ key: k("Hook"), value: "Won an AFWERX contract", sources: [{ url: "https://afwerx.mil/acme" }], runId: first.id });
+    expect(prompts[0]).not.toContain("Hook:");
+
+    // Still waiting for review, it is the one the next person's intro is built on: none is looked for.
+    const second = startRun({ campaignId: id, kind: "intro", rowIds: ["c2"], test: false, autoFill: false, concurrency: 1 });
+    await until(() => second.status === "done");
+    fakeTurn = null;
+    expect(prompts[1]).toContain('Hook: "Won an AFWERX contract" (source: https://afwerx.mil/acme)');
+    const pending = store.listSuggestions(id, "pending");
+    expect(pending.filter((s) => s.rowId === "r1").map((s) => s.id)).toEqual([hook!.id]);
+    expect(pending.map((s) => s.rowId).sort()).toEqual(["c1", "c2", "r1"]);
+  });
+
+  test("a campaign with no hook column gets one for its intros", async () => {
+    const c = db.createCampaign({ name: "No hook", schema: { ...schema, columns: schema.columns.filter((col) => col.header !== "Hook") }, sheets: [] });
+    db.insertRows(c.id, [{ id: "r1", cells: { [k("Company")]: "Acme" } }, { id: "c1", parentId: "r1", cells: { [k("Name")]: "Ann Lee" } }]);
+    db.createTemplate(c.id, "Warm", "Hi {{First name}}");
+    fakeTurn = async () => ({ data: { templateId: "?", message: "Hi there", hooks: [{ text: "Hired a CTO", source: null }] }, costUsd: null });
+    const run = startRun({ campaignId: c.id, kind: "intro", rowIds: ["c1"], test: false, autoFill: false, concurrency: 1 });
+    await until(() => run.status === "done");
+    fakeTurn = null;
+    const col = db.getCampaign(c.id)!.schema.columns.find((x) => x.header === "Hook");
+    expect(col).toMatchObject({ type: "longtext" });
+    expect(store.listSuggestions(c.id, "pending").find((s) => s.rowId === "r1")).toMatchObject({ key: col!.key, value: "Hired a CTO" });
+  });
+
+  test("an intro is written to one contact at a time, and not to one deleted during its turn", async () => {
+    const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme", [k("Hook")]: "Won an AFWERX contract" } }]);
+    db.insertRows(id, [{ id: "c1", parentId: "r1", cells: { [k("Name")]: "Ann Lee" } }, { id: "c2", parentId: "r1", cells: { [k("Name")]: "Bo Chen" } }]);
+    db.createTemplate(id, "Warm", "Hi {{First name}}");
+    expect(() => startRun({ campaignId: id, kind: "intro", rowIds: ["c1", "c2"], test: false, autoFill: false, concurrency: 2 })).toThrow("one contact at a time");
+    fakeTurn = async () => {
+      db.deleteRows(id, ["c1"]);
+      return { data: { templateId: "?", message: "Hi there", hooks: [] }, costUsd: null };
+    };
+    const run = startRun({ campaignId: id, kind: "intro", rowIds: ["c1"], test: false, autoFill: false, concurrency: 1 });
+    await until(() => run.status === "done");
+    fakeTurn = null;
+    expect(run.rows.c1).toEqual({ state: "skipped", error: "Row was deleted." });
+    expect(store.listSuggestions(id)).toHaveLength(0);
+  });
+
   test("a row deleted during its turn is skipped, its findings dropped", async () => {
     const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme" } }]);
     fakeTurn = async () => {
