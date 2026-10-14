@@ -106,7 +106,7 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
             )}
           </aside>
 
-          <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-5 scroll-thin">
+          <div className="min-w-0 flex-1 overflow-y-auto p-5 scroll-thin">
             {sel.kind === "run" && shownRun ? (
               <DiscoveryProgress run={shownRun} candidates={discovery.candidates} onAction={(a) => fire(discovery.action(shownRun.id, a))} />
             ) : sel.kind === "thesis" ? (

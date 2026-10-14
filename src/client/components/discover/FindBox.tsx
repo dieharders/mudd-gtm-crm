@@ -31,10 +31,12 @@ function BandField({ label, readout, value, min, max, onChange }: {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  // The slider is a span, which a <label> can't point at, so clicking the label focuses it by hand.
+  const focusBand = () => box.current?.querySelector<HTMLElement>("[role=slider]")?.focus();
   return (
-    <div ref={box}>
-      <span className="label">{label} <span className="font-bold tabular-nums text-clay-deep">{readout}</span></span>
-      {width > 0 && <RubberBand value={value} min={min} max={max} onChange={onChange} width={width} aria-label={label} />}
+    <div ref={box} className="min-w-0">
+      <span className="label cursor-default" onClick={focusBand}>{label} <span className="font-bold tabular-nums text-clay-deep">{readout}</span></span>
+      {width > 0 && <RubberBand value={value} min={min} max={max} onChange={onChange} width={width} aria-label={label} aria-valuetext={readout} />}
     </div>
   );
 }
@@ -47,8 +49,8 @@ export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
   onSetup: () => void;
   onStarted?: () => void;
 }) {
-  const [target, setTarget] = useState(5);
-  const [perCompany, setPerCompany] = useState(1);
+  const [target, setTarget] = useState(TARGET_RANGE.default);
+  const [perCompany, setPerCompany] = useState(PER_COMPANY_RANGE.default);
   const [focus, setFocus] = useState("");
   const [enrich, setEnrich] = useState<EnrichChoice>(DEFAULT_ENRICH);
   const [starting, setStarting] = useState(false);
@@ -74,9 +76,9 @@ export function FindBox({ discovery, recipes, ready, onSetup, onStarted }: {
 
   return (
     <div className="rounded-2xl border border-clay bg-clay-soft/30 p-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <BandField label="Number of companies" readout={String(target)} value={target} {...TARGET_RANGE} onChange={setTarget} />
-        <BandField label="Contacts per company" readout={`up to ${perCompany}`} value={perCompany} {...PER_COMPANY_RANGE} onChange={setPerCompany} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <BandField label="Number of companies" readout={String(target)} value={target} min={TARGET_RANGE.min} max={TARGET_RANGE.max} onChange={setTarget} />
+        <BandField label="Contacts per company" readout={`up to ${perCompany}`} value={perCompany} min={PER_COMPANY_RANGE.min} max={PER_COMPANY_RANGE.max} onChange={setPerCompany} />
       </div>
       <div className="mt-3">
         <label className="label" htmlFor="fb-focus">Focus for this run <span className="font-normal text-mud-faint">(optional)</span></label>

@@ -64,7 +64,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
         </div>
 
         {campaigns === null ? (
-          <div className="grid gap-6 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 @2xl:grid-cols-2">
             {[0, 1].map((i) => <div key={i} className="h-48 animate-pulse rounded-2xl border-2 border-dashed border-rim/50 bg-paper-deep" />)}
           </div>
         ) : campaigns.length === 0 ? (
@@ -129,10 +129,10 @@ function Onboarding() {
     { note: "bg-note-mint -rotate-1", icon: <Download size={18} />, title: "Export it back", tags: ["Same formatting", "Formulas intact"], body: "Your sheet, with every edit, exactly as it looked." },
   ];
   return (
-    <div className="card p-8 md:p-10">
+    <div className="card p-8 @3xl:p-10">
       <h2 className="font-display text-[28px] leading-tight font-bold tracking-tight">Start with a spreadsheet you already have.</h2>
       <p className="mt-2 max-w-xl text-[15px] text-mud-soft">Everything stays on this computer. Drop a file anywhere on this window, or use Import sheet above.</p>
-      <div className="mt-10 grid items-stretch gap-8 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:gap-5">
+      <div className="mt-10 grid grid-cols-1 items-stretch gap-8 @3xl:grid-cols-[1fr_auto_1fr_auto_1fr] @3xl:gap-5">
         {steps.map((s, i) => (
           <div key={s.title} className="contents">
             <div className={cn("note", s.note)}>
@@ -146,7 +146,7 @@ function Onboarding() {
               </div>
               <p className="mt-3 font-label text-sm text-mud-soft">{s.body}</p>
             </div>
-            {i < steps.length - 1 && <ArrowRight className="hidden self-center text-rim md:block" size={26} strokeWidth={2.5} />}
+            {i < steps.length - 1 && <ArrowRight className="hidden self-center text-rim @3xl:block" size={26} strokeWidth={2.5} />}
           </div>
         ))}
       </div>

@@ -191,8 +191,8 @@ export function startDiscovery(input: StartDiscoveryInput): DiscoveryRun {
   if (input.kind === "find" && liveDiscovery(input.campaignId).some((r) => r.kind === "find")) throw new Error(FIND_RUNNING);
   const candidateIds = [...new Set(input.candidateIds ?? [])];
   if (input.kind === "map" && !candidateIds.length) throw new Error("Nothing to map.");
-  const target = Math.max(TARGET_RANGE.min, Math.min(TARGET_RANGE.max, Math.round(input.target ?? 10) || 10));
-  const perCompany = Math.max(PER_COMPANY_RANGE.min, Math.min(PER_COMPANY_RANGE.max, Math.round(input.perCompany ?? 5) || 5));
+  const target = Math.max(TARGET_RANGE.min, Math.min(TARGET_RANGE.max, Math.round(input.target ?? TARGET_RANGE.default) || TARGET_RANGE.default));
+  const perCompany = Math.max(PER_COMPANY_RANGE.min, Math.min(PER_COMPANY_RANGE.max, Math.round(input.perCompany ?? PER_COMPANY_RANGE.default) || PER_COMPANY_RANGE.default));
   const model = settings.model[provider] ?? "default";
 
   const run: DiscoveryRun = {
