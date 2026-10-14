@@ -1,3 +1,4 @@
+import confetti from "@hiseb/confetti";
 import {
   ArrowRight, CalendarClock, Download, FileSpreadsheet, FolderOpen, MoreHorizontal, Plus, Sparkles, Trash2, Video, Workflow,
 } from "lucide-react";
@@ -104,13 +105,17 @@ export function MeetingsPage() {
   );
 }
 
-/** A rubber band slider to play with; the readout beside it shows the value it sets. */
+/** A rubber band slider to play with; the readout shows its value, and Party! bursts that many confetti. */
 function FidgetCard() {
   const [tension, setTension] = useState(50);
   return (
     <div className="card mb-8 flex flex-wrap items-center gap-6 px-6 py-4 select-none">
       <div className="font-label text-sm text-mud-soft">Fidget</div>
       <RubberBand value={tension} min={0} max={100} onChange={setTension} width={250} aria-label="Tension" />
+      <Button size="xs" onClick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        confetti({ position: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, count: tension });
+      }}>Party!</Button>
       <div className="ml-auto font-display text-[30px] leading-none font-bold tabular-nums">{tension}</div>
     </div>
   );
