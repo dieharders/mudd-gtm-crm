@@ -62,8 +62,8 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
   const special = new Set(
     [schema.statusKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean),
   );
-  const fields = schema.columns.filter((c) => !special.has(c.key));
-  const edit = (edits: CellEdit[], label: string, toastMsg?: string) => {
+  const fields = notesLast(schema.columns.filter((c) => !special.has(c.key)));
+  const edit =(edits: CellEdit[], label: string, toastMsg?: string) => {
     state.edit(edits, label);
     if (toastMsg) undoToast(toastMsg, () => state.undo());
   };
@@ -150,6 +150,12 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
       )}
     </aside>
   );
+}
+
+/** Fields in sheet order, but Notes at the bottom wherever the sheet keeps it. */
+function notesLast(cols: Column[]): Column[] {
+  const isNotes = (c: Column) => c.header.trim().toLowerCase() === "notes";
+  return [...cols.filter((c) => !isNotes(c)), ...cols.filter(isNotes)];
 }
 
 function Field({ col, row, onEdit, disabled, autoFocus }: { col: Column; row: Row; onEdit: (e: CellEdit[], l: string) => void; disabled?: boolean; autoFocus?: boolean }) {
@@ -278,7 +284,7 @@ function ContactPanel({ contact, org, orgTitle, schema, stages, templates, state
   const role = contactOf(contact.cells, cs).role;
   const type = cs.typeKey ? String(contact.cells[cs.typeKey] ?? "").trim() : "";
   // Primary is the button below, and the intro its own section: neither is a field.
-  const fields = cs.columns.filter((c) => c.key !== cs.primaryKey && c.key !== cs.introKey);
+  const fields = notesLast(cs.columns.filter((c) => c.key !== cs.primaryKey && c.key !== cs.introKey));
   const onEdit = (edits: CellEdit[], l: string) => state.editContacts(edits, l);
   const remove = () => {
     state.deleteRows([contact.id], "Delete contact");
