@@ -26,7 +26,7 @@ function greeting(): string {
 /** A small sticky note pinned above a page title. */
 function PinnedNote({ children }: { children: ReactNode }) {
   return (
-    <span className="relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-[15px] shadow-hard-sm">
+    <span className="relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-[15px] shadow-hard-sm select-none">
       <span className="pin scale-75" />
       {children}
     </span>
