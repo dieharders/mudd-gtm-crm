@@ -197,6 +197,9 @@ function CampaignView({ state }: { state: CampaignState }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
   const [showEnrich, setShowEnrich] = useState(false);
+  // Enrich opened from a prospect's panel: it runs on that prospect, not the table's selection.
+  const [enrichRowId, setEnrichRowId] = useState<string | null>(null);
+  const openEnrich = (rowId: string | null = null) => { setEnrichRowId(rowId); setShowEnrich(true); };
   const [showReview, setShowReview] = useState(false);
   // The Discover panel, open on one of its sections.
   const [showDiscover, setShowDiscover] = useState<DiscoverSection | null>(null);
@@ -466,7 +469,7 @@ function CampaignView({ state }: { state: CampaignState }) {
           <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />
         </div>
         {liveRun && (
-          <button onClick={() => setShowEnrich(true)} className="tag h-9 rounded-lg bg-lake-soft px-3 font-bold text-lake-deep hover:bg-lake-soft/70" title="Open the running enrichment">
+          <button onClick={() => openEnrich()} className="tag h-9 rounded-lg bg-lake-soft px-3 font-bold text-lake-deep hover:bg-lake-soft/70" title="Open the running enrichment">
             <Spinner size={12} className={liveRun.status === "running" ? "animate-spin" : ""} />
             {liveRun.label}: {liveRun.completed + liveRun.failed}/{liveRun.total}{liveRun.status === "paused" ? " · paused" : ""}
           </button>
@@ -522,7 +525,7 @@ function CampaignView({ state }: { state: CampaignState }) {
             stages={stages}
             state={state}
             enrich={enrich}
-            onEnrich={() => setShowEnrich(true)}
+            onEnrich={() => openEnrich()}
             onDone={() => setSelected(new Set())}
           />
         ) : (
@@ -655,6 +658,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               onPrev={prevRow ? () => showRow(prevRow.id) : undefined}
               onNext={nextRow ? () => showRow(nextRow.id) : undefined}
               onOpenTemplates={() => setShowTemplates(true)}
+              onEnrich={() => openEnrich(drawer.last!.row.id)}
               enrich={enrich}
             />
           )}
@@ -665,7 +669,8 @@ function CampaignView({ state }: { state: CampaignState }) {
         <TemplatesPanel schema={schema} rows={state.rows} contactsOf={contactsOf} templates={state.templates} thesis={state.thesis} consent={consent} state={state} previewRowId={openRowId} onClose={() => setShowTemplates(false)} />
       </PanelGate>
       <PanelGate open={showEnrich}>
-        <EnrichPanel state={state} enrich={enrich} selectedIds={selectedActiveIds} filteredIds={filteredActiveIds}
+        <EnrichPanel state={state} enrich={enrich} selectedIds={enrichRowId ? [enrichRowId] : selectedActiveIds}
+          selectionLabel={enrichRowId ? "This prospect" : undefined} filteredIds={filteredActiveIds}
           onClose={() => setShowEnrich(false)} onOpenReview={() => { setShowEnrich(false); setShowReview(true); }}
           onOpenRow={(id) => {
             setShowEnrich(false);

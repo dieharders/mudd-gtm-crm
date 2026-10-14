@@ -46,7 +46,7 @@ function Panel({ row, contacts, onClose }: { row: Row; contacts: Row[]; onClose:
   const [open, setOpen] = useState<string | null>(null);
   return (
     <RowDrawer row={row} schema={schema} stages={STAGES} templates={[]} state={state} contacts={contacts} openContactId={open} onOpenContact={setOpen}
-      onClose={onClose} onOpenTemplates={() => {}} enrich={enrich} />
+      onClose={onClose} onOpenTemplates={() => {}} onEnrich={() => {}} enrich={enrich} />
   );
 }
 

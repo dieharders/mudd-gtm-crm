@@ -105,10 +105,12 @@ function toApi(d: Draft): RecipeDraft {
   };
 }
 
-export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, onOpenReview, onOpenRow }: {
+export function EnrichPanel({ state, enrich, selectedIds, selectionLabel, filteredIds, onClose, onOpenReview, onOpenRow }: {
   state: CampaignState;
   enrich: EnrichmentState;
   selectedIds: string[];
+  /** What the selection scope is called: "Selected rows" unless said otherwise. */
+  selectionLabel?: string;
   filteredIds: string[];
   onClose: () => void;
   onOpenReview: () => void;
@@ -273,6 +275,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                   rows={state.rows}
                   contactsOf={state.contactsOf}
                   selectedIds={selectedIds}
+                  selectionLabel={selectionLabel}
                   filteredIds={filteredIds}
                   ready={ready}
                   onSetup={() => ai.setOpen(true)}
@@ -404,12 +407,13 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
   );
 }
 
-function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, ready, onSetup, onRun, busy }: {
+function RunBox({ draft, schema, rows, contactsOf, selectedIds, selectionLabel = "Selected rows", filteredIds, ready, onSetup, onRun, busy }: {
   draft: Draft;
   schema: CampaignSchema;
   rows: Row[];
   contactsOf: (orgId: string) => Row[];
   selectedIds: string[];
+  selectionLabel?: string;
   filteredIds: string[];
   ready: boolean;
   onSetup: () => void;
@@ -454,7 +458,7 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
   // The selection can shrink while this is open (a test's rows leaving the view). Its scope then
   // stays while it is the one chosen, down to none, rather than the run widening to another unasked.
   const scopes = [
-    ...(selected.length || scope === "selected" ? [{ id: "selected", label: `Selected rows`, ids: selected }] : []),
+    ...(selected.length || scope === "selected" ? [{ id: "selected", label: selectionLabel, ids: selected }] : []),
     { id: "missing", label: "Prospects missing these fields", ids: missing.map((r) => r.id) },
     ...(filtered.length !== prospects.length ? [{ id: "filtered", label: "Rows in the current view", ids: filtered }] : []),
     { id: "all", label: "All prospects", ids: prospects.map((r) => r.id) },
