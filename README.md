@@ -18,7 +18,7 @@ Open your Excel or CSV lead tracker in Mudd (pronounced Mud-d) and edit it like 
 <table>
   <tr>
     <th width="50%">Edit like a spreadsheet</th>
-    <th width="50%">Or read it prospect by prospect</th>
+    <th width="50%">Or read as a list</th>
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/table.webp" alt="Table view of a campaign" width="100%"></td>
