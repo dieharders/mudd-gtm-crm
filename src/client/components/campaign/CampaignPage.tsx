@@ -22,9 +22,8 @@ import { ReviewPanel } from "../enrich/ReviewPanel";
 import { cn } from "../../lib/cn";
 import { stageEdits, stageIndex } from "../../lib/pipeline";
 import { contactFilters, prospectFilters, runsThrough, type FilterContext, type QuickFilter } from "../../lib/quickFilters";
-import { campaignTileFor, toneFor } from "../../lib/stages";
+import { toneFor } from "../../lib/stages";
 import { useCampaignList } from "../../lib/campaignList";
-import { Tile } from "../ui/Logo";
 import { display } from "../grid/cells";
 import { Grid, type GridHandle, type SortState } from "../grid/Grid";
 import { ProspectList } from "../list/ProspectList";
@@ -463,7 +462,6 @@ function CampaignView({ state }: { state: CampaignState }) {
       {/* header. It, the toolbar and the sheet each rise in, not the page: a transform on the page
           would pin the panels and dialogs below to it while it runs. */}
       <div className="flex flex-wrap items-center gap-3 px-6 pt-6 pb-3 motion-safe:animate-page-in">
-        <Tile size="lg" className={cn("text-lg", campaignTileFor(campaign.id))}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
           <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />
         </div>
