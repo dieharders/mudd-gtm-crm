@@ -130,12 +130,8 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
                   </td>
                   <td className="py-1.5 pr-2" title={why}>
                     <input className={cn("field h-8 py-0", dup && "border-rose-300")} value={c.header} disabled={fixed} onChange={(e) => patch(c.key, { header: e.target.value })} />
-                    {(fixed || c.hidden) && (
-                      <span className="mt-0.5 block text-[10px] text-mud-faint">
-                        {fixed && <span className="text-clay-deep"><Lock size={10} className="inline align-[-1px]" /> {role(c.key)}</span>}
-                        {fixed && c.hidden && " · "}
-                        {c.hidden && "Hidden in grid"}
-                      </span>
+                    {fixed && (
+                      <span className="mt-0.5 block text-[10px] text-clay-deep"><Lock size={10} className="inline align-[-1px]" /> {role(c.key)}</span>
                     )}
                   </td>
                   <td className="py-1.5 pr-2" title={why}>
