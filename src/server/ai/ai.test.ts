@@ -142,6 +142,32 @@ describe("prompts", () => {
     expect(req.prompt).toContain("Hi Ann at Acme");
     expect(introRequest(templates, "auto", undefined, schema, {}, true).templates).toHaveLength(2);
   });
+  describe("what research found, and where an email came from", () => {
+    const cs = schema.contacts!;
+    // A Role the Decision-maker recipe made, and the sources cell research keeps.
+    const researched = {
+      ...schema,
+      columns: [...schema.columns, { key: "src", header: SOURCES_HEADER, type: "longtext" as const, origin: "enrichment" as const }],
+      contacts: { ...cs, columns: cs.columns.map((c) => (c.header === "Role" ? { ...c, origin: "enrichment" as const } : c)) },
+    };
+    const cells = { [k("Company")]: "Acme", [k("Name")]: "Ann Lee", [k("Role")]: "VP Operations", [cs.emailSourceKey!]: "Pattern", src: "Role: https://acme.io/team" };
+    const recipe = (inputKeys: string[]) => ({ id: "r", campaignId: "c", name: "t", instructions: "Find it.", inputKeys, webSearch: true, createdAt: 0, updatedAt: 0,
+      outputs: [{ key: k("Website"), header: "Website" }] });
+
+    test("an intro is written from them, but never cites the sources cell or sends the email's source", () => {
+      const req = introRequest([{ id: "t1", campaignId: "c", name: "Warm", body: "Hi", position: 0, updatedAt: 0 }], "t1", undefined, researched, cells, true);
+      expect(req.prompt).toContain('"Contact":{"Name":"Ann Lee","Role":"VP Operations"}');
+      expect(req.prompt).not.toContain("acme.io/team");
+      expect(req.prompt).not.toContain("Email source");
+    });
+
+    test("a research turn is fed neither, even when the recipe names the email's source as an input", () => {
+      expect(enrichRequest(recipe([]), researched, cells).prompt).toContain('"Primary contact":{"Name":"Ann Lee"}');
+      const named = enrichRequest(recipe([k("Company"), cs.emailSourceKey!]), researched, cells).prompt;
+      expect(named).toContain('"Company":"Acme"');
+      expect(named).not.toContain("Email source");
+    });
+  });
   describe("intro request around the prospect's Hook", () => {
     const withSources = { ...schema, columns: [...schema.columns, { key: "src", header: SOURCES_HEADER, type: "longtext" as const, origin: "enrichment" as const }] };
     const t = (body: string) => [{ id: "t1", campaignId: "c", name: "Warm", body, position: 0, updatedAt: 0 }];

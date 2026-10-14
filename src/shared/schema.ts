@@ -104,6 +104,11 @@ export const ECONOMIC_BUYER = "Economic Buyer";
 /** The kinds of stakeholder a contact can be, and Channel for a way in that isn't a person. */
 export const CONTACT_TYPES = [ECONOMIC_BUYER, "Champion", "Technical Buyer", "End User", "Influencer", "Blocker", "Gatekeeper", CHANNEL];
 
+/** An email address inferred from the company's naming pattern: the grid flags it to verify. */
+export const PATTERN_EMAIL = "Pattern";
+/** Where a contact's email came from. */
+export const EMAIL_SOURCES: readonly string[] = ["Published", "Reported", PATTERN_EMAIL, "Verified"];
+
 /** What each contact type means: the type picker's hints. */
 export const CONTACT_TYPE_HINTS: Record<string, string> = {
   [ECONOMIC_BUYER]: "Holds or controls the budget and gives final financial approval.",
@@ -158,13 +163,15 @@ const PRIMARY_COLUMN: RoleSpec = { header: "Primary", type: "checkbox", width: 9
 const LAST_CONTACTED_COLUMN: RoleSpec = { header: "Last contacted", type: "date", width: 130 };
 const LAST_REPLY_COLUMN: RoleSpec = { header: "Last reply", type: "date", width: 120 };
 const INTRO_COLUMN: RoleSpec = { header: "Intro message", type: "longtext", width: 320 };
-const CONTACT_ROLES: Roles<"nameKey" | "typeKey" | "primaryKey" | "lastContactedKey" | "lastReplyKey" | "introKey"> = [
+const EMAIL_SOURCE_COLUMN: RoleSpec = { header: "Email source", type: "select", width: 140, options: EMAIL_SOURCES };
+const CONTACT_ROLES: Roles<"nameKey" | "typeKey" | "primaryKey" | "lastContactedKey" | "lastReplyKey" | "introKey" | "emailSourceKey"> = [
   { key: "nameKey", spec: NAME_COLUMN, label: "Contact name" },
   { key: "typeKey", spec: TYPE_COLUMN, label: "Contact type" },
   { key: "primaryKey", spec: PRIMARY_COLUMN, label: "Primary contact" },
   { key: "lastContactedKey", spec: LAST_CONTACTED_COLUMN, label: "Last contacted" },
   { key: "lastReplyKey", spec: LAST_REPLY_COLUMN, label: "Last reply" },
   { key: "introKey", spec: INTRO_COLUMN, label: "Intro message" },
+  { key: "emailSourceKey", spec: EMAIL_SOURCE_COLUMN, label: "Email source: a Pattern email is flagged to verify" },
 ];
 
 /** The keys of a list's columns Mudd relies on, each with what Mudd uses it for. */
@@ -279,14 +286,7 @@ export function ensureAppColumns(schema: CampaignSchema, extraTaken: Iterable<st
   ensureRoles(schema, schema.columns, PROSPECT_ROLES, taken);
   const contacts = (schema.contacts ??= { columns: defaultContactColumns(taken) });
   ensureRoles(contacts, contacts.columns, CONTACT_ROLES, taken);
-  // Not a role: an ordinary column the user can rename or delete, only added where it is missing.
-  if (!contacts.columns.some((c) => norm(c.header) === EMAIL_SOURCE_HEADER)) contacts.columns.push(emailSourceColumn(taken));
 }
-
-/** Where a contact's email came from: Pattern is inferred, and the grid flags it to verify. */
-export const EMAIL_SOURCES = ["Published", "Reported", "Pattern", "Verified"];
-const EMAIL_SOURCE_HEADER = norm("Email source");
-const emailSourceColumn = (taken: Set<string>) => newColumn(taken, "Email source", "select", { options: [...EMAIL_SOURCES] });
 
 /** Contact columns a new campaign starts with. */
 function defaultContactColumns(taken: Set<string>): Column[] {
@@ -298,7 +298,7 @@ function defaultContactColumns(taken: Set<string>): Column[] {
     newColumn(taken, "Title", "text", { width: 90 }),
     newColumn(taken, "Role", "text", { width: 200 }),
     newColumn(taken, "Email", "email"),
-    emailSourceColumn(taken),
+    roleColumn(taken, EMAIL_SOURCE_COLUMN),
     newColumn(taken, "Phone", "phone"),
     newColumn(taken, "LinkedIn", "url"),
     roleColumn(taken, LAST_CONTACTED_COLUMN),

@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { allColumns, contactSchema, orgColumn } from "../../../shared/schema";
 import {
-  DEAD, isChecked, isScreened, ORG_KEY, STAGES, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
+  DEAD, isChecked, isScreened, ORG_KEY, STAGES, type CampaignSchema, type CellEdit, type CellValue, type Column, type ContactSchema, type Row,
 } from "../../../shared/types";
 import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
 import { useConsentGate } from "../../hooks/useConsentGate";
@@ -54,7 +54,7 @@ const NO_PICKS: ReadonlySet<string> = new Set();
 /** A chip that is a status: a stage, another status the sheet holds, or No status. */
 const isStatusPick = (p: string) => p !== IN_PLAY && p !== SCREENED && !p.startsWith(QUICK);
 
-/** Turn a chip on or off. In play and Screened out rule each other out: one turns the other off. */
+/** Turn a chip on or off. Not screened out and Screened out rule each other out: one turns the other off. */
 function togglePick(picked: ReadonlySet<string>, id: string): ReadonlySet<string> {
   const next = new Set(picked);
   if (next.delete(id)) return next;
@@ -162,7 +162,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   const initialDiscover = params.get("discover");
   const [query, setQuery] = useState("");
   // The chips that are on, none being All. Statuses (and Screened out) widen each other, as a
-  // prospect has one status; In play and the quick filters each narrow what those leave.
+  // prospect has one status; Not screened out and the quick filters each narrow what those leave.
   const [picked, setPicked] = useState<ReadonlySet<string>>(NO_PICKS);
   const pick = (id: string) => setPicked((p) => togglePick(p, id));
   // The Contacts tab's, as `picked` is the Prospects tab's.
@@ -305,8 +305,9 @@ function CampaignView({ state }: { state: CampaignState }) {
   }, [state.rows, passes, q, sort, schema, stages, searchedContactsOf]);
 
   // ----- the Contacts tab: every prospect's people, with the prospect's company beside them -----
-  // Worked out only while the tab is open: every contact is copied to add its company.
-  const contactGridSchema = useMemo<CampaignSchema>(() => {
+  // Worked out only while the tab is open: every contact is copied to add its company. The
+  // contacts' own keys come along: the grid flags a Pattern email by their Email source.
+  const contactGridSchema = useMemo<CampaignSchema & ContactSchema>(() => {
     const org = orgColumn(schema);
     const cs = contactSchema(schema);
     return { ...cs, columns: org ? [org, ...cs.columns] : cs.columns };
@@ -538,7 +539,7 @@ function CampaignView({ state }: { state: CampaignState }) {
               <div className="flex flex-wrap items-center gap-2">
                 <Chip active={!picked.size} onClick={() => setPicked(NO_PICKS)} label="All" count={state.rows.length} />
                 {counts.screened > 0 || picked.has(IN_PLAY) ? (
-                  <Chip active={picked.has(IN_PLAY)} onClick={() => pick(IN_PLAY)} label="Prospects" count={state.rows.length - counts.screened} title="Everything but the screened-out prospects" />
+                  <Chip active={picked.has(IN_PLAY)} onClick={() => pick(IN_PLAY)} label="Not screened out" count={state.rows.length - counts.screened} title="Everything but the screened-out prospects" />
                 ) : null}
                 {[...stages, DEAD].map((s) => (counts.byStatus[s] || picked.has(s) ? (
                   <Chip key={s} active={picked.has(s)} onClick={() => pick(s)} label={s} count={counts.byStatus[s] ?? 0} />

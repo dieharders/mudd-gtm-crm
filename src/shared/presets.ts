@@ -18,7 +18,7 @@ export interface PresetOutput {
   type: ColumnType;
   hint: string;
   /** The dropdown's choices, for a `select` output the recipe creates a column for. */
-  options?: string[];
+  options?: readonly string[];
   /** A detail of the person: filled on the primary contact. */
   person?: boolean;
   /** The person's name: the contacts' name column when no alias matches. */

@@ -79,6 +79,8 @@ export interface ContactSchema {
   lastReplyKey?: string;
   /** Long text: the intro message written to this person. */
   introKey?: string;
+  /** Dropdown: where their email came from (EMAIL_SOURCES). Research fills it; it never goes to the AI as context. */
+  emailSourceKey?: string;
 }
 
 export interface CampaignSchema {
