@@ -45,7 +45,10 @@ export interface OutreachInput {
 }
 
 export function outreachRequest(input: OutreachInput) {
-  const placeholders = placeholdersFor(prospectSchema(input.schema));
+  // Where an email came from is nothing to write a message around.
+  const view = prospectSchema(input.schema);
+  const source = input.schema.contacts?.emailSourceKey;
+  const placeholders = placeholdersFor({ ...view, columns: view.columns.filter((c) => c.key !== source) });
   // The problem box was prefilled with the offer, pains and approach answers, so the thesis goes
   // in without them: the rest says who the message is for.
   const thesis = input.thesis ? thesisData(input.thesis, OUTREACH_PROBLEM_IDS) : null;

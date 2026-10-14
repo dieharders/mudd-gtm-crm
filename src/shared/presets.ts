@@ -9,7 +9,7 @@
  */
 import { isSourcesColumn, type RecipeDraft } from "./ai";
 import { norm } from "./merge";
-import { contactSchema, EMPLOYEES_HEADER, EMPLOYEES_HEADERS, HOOK_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
+import { contactSchema, EMAIL_SOURCES, EMPLOYEES_HEADER, EMPLOYEES_HEADERS, HOOK_HEADERS, isHonorific, ROLE_HEADERS, TITLE_HEADER } from "./schema";
 import type { CampaignSchema, Column, ColumnType, Row } from "./types";
 
 export interface PresetOutput {
@@ -18,7 +18,7 @@ export interface PresetOutput {
   type: ColumnType;
   hint: string;
   /** The dropdown's choices, for a `select` output the recipe creates a column for. */
-  options?: string[];
+  options?: readonly string[];
   /** A detail of the person: filled on the primary contact. */
   person?: boolean;
   /** The person's name: the contacts' name column when no alias matches. */
@@ -87,7 +87,7 @@ export const PRESETS: Preset[] = [
       "Find a work email address for this contact that is published on the web (company site, press release, filings, conference pages). Never construct or guess an address from a naming pattern: if none is published for this person, return null.",
     outputs: [
       { header: "Email", aliases: ["email", "workemail", "emailaddress"], type: "email", hint: "Only an address you actually found published. Null if none.", person: true },
-      { header: "Email source", aliases: ["emailsource"], type: "select", options: ["Published", "Reported", "Pattern", "Verified"], hint: "Published if you saw it on a page; Reported if a data site reports it.", person: true },
+      { header: "Email source", aliases: ["emailsource"], type: "select", options: EMAIL_SOURCES, hint: "Published if you saw it on a page; Reported if a data site reports it.", person: true },
     ],
   },
   {

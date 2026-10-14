@@ -304,7 +304,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
 
 function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: CampaignSchema; onChange: (p: Partial<Draft>) => void }) {
   const records = new Set(contactRecordKeys(schema));
-  const skipInputs = new Set([schema.reasonKey, schema.screenedKey, schema.idKey, ...records]);
+  const skipInputs = new Set([schema.reasonKey, schema.screenedKey, schema.idKey, schema.contacts?.emailSourceKey, ...records]);
   // The primary contact's columns go along as context too.
   const inputCols = allColumns(schema).filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
   const orgTargets = schema.columns.filter((c) => !isSourcesColumn(c) && c.key !== schema.idKey);

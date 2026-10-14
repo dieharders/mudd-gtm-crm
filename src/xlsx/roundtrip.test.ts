@@ -700,18 +700,23 @@ describe("campaigns created in Mudd", () => {
 
 // ---------- the Contacts tab ----------
 
-/** Prospects (with IDs) and a Contacts tab naming each person's prospect, as Mudd lays them out. */
-function withContacts(wb: ExcelJS.Workbook, people: (string | boolean | null)[][]) {
+const EMAIL_SOURCE_LIST = "Published,Reported,Pattern,Verified";
+
+/**
+ * Prospects (with IDs) and a Contacts tab naming each person's prospect, as Mudd lays them out:
+ * every column Mudd relies on, with its dropdown. `emailSource: false` leaves the last one out.
+ */
+function withContacts(wb: ExcelJS.Workbook, people: (string | boolean | null)[][], { emailSource = true } = {}) {
   const ws = wb.addWorksheet("Prospects");
   ws.addRow(["ID", "Company", "Status"]);
   ws.addRow(["P-001", "Acme", "Contacted"]);
   ws.addRow(["P-002", "Beta", "Replied"]);
   const c = wb.addWorksheet("Contacts");
-  c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message"]);
+  c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message", ...(emailSource ? ["Email source"] : [])]);
   for (const p of people) c.addRow(p);
-  (c as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations.add("D2:D1000", {
-    type: "list", allowBlank: true, formulae: ['"Economic Buyer,Champion,Technical Buyer,End User,Influencer,Blocker,Gatekeeper,Channel"'],
-  });
+  const dv = (c as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations;
+  dv.add("D2:D1000", { type: "list", allowBlank: true, formulae: ['"Economic Buyer,Champion,Technical Buyer,End User,Influencer,Blocker,Gatekeeper,Channel"'] });
+  if (emailSource) dv.add("J2:J1000", { type: "list", allowBlank: true, formulae: [`"${EMAIL_SOURCE_LIST}"`] });
 }
 
 describe("the Contacts tab", () => {
@@ -735,7 +740,7 @@ describe("the Contacts tab", () => {
     expect(cs.columns.find((c) => c.key === cs.primaryKey)!.type).toBe("checkbox");
     expect(contacts[0]!.cells[cs.primaryKey!]).toBe(CHECKED);
     // The two link columns are the tab's, not the contacts'; the prospect's ID is hidden in the app.
-    expect(cs.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message"]);
+    expect(cs.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message", "Email source"]);
     expect(cs.columns.find((c) => c.key === cs.lastContactedKey)).toMatchObject({ header: "Last contacted", type: "date" });
     expect(cs.columns.find((c) => c.key === cs.lastReplyKey)).toMatchObject({ header: "Last reply", type: "date" });
     expect(campaign.schema.columns.find((c) => c.key === campaign.schema.idKey)).toMatchObject({ header: "ID", hidden: true });
@@ -802,6 +807,51 @@ describe("the Contacts tab", () => {
     expect(again.contacts.map((c) => [c.cells[cs2.nameKey!], c.cells[cs2.typeKey!], c.parentId])).toEqual([["Cy Dee", "Influencer", again.rows[2]!.id]]);
   });
 
+  test("a tab without an Email source column gets one after its last on any save, a dropdown of where each email came from", async () => {
+    const original = await xlsxOf((wb) => withContacts(wb, people, { emailSource: false }));
+    const { campaign, rows, contacts } = await importFrom(original);
+    const cs = campaign.schema.contacts!;
+    expect(cs.columns.find((c) => c.key === cs.emailSourceKey)).toMatchObject({ header: "Email source", type: "select", options: EMAIL_SOURCE_LIST.split(",") });
+    // Unedited: the header and its dropdown are all that change.
+    const before = await sheetXml(original, "Contacts");
+    const out = await exportCampaign(campaign, original, rows, [], contacts, null);
+    const after = await sheetXml(out, "Contacts");
+    const header = ((await read(out)).getWorksheet("Contacts")!.getRow(1).values as unknown[]).slice(1);
+    expect(header).toEqual(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message", "Email source"]);
+    expect(cellXml(after, "J1")).toContain("Email source");
+    for (const n of [2, 3, 4]) expect(rowXml(after, n)).toBe(rowXml(before, n));
+    expect(after).toMatch(new RegExp(`<dataValidation\\b[^>]*sqref="J2:J\\d+"[^>]*><formula1>&quot;${EMAIL_SOURCE_LIST}&quot;</formula1>`));
+    expect(after).toContain('sqref="D2:D1000"');
+    // A source written in lands under it, and the next import finds that one column.
+    contacts[0]!.cells[cs.emailSourceKey!] = "Pattern";
+    const edited = await exportCampaign(campaign, original, rows, [], contacts, null);
+    expect((await read(edited)).getWorksheet("Contacts")!.getCell("J2").value).toBe("Pattern");
+    const again = await importFrom(edited);
+    expect(again.campaign.schema.contacts!.columns.filter((c) => c.header === "Email source")).toHaveLength(1);
+  });
+
+  test("an Email source column is Mudd's dropdown whatever the sheet made it", async () => {
+    const original = await xlsxOf((wb) => {
+      const ws = wb.addWorksheet("Prospects");
+      ws.addRow(["ID", "Company"]);
+      ws.addRow(["P-001", "Acme"]);
+      const c = wb.addWorksheet("Contacts");
+      c.addRow(["Prospect ID", "Company", "Name", "Email", "EMAIL SOURCE"]);
+      c.addRow(["P-001", "Acme", "Ann Lee", "ann@acme.io", "pattern"]);
+      (c as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations.add("E2:E1000", {
+        type: "list", allowBlank: true, formulae: ['"Published"'],
+      });
+    });
+    const { campaign, rows, contacts } = await importFrom(original);
+    const cs = campaign.schema.contacts!;
+    expect(cs.columns.filter((c) => c.key === cs.emailSourceKey)).toMatchObject([{ header: "Email source", type: "select", options: EMAIL_SOURCE_LIST.split(",") }]);
+    expect(contacts[0]!.cells[cs.emailSourceKey!]).toBe("pattern");
+    const out = await exportCampaign(campaign, original, rows, [], contacts, null);
+    const xml = await sheetXml(out, "Contacts");
+    expect(xml).toContain(`&quot;${EMAIL_SOURCE_LIST}&quot;`);
+    expect(xml).not.toContain("&quot;Published&quot;");
+  });
+
   test("an intro to a contact is saved in the tab's Intro message column, added after its last one when it has none", async () => {
     const original = await xlsxOf((wb) => {
       const ws = wb.addWorksheet("Prospects");
@@ -817,8 +867,8 @@ describe("the Contacts tab", () => {
     const ws = (await read(out)).getWorksheet("Contacts")!;
     const header = (ws.getRow(1).values as unknown[]).slice(1);
     expect(header.slice(0, 4)).toEqual(["Prospect ID", "Company", "Name", "Notes"]);
-    expect(header.at(-1)).toBe("Intro message");
-    expect(ws.getCell(2, header.length).value).toBe("Hi Ann,\nshort intro.");
+    expect(header.slice(-2)).toEqual(["Intro message", "Email source"]);
+    expect(ws.getCell(2, header.length - 1).value).toBe("Hi Ann,\nshort intro.");
     const again = await importFrom(out);
     expect(again.contacts[0]!.cells[again.campaign.schema.contacts!.introKey!]).toBe("Hi Ann,\nshort intro.");
   });

@@ -135,7 +135,7 @@ export function AiIntro({ contact: row, schema, templates, enrich }: { contact: 
             <button className="mt-1.5 text-[11px] text-clay-deep hover:underline" onClick={() => setShowGuidance(true)}>+ Add guidance</button>
           )}
           {lastError && <p className="mt-1.5 text-[11px] text-rose-700">Last try failed: {lastError}</p>}
-          <p className="mt-1.5 text-[11px] text-mud-faint">Fills your template for {contactLabel(row, schema)}, around the prospect’s Hook. A prospect with no Hook gets one researched, with its source, and keeps it for its other people. You review before it goes in.</p>
+          <p className="mt-1.5 text-[11px] text-mud-faint">Fills your template for {contactLabel(row, schema)}, around the prospect’s Hook, written to their Role, with your Notes as background only. A prospect with no Hook gets one researched, with its source, and keeps it for its other people. You review before it goes in.</p>
         </>
       )}
     </div>
