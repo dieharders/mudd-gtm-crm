@@ -1,12 +1,12 @@
-<h1><img src="assets/icon.png" alt="" width="48" height="48" align="absmiddle"> Mudd</h1>
+<h1><img src="assets/icon.png" alt="" width="48" height="48" align="absmiddle"> Mudd (Mud-dee)</h1>
 
 **Don't let your go-to-market strategy get stuck in the mud.**
 
-A free desktop CRM for sales prospecting that works on spreadsheets you already have.
+Mudd is a free, all-in-one desktop app to manage relationships and sales prospecting. It is a necessary tool for taking your product or service to market.
 
 Search for and find new cold prospects and their contact information for free using your own AI agent. Track your relationships and chart your sales course for each prospect.
 
-Open your Excel or CSV lead tracker in Mudd (pronounced Mud-d) and edit it like a CRM. Track each company and its contacts through your pipeline, let AI research the gaps and draft personal intros. The spreadsheet acts as the source of truth.
+Open your Excel or CSV lead tracker in Mudd and edit it like a CRM. Track each company and its contacts through your pipeline, let AI research the gaps and draft personal intros. The spreadsheet acts as the source of truth.
 
 - **AI enrichment with sources**: Mudd researches each prospect on the web and fills columns you choose, such as industry, headcount or a decision-maker's name. Every suggestion links to its source, and you accept or reject it.
 - **Intros that sound like you**: write templates with `{{First name}}`-style placeholders, and AI fills them in for each person around one real, checkable hook per prospect.
