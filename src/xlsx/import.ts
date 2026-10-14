@@ -387,7 +387,7 @@ export function guessRoles(sheets: Omit<InspectSheet, "guess">[], templatesAt: n
   const roles: SheetRole[] = sheets.map(() => "passthrough");
   if (templatesAt >= 0) roles[templatesAt] = "templates";
   if (thesisAt >= 0) roles[thesisAt] = "thesis";
-  // Never the default Prospects tab, though it can still be picked as one.
+  // Never a Prospects tab: the import dialog doesn't offer it as one.
   if (contactsAt >= 0) roles[contactsAt] = "contacts";
   const open = (s: Omit<InspectSheet, "guess">, i: number) => roles[i] === "passthrough" && !s.hasFormulas && !looksLikeScreenedTab(s.name);
   let prospects = sheets.findIndex((s, i) => open(s, i) && s.hasStatus);
@@ -467,6 +467,9 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
   if (t.hasFormulas) {
     throw new Error(`"${choice.prospects}" has formulas, and Mudd can't write into it without breaking them. Pick another tab, or save a copy of it without formulas.`);
   }
+  if (isContactsTab(choice.prospects, t)) {
+    throw new Error(`"${choice.prospects}" is a Contacts tab, read as the people at your prospects. Pick the tab that holds the prospects.`);
+  }
 
   const taken = new Set<string>();
   const schema: CampaignSchema = { columns: [] };
@@ -479,13 +482,13 @@ export function importWorkbook(book: LoadedBook, choice: { prospects: string }):
     colMap[col.key] = i + 1;
   });
 
-  // The people: the first Contacts tab, other than the one chosen, that is one (inspectWorkbook's
-  // rule too, so the import dialog names the same tab), its columns keyed apart from the
-  // prospect's (one namespace). Its two link columns are not contact columns.
+  // The people: the first Contacts tab that is one (inspectWorkbook's rule too, so the import
+  // dialog names the same tab), its columns keyed apart from the prospect's (one namespace).
+  // Its two link columns are not contact columns.
   let contactsTab: { ws: ExcelJS.Worksheet; t: SheetTable; name: string; link: ReturnType<typeof linkColumns> } | null = null;
   for (const w of book.wb.worksheets) {
     const name = book.realName(w);
-    if (w === ws || !contactsName(name)) continue;
+    if (!contactsName(name)) continue;
     const ct = readSheet(w, book);
     if (!isContactsTab(name, ct)) continue;
     contactsTab = { ws: w, t: ct, name, link: linkColumns(ct) };

@@ -728,6 +728,11 @@ describe("the Contacts tab", () => {
     expect(tab.dataRows).toEqual([2, 3]);
   });
 
+  test("is never the prospects tab", async () => {
+    const book = await loadWorkbook(await xlsxOf((wb) => withContacts(wb, people)), "t.xlsx");
+    expect(() => importWorkbook(book, { prospects: "Contacts" })).toThrow(/Contacts tab/);
+  });
+
   test("an unedited save leaves the Contacts tab exactly as it was", async () => {
     const original = await xlsxOf((wb) => withContacts(wb, people));
     const { campaign, rows, contacts } = await importFrom(original);
