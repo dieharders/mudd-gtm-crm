@@ -67,13 +67,16 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
     onClose();
   };
   const dupes = new Set(cols.map((c) => tidy(c).header.toLowerCase()).filter((h, i, a) => a.indexOf(h) !== i));
+  // Only a column Mudd alone has: one in the file stays there, one Mudd uses stays in the app.
+  const deletable = (c: Column) => !inSheet.has(c.key) && !roleKeys.has(c.key);
+  const anyDeletable = cols.some(deletable);
   const colgroup = (
     <colgroup>
-      <col className="w-8" />
+      <col className="w-14" />
       <col />
       <col className="w-36" />
       <col />
-      <col className="w-9" />
+      {anyDeletable && <col className="w-14" />}
     </colgroup>
   );
 
@@ -98,11 +101,11 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
           {colgroup}
           <thead className="text-left text-xs text-mud">
             <tr>
-              <th className="py-1.5" />
+              <th className="py-1.5 text-center font-medium" title="Show the column in the grid, or hide it">Show</th>
               <th className="py-1.5 font-medium">Header</th>
               <th className="py-1.5 font-medium">Type</th>
               <th className="py-1.5 font-medium">Dropdown options</th>
-              <th />
+              {anyDeletable && <th className="py-1.5 text-center font-medium">Delete</th>}
             </tr>
           </thead>
         </table>
@@ -114,50 +117,60 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
             {cols.map((c) => {
               // Mudd's own: hidden or shown, nothing else.
               const fixed = roleKeys.has(c.key);
-              const locked = inSheet.has(c.key) || fixed;
+              const why = fixed ? "Mudd relies on this column: it can be hidden, not changed" : undefined;
               const dup = dupes.has(tidy(c).header.toLowerCase());
               return (
-                <tr key={c.key} className={cn("border-t border-rim/40 align-top", c.hidden && "opacity-55")}>
+                <tr key={c.key} className="border-t border-rim/40 align-top">
                   <td className="py-1.5">
-                    <div className="flex h-8 items-center">
+                    <div className="flex h-8 items-center justify-center">
                       <button className="rounded-sm p-1 text-mud-faint hover:bg-paper-deep hover:text-mud" onClick={() => patch(c.key, { hidden: !c.hidden })} title={c.hidden ? "Show in grid" : "Hide in grid"}>
                         {c.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
                     </div>
                   </td>
-                  <td className="py-1.5 pr-2">
+                  <td className="py-1.5 pr-2" title={why}>
                     <input className={cn("field h-8 py-0", dup && "border-rose-300")} value={c.header} disabled={fixed} onChange={(e) => patch(c.key, { header: e.target.value })} />
-                    {role(c.key) && <span className="mt-0.5 block text-[10px] text-clay-deep">{role(c.key)}</span>}
+                    {(fixed || c.hidden) && (
+                      <span className="mt-0.5 block text-[10px] text-mud-faint">
+                        {fixed && <span className="text-clay-deep"><Lock size={10} className="inline align-[-1px]" /> {role(c.key)}</span>}
+                        {fixed && c.hidden && " · "}
+                        {c.hidden && "Hidden in grid"}
+                      </span>
+                    )}
                   </td>
-                  <td className="py-1.5 pr-2">
+                  <td className="py-1.5 pr-2" title={why}>
                     <select className="field h-8 py-0" value={c.type} disabled={fixed}
                       onChange={(e) => patch(c.key, { type: e.target.value as ColumnType, options: e.target.value === "select" ? c.options ?? [] : c.options })}>
                       {COLUMN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </td>
-                  <td className="py-1.5 pr-2">
+                  <td className="py-1.5 pr-2" title={why}>
                     {c.type === "select" ? (
                       <input className="field h-8 py-0 text-xs" placeholder="Comma-separated" value={(c.options ?? []).join(", ")} disabled={fixed}
                         onChange={(e) => patch(c.key, { options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
                     ) : <span className="flex h-8 items-center text-xs text-mud-faint">—</span>}
                   </td>
-                  <td className="py-1.5">
-                    <div className="flex h-8 items-center justify-center">
-                      {locked ? (
-                        <span className="p-1 text-mud-faint" title={inSheet.has(c.key) ? "In your spreadsheet — hide it instead" : "Used by Mudd — hide it instead"}><Lock size={14} /></span>
-                      ) : (
-                        <button className="rounded-sm p-1 text-mud-faint hover:bg-rose-50 hover:text-rose-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
-                          <Trash2 size={14} />
-                        </button>
+                  {anyDeletable && (
+                    <td className="py-1.5">
+                      {deletable(c) && (
+                        <div className="flex h-8 items-center justify-center">
+                          <button className="rounded-sm p-1 text-mud-faint hover:bg-rose-50 hover:text-rose-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       )}
-                    </div>
-                  </td>
+                    </td>
+                  )}
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      <p className="mt-2 flex flex-wrap items-center gap-x-1 text-xs text-mud-faint">
+        <Lock size={11} className="text-clay-deep" /> Used by Mudd: can be hidden, not renamed or changed.
+        Columns in your spreadsheet can be hidden, not deleted.
+      </p>
       <form className="mt-3 flex gap-2 border-t border-rim/40 pt-3" onSubmit={(e) => { e.preventDefault(); add(); }}>
         <input className="field h-9 py-0" placeholder="New column header" value={newHeader} onChange={(e) => setNewHeader(e.target.value)} />
         <select className="field h-9 w-40 py-0" value={newType} onChange={(e) => setNewType(e.target.value as ColumnType)}>
