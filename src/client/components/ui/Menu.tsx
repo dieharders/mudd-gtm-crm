@@ -73,14 +73,14 @@ export function MenuItem({
       onClick={onClick}
       className={cn(
         "group/item flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[15px] font-semibold",
-        danger ? "text-mud hover:bg-note-pink hover:text-rose-700" : "text-mud hover:bg-paper-deep",
+        danger ? "text-mud hover:bg-coral-100 hover:text-coral-700" : "text-mud hover:bg-paper-deep",
         disabled && "pointer-events-none opacity-45",
       )}
     >
-      {icon && <span className={cn("shrink-0", danger ? "text-rose-500" : "text-mud-faint")}>{icon}</span>}
+      {icon && <span className={cn("shrink-0", danger ? "text-coral-600" : "text-mud-faint")}>{icon}</span>}
       <span className="min-w-0 flex-1">
         {children}
-        {hint && <span className={cn("block truncate font-label text-[12px] font-normal", danger ? "text-mud-faint group-hover/item:text-rose-500" : "text-mud-faint")}>{hint}</span>}
+        {hint && <span className={cn("block truncate font-label text-[12px] font-normal", danger ? "text-mud-faint group-hover/item:text-coral-600" : "text-mud-faint")}>{hint}</span>}
       </span>
     </button>
   );

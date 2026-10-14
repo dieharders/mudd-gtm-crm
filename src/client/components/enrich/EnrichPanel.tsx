@@ -105,10 +105,13 @@ function toApi(d: Draft): RecipeDraft {
   };
 }
 
-export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, onOpenReview, onOpenRow }: {
+/** The rows a run is first offered for, and what that scope is called ("Selected rows", "This prospect"). */
+export interface EnrichSelection { ids: string[]; label: string }
+
+export function EnrichPanel({ state, enrich, selection, filteredIds, onClose, onOpenReview, onOpenRow }: {
   state: CampaignState;
   enrich: EnrichmentState;
-  selectedIds: string[];
+  selection: EnrichSelection;
   filteredIds: string[];
   onClose: () => void;
   onOpenReview: () => void;
@@ -204,7 +207,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                         </span>
                         <span className="block truncate text-[11px] text-mud-faint">Fills {r.outputs.map((o) => o.header).join(", ")}</span>
                       </button>
-                      <button title="Delete recipe" className="absolute top-2 right-1.5 rounded-sm p-1 text-mud-faint opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                      <button title="Delete recipe" className="absolute top-2 right-1.5 rounded-sm p-1 text-mud-faint opacity-0 group-hover:opacity-100 hover:bg-coral-50 hover:text-coral-600"
                         onClick={() => fire(enrich.deleteRecipe(r.id).then(() => {
                           if (sel?.kind === "recipe" && sel.id === r.id) setSel(null);
                         }))}>
@@ -272,7 +275,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                   schema={schema}
                   rows={state.rows}
                   contactsOf={state.contactsOf}
-                  selectedIds={selectedIds}
+                  selection={selection}
                   filteredIds={filteredIds}
                   ready={ready}
                   onSetup={() => ai.setOpen(true)}
@@ -368,7 +371,7 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
                 )}
               </div>
               <input className="field h-8 py-0 text-xs" placeholder="Guidance for this field (optional)" value={o.hint} onChange={(e) => setOutput(i, { hint: e.target.value })} />
-              <button className="mt-1 rounded-sm p-1 text-mud-faint hover:bg-rose-50 hover:text-rose-600" title="Remove" onClick={() => onChange({ outputs: draft.outputs.filter((_, j) => j !== i) })}>
+              <button className="mt-1 rounded-sm p-1 text-mud-faint hover:bg-coral-50 hover:text-coral-600" title="Remove" onClick={() => onChange({ outputs: draft.outputs.filter((_, j) => j !== i) })}>
                 <X size={14} />
               </button>
             </div>
@@ -404,12 +407,12 @@ function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: Campa
   );
 }
 
-function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, ready, onSetup, onRun, busy }: {
+function RunBox({ draft, schema, rows, contactsOf, selection, filteredIds, ready, onSetup, onRun, busy }: {
   draft: Draft;
   schema: CampaignSchema;
   rows: Row[];
   contactsOf: (orgId: string) => Row[];
-  selectedIds: string[];
+  selection: EnrichSelection;
   filteredIds: string[];
   ready: boolean;
   onSetup: () => void;
@@ -419,7 +422,7 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
   // Screened-out prospects are left out of every scope: the run would only skip them.
   const prospects = useMemo(() => rows.filter((r) => !isScreened(r, schema)), [rows, schema]);
   const inPlay = new Set(prospects.map((r) => r.id));
-  const selected = selectedIds.filter((id) => inPlay.has(id));
+  const selected = selection.ids.filter((id) => inPlay.has(id));
   const filtered = filteredIds.filter((id) => inPlay.has(id));
   // The outputs as Run saves them (an unnamed new column is dropped), so the mode is the run's.
   const outputs = toApi(draft).outputs;
@@ -454,7 +457,7 @@ function RunBox({ draft, schema, rows, contactsOf, selectedIds, filteredIds, rea
   // The selection can shrink while this is open (a test's rows leaving the view). Its scope then
   // stays while it is the one chosen, down to none, rather than the run widening to another unasked.
   const scopes = [
-    ...(selected.length || scope === "selected" ? [{ id: "selected", label: `Selected rows`, ids: selected }] : []),
+    ...(selected.length || scope === "selected" ? [{ id: "selected", label: selection.label, ids: selected }] : []),
     { id: "missing", label: "Prospects missing these fields", ids: missing.map((r) => r.id) },
     ...(filtered.length !== prospects.length ? [{ id: "filtered", label: "Rows in the current view", ids: filtered }] : []),
     { id: "all", label: "All prospects", ids: prospects.map((r) => r.id) },

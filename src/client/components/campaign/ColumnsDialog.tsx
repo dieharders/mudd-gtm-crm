@@ -141,7 +141,7 @@ export function ColumnsDialog({ open, onClose, kind, schema, onSave, inSheet, us
                     <td className="py-1.5">
                       {deletable(c) && (
                         <div className="flex h-8 items-center justify-center">
-                          <button className="rounded-sm p-1 text-mud-faint hover:bg-rose-50 hover:text-rose-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
+                          <button className="rounded-sm p-1 text-mud-faint hover:bg-coral-50 hover:text-coral-600" title="Delete column" onClick={() => setCols((cs) => cs.filter((x) => x.key !== c.key))}>
                             <Trash2 size={14} />
                           </button>
                         </div>

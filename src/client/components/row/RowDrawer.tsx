@@ -6,7 +6,7 @@
  */
 import {
   ArchiveRestore, ArrowLeft, Ban, CalendarPlus, Check, ChevronDown, ChevronRight, ChevronUp, ClipboardCopy, Copy, ExternalLink, MoreHorizontal,
-  MessageSquareText, Pencil, Star, Trash2, Undo2, UserPlus, Video, X,
+  MessageSquareText, Pencil, Sparkles, Star, Trash2, Undo2, UserPlus, Video, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -20,7 +20,7 @@ import { shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeli
 import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
-import { useFocusReturn, useInert } from "../../hooks/useLeaving";
+import { dialogsOutside, useFocusReturn, useInert } from "../../hooks/useLeaving";
 import { AiIntro, RowSuggestions } from "./AiSections";
 import { hrefOf, openLink } from "../grid/cells";
 import { Button } from "../ui/Button";
@@ -45,6 +45,8 @@ interface Props {
   onPrev?: () => void;
   onNext?: () => void;
   onOpenTemplates: () => void;
+  /** Open Enrich with AI on this prospect alone. */
+  onEnrich: (rowId: string) => void;
   enrich: EnrichmentState;
   /** Closed and sliding away: shown as it was, but inert, no longer answering keys or clicks. */
   leaving?: boolean;
@@ -53,7 +55,7 @@ interface Props {
 /** How long the panel takes to slide back out: it stays mounted until then. Matches `slide-out`. */
 export const DRAWER_LEAVE_MS = 160;
 
-export function RowDrawer({ row, schema, stages, templates, state, contacts, openContactId, onOpenContact, onClose, onPrev, onNext, onOpenTemplates, enrich, leaving }: Props) {
+export function RowDrawer({ row, schema, stages, templates, state, contacts, openContactId, onOpenContact, onClose, onPrev, onNext, onOpenTemplates, onEnrich, enrich, leaving }: Props) {
   const primary = primaryOf(contacts, schema);
   const { title, subtitle } = prospectTitle(row, primary, schema);
   const screened = isScreened(row, schema);
@@ -83,6 +85,9 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, select")) return;
+      // A dialog open over the panel has the keys: Alt+↑/↓ would change the prospect behind it,
+      // under Enrich still set to run on the one it was opened for.
+      if (dialogsOutside(layer.current).length) return;
       // Esc steps back from a contact to its prospect, and only then closes.
       if (e.key === "Escape") {
         if (inContact) onOpenContact(null);
@@ -93,7 +98,7 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [leaving, inContact, onOpenContact, onClose, onNext, onPrev]);
+  }, [leaving, layer, inContact, onOpenContact, onClose, onNext, onPrev]);
 
   return (
     <aside
@@ -113,7 +118,8 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
         </div>
         <Button size="icon" variant="ghost" onClick={onPrev} disabled={!onPrev} title="Previous (Alt+↑)"><ChevronUp size={16} /></Button>
         <Button size="icon" variant="ghost" onClick={onNext} disabled={!onNext} title="Next (Alt+↓)"><ChevronDown size={16} /></Button>
-        <RowMenu row={row} contacts={contacts.length} drafting={contacts.some((c) => enrich.drafting.has(c.id))} state={state} onClose={onClose} />
+        <RowMenu row={row} contacts={contacts.length} drafting={contacts.some((c) => enrich.drafting.has(c.id))} state={state} onClose={onClose}
+          onEnrich={screened ? undefined : onEnrich} />
         <Button size="icon" variant="ghost" onClick={onClose} title="Close (Esc)" aria-label="Close prospect"><X size={16} /></Button>
       </div>
 
@@ -179,11 +185,13 @@ function Field({ col, row, onEdit, disabled, autoFocus }: { col: Column; row: Ro
   );
 }
 
-function RowMenu({ row, contacts, drafting, state, onClose }: {
+function RowMenu({ row, contacts, drafting, state, onClose, onEnrich }: {
   row: Row; contacts: number;
   /** An intro to one of its contacts is being written: the row stays until it's done. */
   drafting: boolean;
   state: CampaignState; onClose: () => void;
+  /** Absent for a screened-out prospect: a run would only skip it. */
+  onEnrich?: (rowId: string) => void;
 }) {
   return (
     <Popover align="right" trigger={({ toggle }) => (
@@ -191,6 +199,7 @@ function RowMenu({ row, contacts, drafting, state, onClose }: {
     )}>
       {(close) => (
         <>
+          {onEnrich && <MenuItem icon={<Sparkles size={15} />} onClick={() => { close(); onEnrich(row.id); }}>Enrich with AI</MenuItem>}
           <MenuItem icon={<Copy size={15} />} onClick={() => { close(); state.duplicateRow(row.id); toast.success("Duplicated"); }}>Duplicate row</MenuItem>
           <MenuItem danger disabled={drafting} hint={drafting ? "An intro to one of its contacts is being written" : undefined} icon={<Trash2 size={15} />} onClick={() => {
             close();
@@ -308,7 +317,7 @@ function ContactPanel({ contact, org, orgTitle, schema, templates, state, enrich
         </button>
         {!disabled && (
           <button onClick={remove} disabled={drafting} title={drafting ? "Their intro is being written: stop it or wait for it first" : undefined}
-            className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-45">
+            className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-coral-700 hover:text-coral-800 disabled:cursor-not-allowed disabled:opacity-45">
             <Trash2 size={13} className="shrink-0" /> Delete contact
           </button>
         )}

@@ -62,6 +62,12 @@
   --color-note-mint: #cdefd9;
   --color-leaf: #2f9e5b;
   --color-rose: #e0405e;
+  /* Delete and remove controls: a scale around CSS `coral` (#ff7f50), which Tailwind doesn't ship. */
+  --color-coral-50: #fff3ee;
+  --color-coral-100: #ffe1d5;
+  --color-coral-600: #ec6535;
+  --color-coral-700: #c54d24;
+  --color-coral-800: #9c3c1c;
   --color-sun: #ffc533;
 
   /* A ledge straight below the element, plus a soft drop shadow for depth. */

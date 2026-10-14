@@ -116,16 +116,16 @@ function Pinned({ index, className, children, ...button }: { index: number } & B
 /** One action on the board: a pinned note card. */
 export function PinCard({ icon, label, hint, count, tone = "bg-paper", danger, index = 0, onClick, title }: PinCardProps) {
   return (
-    <Pinned index={index} onClick={onClick} title={title} className={cn("gap-2 pb-4", tone, danger ? "text-rose-700" : "text-mud")}>
+    <Pinned index={index} onClick={onClick} title={title} className={cn("gap-2 pb-4", tone, danger ? "text-coral-700" : "text-mud")}>
       <span className="flex w-full items-center gap-2">
-        <span className={cn("shrink-0", danger ? "text-rose-500" : "text-mud-soft")}>{icon}</span>
+        <span className={cn("shrink-0", danger ? "text-coral-600" : "text-mud-soft")}>{icon}</span>
         {count !== undefined && count > 0 && (
           <span className="ml-auto rounded-full border border-rim bg-clay px-2 font-label text-[12px] leading-5 font-bold text-paper tabular-nums">{count}</span>
         )}
       </span>
       <span className="font-label text-[16px] leading-tight font-bold">{label}</span>
       {/* Mud-soft, not faint: the faint grey washes out on the tinted notes. */}
-      {hint && <span className={cn("line-clamp-2 font-label text-[12px] leading-snug [overflow-wrap:anywhere]", danger ? "text-rose-800/80" : "text-mud-soft")}>{hint}</span>}
+      {hint && <span className={cn("line-clamp-2 font-label text-[12px] leading-snug [overflow-wrap:anywhere]", danger ? "text-coral-800/80" : "text-mud-soft")}>{hint}</span>}
     </Pinned>
   );
 }

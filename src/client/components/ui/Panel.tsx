@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useFocusReturn, useInert, useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
@@ -11,12 +11,20 @@ const Leaving = createContext(false);
 
 /**
  * Mounts a Panel while `open`, and keeps it up for LEAVE_MS after, showing what it last had,
- * so it can animate out.
+ * so it can animate out. Each opening is a new panel: one opened again while it is still going
+ * starts afresh, as it would a moment later, not with the choices made in it before (Enrich's
+ * run scope, Discover's section).
  */
 export function PanelGate({ open, children }: { open: boolean; children: ReactNode }) {
   const { shown, leaving, last } = useLeaving(open, LEAVE_MS, children);
+  const [opening, setOpening] = useState(0);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setOpening(opening + 1);
+  }
   if (!shown) return null;
-  return <Leaving.Provider value={leaving}>{last}</Leaving.Provider>;
+  return <Leaving.Provider value={leaving}><Fragment key={opening}>{last}</Fragment></Leaving.Provider>;
 }
 
 /**

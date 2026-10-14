@@ -1,12 +1,13 @@
 /**
  * Escape among the layers: a Panel open over the prospect panel closes alone, and a Modal open
- * over the Panel closes alone. The prospect panel is stood in for by its window listener.
+ * over the Panel closes alone. The prospect panel is stood in for by its window listener. And a
+ * Panel opened again as it goes starts afresh.
  */
 import { afterAll, expect, test } from "bun:test";
 import { failOnConsoleError, installDom } from "../../../test/dom";
 
 const dom = installDom();
-const { act } = await import("react");
+const { act, useState } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { Panel, PanelGate } = await import("./Panel");
 const { Modal } = await import("./Modal");
@@ -40,6 +41,38 @@ test("Escape closes only the top layer", async () => {
     expect(closed).toEqual(["modal", "panel"]);
   } finally {
     window.removeEventListener("keydown", drawer);
+    await act(() => root.unmount());
+    el.remove();
+    restoreConsole();
+  }
+});
+
+test("a panel opened again while it is still going starts afresh", async () => {
+  const restoreConsole = failOnConsoleError();
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const root = createRoot(el);
+  // Stands in for a choice made in the panel, such as Enrich's run scope.
+  function Choice() {
+    const [picked, setPicked] = useState("first");
+    return <button id="choice" onClick={() => setPicked("changed")}>{picked}</button>;
+  }
+  const show = (open: boolean) => act(() => root.render(
+    <PanelGate open={open}>
+      <Panel title="Enrich" onClose={() => {}}><Choice /></Panel>
+    </PanelGate>,
+  ));
+  const choice = () => el.querySelector<HTMLButtonElement>("#choice")!;
+  try {
+    await show(true);
+    await act(() => choice().click());
+    expect(choice().textContent).toBe("changed");
+    // Closed, and opened again before it has finished going.
+    await show(false);
+    expect(choice()).not.toBeNull();
+    await show(true);
+    expect(choice().textContent).toBe("first");
+  } finally {
     await act(() => root.unmount());
     el.remove();
     restoreConsole();

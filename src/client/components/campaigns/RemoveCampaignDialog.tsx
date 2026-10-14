@@ -73,7 +73,7 @@ export function RemoveCampaignDialog({ campaign, onClose, beforeRemove, onRemove
         ) : campaign?.sourceName ? (
           <p>The file it came from, <strong className="text-mud">{campaign.sourceName}</strong>, isn't touched.</p>
         ) : (
-          <p className="font-semibold text-rose-700">It has never been saved to a file, so this removes it for good.</p>
+          <p className="font-semibold text-coral-700">It has never been saved to a file, so this removes it for good.</p>
         )}
         <p>Edits not yet saved with Save file go with it, as do its AI recipes and suggestions.</p>
       </div>
