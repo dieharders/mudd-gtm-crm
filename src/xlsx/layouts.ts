@@ -108,10 +108,10 @@ export const YOURS_FILL = "FFFFFFF0";
 
 /**
  * Columns that get the "yours" fill: the ones Mudd and its user keep up to date, a contact's
- * Primary box among them. Last contacted and Last reply have it by their header.
+ * Primary box and intro among them. Last contacted and Last reply have it by their header.
  */
 export function isYours(col: Column, schema: CampaignSchema): boolean {
-  const keys = [schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, schema.contacts?.primaryKey];
+  const keys = [schema.statusKey, schema.meetingAtKey, schema.meetingUrlKey, schema.reasonKey, schema.screenedKey, schema.contacts?.primaryKey, schema.contacts?.introKey];
   return keys.includes(col.key) || /^(next|notes?|last)/i.test(col.header);
 }
 

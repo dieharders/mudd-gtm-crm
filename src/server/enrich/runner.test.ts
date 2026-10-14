@@ -229,6 +229,7 @@ describe("runs", () => {
 
   test("an intro cites the Hook's recorded source, and each hook is one line matched to its own source", async () => {
     const id = campaign([{ id: "r1", cells: { [k("Company")]: "Acme", [k("Hook")]: "Won an AFWERX contract" } }]);
+    db.insertRows(id, [{ id: "c1", parentId: "r1", cells: { [k("Name")]: "Ann Lee" } }]);
     db.createTemplate(id, "Warm", "Hi {{First name}}");
     const s = (sid: string, url: string, createdAt: number): Suggestion => ({
       id: sid, campaignId: id, runId: "x", rowId: "r1", key: k("Hook"), value: "Won an AFWERX contract", previous: null, sources: [{ url }], confidence: null, note: null, status: "accepted", createdAt,
@@ -242,11 +243,14 @@ describe("runs", () => {
         costUsd: null,
       };
     };
-    const run = startRun({ campaignId: id, kind: "intro", rowIds: ["r1"], test: false, autoFill: false, concurrency: 1 });
+    const run = startRun({ campaignId: id, kind: "intro", rowIds: ["c1"], test: false, autoFill: false, concurrency: 1 });
     await until(() => run.status === "done");
     fakeTurn = null;
     expect(prompt).toContain('Hook: "Won an AFWERX contract" (source: https://afwerx.mil/acme)');
+    expect(prompt).toContain('"Contact":{"Name":"Ann Lee"}');
     const [draft] = store.listSuggestions(id, "pending");
+    // The draft is the contact's: the intro is written to them.
+    expect(draft).toMatchObject({ rowId: "c1", key: schema.contacts!.introKey });
     expect(draft!.note).toBe("Template: Warm\nHook: Won an AFWERX contract\nHook: Hired a CTO");
     expect(draft!.sources).toEqual([{ url: "https://x.io", title: "Hired a CTO" }]);
   });

@@ -129,7 +129,8 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
   const paragraphs = layout.paragraphs.map((col) => ({ col, v: txt(col.key) })).filter((p) => p.v);
   const facts = layout.facts.map((col) => ({ col, v: txt(col.key) })).filter((f) => f.v);
   const meetingAt = txt(schema.meetingAtKey);
-  const intro = txt(schema.introKey);
+  const introKey = schema.contacts?.introKey;
+  const intros = introKey ? contacts.filter((p) => display(p.cells[introKey]).trim()).length : 0;
   const screened = isScreened(row, schema);
   const reason = screened ? txt(schema.reasonKey) : "";
   const dead = status === DEAD;
@@ -157,7 +158,7 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
             <CalendarClock size={12} /> {relative(meetingAt)}
           </span>
         )}
-        {intro && <span className="tag bg-lake-soft text-lake-deep"><MessageSquareText size={12} /> Intro drafted</span>}
+        {intros > 0 && <span className="tag bg-lake-soft text-lake-deep"><MessageSquareText size={12} /> {intros === 1 ? "Intro drafted" : `${intros} intros drafted`}</span>}
         {pendingCount > 0 && <span className="tag bg-clay text-white">✨ {pendingCount} to review</span>}
       </div>
 

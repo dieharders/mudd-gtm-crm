@@ -256,7 +256,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
           {/* main */}
           <div className="min-w-0 flex-1 overflow-y-auto p-5 scroll-thin">
             {sel?.kind === "run" && shownRun ? (
-              <RunProgress run={shownRun} rows={state.rows} schema={schema} contactsOf={state.contactsOf} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
+              <RunProgress run={shownRun} rowById={state.rowById} schema={schema} contactsOf={state.contactsOf} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
                 pending={enrich.suggestions.filter((s) => s.runId === shownRun.id).length} onOpenRow={onOpenRow} />
             ) : draft && (sel?.kind === "recipe" || sel?.kind === "draft") ? (
               <div className="space-y-5">
@@ -285,7 +285,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
                   busy={!!recipe && enrich.activeRuns.some((x) => x.recipeId === recipe.id)}
                 />
                 {shownRun && (
-                  <RunProgress run={shownRun} rows={state.rows} schema={schema} contactsOf={state.contactsOf} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
+                  <RunProgress run={shownRun} rowById={state.rowById} schema={schema} contactsOf={state.contactsOf} onAction={(a) => fire(enrich.action(shownRun.id, a))} onReview={onOpenReview}
                     pending={enrich.suggestions.filter((s) => s.runId === shownRun.id).length} onOpenRow={onOpenRow} />
                 )}
               </div>
@@ -304,7 +304,7 @@ export function EnrichPanel({ state, enrich, selectedIds, filteredIds, onClose, 
 
 function RecipeEditor({ draft, schema, onChange }: { draft: Draft; schema: CampaignSchema; onChange: (p: Partial<Draft>) => void }) {
   const records = new Set(contactRecordKeys(schema));
-  const skipInputs = new Set([schema.introKey, schema.reasonKey, schema.screenedKey, schema.idKey, ...records]);
+  const skipInputs = new Set([schema.reasonKey, schema.screenedKey, schema.idKey, ...records]);
   // The primary contact's columns go along as context too.
   const inputCols = allColumns(schema).filter((c) => !isSourcesColumn(c) && !skipInputs.has(c.key));
   const orgTargets = schema.columns.filter((c) => !isSourcesColumn(c) && c.key !== schema.idKey);

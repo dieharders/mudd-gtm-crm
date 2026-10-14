@@ -214,7 +214,8 @@ export function useCampaign(id: string) {
     const s = campaignRef.current?.schema;
     // A copy of a prospect is another prospect: its own ID, and none of its contacts.
     const cells = { ...src.cells, ...(src.parentId ? {} : nextId(rowsRef.current, s)) };
-    for (const k of [s?.introKey, s?.meetingAtKey, s?.meetingUrlKey]) if (k) delete cells[k];
+    // A copy of a contact is someone else: the intro was written to the original.
+    for (const k of [s?.contacts?.introKey, s?.meetingAtKey, s?.meetingUrlKey]) if (k) delete cells[k];
     const row: Row = { id: newRowId(), position, cells, sourceSheet: null, sourceRow: null, ...(src.parentId ? { parentId: src.parentId } : {}) };
     setRows((prev) => [...prev, row]);
     pushUndo({ kind: "insert", label: "Duplicate row", ids: [row.id] });

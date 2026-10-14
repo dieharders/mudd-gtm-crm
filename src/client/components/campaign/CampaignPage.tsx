@@ -9,6 +9,7 @@ import { allColumns, contactSchema, orgColumn } from "../../../shared/schema";
 import {
   DEAD, isChecked, isScreened, ORG_KEY, STAGES, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row,
 } from "../../../shared/types";
+import { isEmptyContact } from "../../../shared/values";
 import { useCampaign, type CampaignState } from "../../hooks/useCampaign";
 import { useConsentGate } from "../../hooks/useConsentGate";
 import { useDiscovery } from "../../hooks/useDiscovery";
@@ -509,7 +510,7 @@ function CampaignView({ state }: { state: CampaignState }) {
       {/* toolbar: what the sheet shows */}
       <div className="flex min-h-16 flex-wrap items-center gap-3 px-6 pt-3 pb-16 motion-safe:animate-page-in">
         {onContacts && selectedContactRows.length > 0 ? (
-          <ContactBulkBar rows={selectedContactRows} state={state} onDone={() => setSelectedContacts(new Set())} />
+          <ContactBulkBar rows={selectedContactRows} schema={schema} state={state} enrich={enrich} onDone={() => setSelectedContacts(new Set())} />
         ) : !onContacts && selectedRows.length > 0 ? (
           <BulkBar
             rows={selectedRows}
@@ -875,12 +876,13 @@ function SelectionCount({ n }: { n: number }) {
 }
 
 /** Actions on the selected contacts. */
-function ContactBulkBar({ rows, state, onDone }: { rows: Row[]; state: CampaignState; onDone: () => void }) {
+function ContactBulkBar({ rows, schema, state, enrich, onDone }: { rows: Row[]; schema: CampaignSchema; state: CampaignState; enrich: EnrichmentState; onDone: () => void }) {
   const n = rows.length;
   const label = `${n} ${n === 1 ? "contact" : "contacts"}`;
   return (
     <>
       <SelectionCount n={n} />
+      <DraftIntrosButton contacts={rows} schema={schema} state={state} enrich={enrich} title="Write an intro to each selected contact from your templates" />
       <Button size="sm" variant="danger" onClick={() => {
         state.deleteRows(rows.map((r) => r.id), `Delete ${label}`);
         onDone();
@@ -889,6 +891,23 @@ function ContactBulkBar({ rows, state, onDone }: { rows: Row[]; state: CampaignS
         <Trash2 size={13} /> Delete
       </Button>
     </>
+  );
+}
+
+/** Draft an intro to each of these contacts with AI, from the templates: they wait under Review. */
+function DraftIntrosButton({ contacts, schema, state, enrich, title }: {
+  contacts: Row[]; schema: CampaignSchema; state: CampaignState; enrich: EnrichmentState; title: string;
+}) {
+  if (!schema.contacts?.introKey) return null;
+  const ids = contacts.map((c) => c.id);
+  const tip = !state.templates.length ? "Add an intro template first" : !ids.length ? "Every contact here has an intro already" : title;
+  return (
+    <Button size="sm" variant="subtle" disabled={!state.templates.length || !ids.length} title={tip}
+      onClick={() => fire(enrich.start({ kind: "intro", rowIds: ids, intro: { templateId: "auto" }, concurrency: 2 }).then((run) => {
+        if (run) toast.success(`Drafting ${ids.length} intro${ids.length === 1 ? "" : "s"}. They'll appear under Review.`);
+      }))}>
+      <MessageSquarePlus size={13} /> Draft intros{ids.length ? ` (${ids.length})` : ""}
+    </Button>
   );
 }
 
@@ -932,14 +951,9 @@ function BulkBar({ rows, schema, stages, state, enrich, onEnrich, onDone }: {
             </Popover>
           )}
           <Button size="sm" variant="subtle" onClick={onEnrich}><Sparkles size={13} /> Enrich</Button>
-          {schema.introKey && (
-            <Button size="sm" variant="subtle" disabled={!state.templates.length} title={state.templates.length ? "Write an intro for each selected prospect from your templates" : "Add an intro template first"}
-              onClick={() => fire(enrich.start({ kind: "intro", rowIds: activeIds, intro: { templateId: "auto" }, concurrency: 2 }).then((run) => {
-                if (run) toast.success(`Drafting ${activeIds.length} intro${activeIds.length === 1 ? "" : "s"}. They'll appear under Review.`);
-              }))}>
-              <MessageSquarePlus size={13} /> Draft intros
-            </Button>
-          )}
+          {/* Each prospect's contacts that have no intro yet, a contact that holds nothing aside. */}
+          <DraftIntrosButton schema={schema} state={state} enrich={enrich} title="Write an intro to each contact of the selected prospects that has none yet"
+            contacts={active.flatMap((r) => state.contactsOf(r.id)).filter((c) => !isEmptyContact(c, schema) && !display(c.cells[schema.contacts?.introKey ?? ""]).trim())} />
         </>
       )}
       {screenedIds.length > 0 && (

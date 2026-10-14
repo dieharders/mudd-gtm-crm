@@ -41,7 +41,7 @@ export function cardLayout(schema: CampaignSchema): CardLayout {
     find(cols, /^(focus|focuscerts|specialty|specialties|whattheydo|offering|sector)$/);
   const used = new Set(
     [titleKey, rankKey, tierKey, subtitleKey, schema.idKey,
-      schema.statusKey, schema.introKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean) as string[],
+      schema.statusKey, schema.meetingAtKey, schema.meetingUrlKey, schema.screenedKey, schema.reasonKey].filter(Boolean) as string[],
   );
   const emailKeys: string[] = [];
   const phoneKeys: string[] = [];

@@ -1,4 +1,4 @@
-/** The prospect panel's AI parts: findings waiting for review, and "Write with AI" for the intro. */
+/** The prospect panel's AI parts: findings waiting for review, and "Write with AI" for a contact's intro. */
 import { CheckCheck, ExternalLink, Loader2, RotateCcw, Sparkles, Square, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { columnOf } from "../../../shared/schema";
@@ -14,7 +14,8 @@ import { fire } from "../../lib/fire";
 /** Findings waiting for review: the row's own, and its contacts', each named by its contact. */
 export function RowSuggestions({ row, contacts, schema, enrich }: { row: Row; contacts: Row[]; schema: CampaignSchema; enrich: EnrichmentState }) {
   const whose = new Map(contacts.map((c) => [c.id, contactLabel(c, schema)]));
-  const list = [row, ...contacts].flatMap((r) => enrich.pendingByRow.get(r.id) ?? []).filter((s) => s.key !== schema.introKey);
+  // An intro draft is reviewed in its contact's intro section (AiIntro).
+  const list = [row, ...contacts].flatMap((r) => enrich.pendingByRow.get(r.id) ?? []).filter((s) => s.key !== schema.contacts?.introKey);
   if (!list.length) return null;
   const colFor = (rowId: string, key: string) => {
     const col = columnOf(schema, key);
@@ -40,14 +41,14 @@ export function RowSuggestions({ row, contacts, schema, enrich }: { row: Row; co
   );
 }
 
-/** Write the intro with AI: pick a template (or let it pick), research hooks, review the draft. */
-export function AiIntro({ row, schema, templates, enrich }: { row: Row; schema: CampaignSchema; templates: Template[]; enrich: EnrichmentState }) {
+/** Write a contact's intro with AI: pick a template (or let it pick), research hooks, review the draft. */
+export function AiIntro({ contact: row, schema, templates, enrich }: { contact: Row; schema: CampaignSchema; templates: Template[]; enrich: EnrichmentState }) {
   const ai = useAi();
   const { ready } = useActiveProvider();
   const [templateId, setTemplateId] = useState("auto");
   const [guidance, setGuidance] = useState("");
   const [showGuidance, setShowGuidance] = useState(false);
-  const draft = (enrich.pendingByRow.get(row.id) ?? []).find((s) => s.key === schema.introKey);
+  const draft = (enrich.pendingByRow.get(row.id) ?? []).find((s) => s.key === schema.contacts?.introKey);
   const run = enrich.activeRuns.find((r) => r.kind === "intro" && r.rows[row.id] && (r.rows[row.id]!.state === "running" || r.rows[row.id]!.state === "pending"));
   const rowState = run?.rows[row.id];
   const lastError = enrich.runs.find((r) => r.kind === "intro" && r.rows[row.id]?.state === "error")?.rows[row.id]?.error;
@@ -124,7 +125,7 @@ export function AiIntro({ row, schema, templates, enrich }: { row: Row; schema: 
             <button className="mt-1.5 text-[11px] text-clay-deep hover:underline" onClick={() => setShowGuidance(true)}>+ Add guidance</button>
           )}
           {lastError && <p className="mt-1.5 text-[11px] text-rose-700">Last try failed: {lastError}</p>}
-          <p className="mt-1.5 text-[11px] text-mud-faint">Fills your template around this prospect’s Hook, or researches 1–2 hooks when it has none, with sources. You review before it goes in.</p>
+          <p className="mt-1.5 text-[11px] text-mud-faint">Fills your template for {contactLabel(row, schema)}, around the prospect’s Hook, or researches 1–2 hooks when it has none, with sources. You review before it goes in.</p>
         </>
       )}
     </div>

@@ -148,7 +148,7 @@ describe("Save file patches the imported workbook", () => {
     // Mudd's columns are appended after the last used column, headers only.
     const wb = await read(out);
     const header = (wb.getWorksheet("Prospects")!.getRow(1).values as unknown[]).slice(1);
-    expect(header).toEqual(["Company", "Name", "Status", "Last touch", "Score", "Website", "Notes", "ID", "Meeting URL", "Meeting at", "Intro message", "Screened out", "Screened reason"]);
+    expect(header).toEqual(["Company", "Name", "Status", "Last touch", "Score", "Website", "Notes", "ID", "Meeting URL", "Meeting at", "Screened out", "Screened reason"]);
     for (const [name, text] of after) if (name.endsWith(".xml") || name.endsWith(".rels")) expect({ name, ok: wellFormed(text) }).toEqual({ name, ok: true });
     expect(after.get("xl/workbook.xml")).toContain('fullCalcOnLoad="1"');
   });
@@ -422,7 +422,7 @@ describe("Save file patches the imported workbook", () => {
     const out = await exportCampaign(campaign, original, rows, [], [], null);
     const parts = await partsOf(out);
     const table = [...parts.entries()].find(([k]) => k.startsWith("xl/tables/"))![1];
-    expect(table).toMatch(/ref="A1:H4"/);
+    expect(table).toMatch(/ref="A1:G4"/);
     expect(table).toContain('name="Stage"');
     expect(table).toContain('name="Screened reason"');
     // The prospects had no ID column: one is added, last, with an ID for each.
@@ -680,8 +680,11 @@ describe("campaigns created in Mudd", () => {
     expect(imp.rows[0]!.cells[name]).toBe("Lee, Ann");
     expect(imp.rows.map((r) => r.cells[imp.schema.idKey!])).toEqual(["P-001", "P-002"]);
     expect(imp.schema.columns.map((c) => c.header)).toEqual(
-      expect.arrayContaining(["Status", "Meeting URL", "Meeting at", "Intro message", "Screened out", "Screened reason", "ID"]),
+      expect.arrayContaining(["Status", "Meeting URL", "Meeting at", "Screened out", "Screened reason", "ID"]),
     );
+    // The intro is written to a person: it is one of the contacts' columns.
+    expect(imp.schema.columns.map((c) => c.header)).not.toContain("Intro message");
+    expect(imp.schema.contacts!.columns.map((c) => c.header)).toContain("Intro message");
   });
 
   test("Staff, Headcount or Size imports as one number column, # Employees", async () => {
@@ -703,7 +706,7 @@ function withContacts(wb: ExcelJS.Workbook, people: (string | boolean | null)[][
   ws.addRow(["P-001", "Acme", "Contacted"]);
   ws.addRow(["P-002", "Beta", "Replied"]);
   const c = wb.addWorksheet("Contacts");
-  c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply"]);
+  c.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message"]);
   for (const p of people) c.addRow(p);
   (c as unknown as { dataValidations: { add(r: string, v: ExcelJS.DataValidation): void } }).dataValidations.add("D2:D1000", {
     type: "list", allowBlank: true, formulae: ['"Economic Buyer,Champion,Technical Buyer,End User,Influencer,Blocker,Gatekeeper,Channel"'],
@@ -731,7 +734,7 @@ describe("the Contacts tab", () => {
     expect(cs.columns.find((c) => c.key === cs.primaryKey)!.type).toBe("checkbox");
     expect(contacts[0]!.cells[cs.primaryKey!]).toBe(CHECKED);
     // The two link columns are the tab's, not the contacts'; the prospect's ID is hidden in the app.
-    expect(cs.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply"]);
+    expect(cs.columns.map((c) => c.header)).toEqual(["Name", "Contact type", "Primary", "Email", "Last contacted", "Last reply", "Intro message"]);
     expect(cs.columns.find((c) => c.key === cs.lastContactedKey)).toMatchObject({ header: "Last contacted", type: "date" });
     expect(cs.columns.find((c) => c.key === cs.lastReplyKey)).toMatchObject({ header: "Last reply", type: "date" });
     expect(campaign.schema.columns.find((c) => c.key === campaign.schema.idKey)).toMatchObject({ header: "ID", hidden: true });
@@ -903,7 +906,6 @@ describe("round trip with the whole tracker fixture", () => {
     first!.cells[s.statusKey!] = "Meeting booked";
     first!.cells[s.meetingAtKey!] = "2026-10-02T14:30";
     first!.cells[s.meetingUrlKey!] = "https://meet.google.com/abc-defg-hij";
-    first!.cells[s.introKey!] = "Hi there,\nshort intro.";
     third!.cells[s.screenedKey!] = CHECKED;
     third!.cells[s.reasonKey!] = "Has an agency of record";
     const kept = rows.filter((r) => r.id !== second!.id);
@@ -914,7 +916,6 @@ describe("round trip with the whole tracker fixture", () => {
     const s2 = again.campaign.schema;
     const back = again.rows.find((r) => r.sourceRow === first!.sourceRow)!;
     expect(back.cells[s2.meetingAtKey!]).toBe("2026-10-02T14:30");
-    expect(back.cells[s2.introKey!]).toBe("Hi there,\nshort intro.");
     expect(isScreened(again.rows.find((r) => r.sourceRow === third!.sourceRow)!, s2)).toBe(true);
     expect(again.rows.some((r) => r.sourceRow === second!.sourceRow)).toBe(false);
     expect(again.rows.some((r) => r.cells[s2.companyKey!] === "New Co")).toBe(true);

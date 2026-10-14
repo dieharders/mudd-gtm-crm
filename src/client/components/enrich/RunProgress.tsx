@@ -2,7 +2,7 @@
 import { AlertCircle, Check, CircleDashed, Loader2, Pause, Play, Search, Square } from "lucide-react";
 import { isLiveStatus, PROVIDERS, type EnrichRun } from "../../../shared/ai";
 import type { CampaignSchema, Row } from "../../../shared/types";
-import { primaryOf, prospectTitle } from "../../../shared/values";
+import { contactLabel, primaryOf, prospectTitle } from "../../../shared/values";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
 import { Button } from "../ui/Button";
@@ -16,9 +16,10 @@ const STATUS: Record<EnrichRun["status"], [string, string]> = {
   failed: ["Failed", "bg-rose-100 text-rose-700"],
 };
 
-export function RunProgress({ run, rows, schema, contactsOf, onAction, onReview, pending, onOpenRow }: {
+export function RunProgress({ run, rowById, schema, contactsOf, onAction, onReview, pending, onOpenRow }: {
   run: EnrichRun;
-  rows: Row[];
+  /** Prospects and contacts: an intro run lists contacts. */
+  rowById: Map<string, Row>;
   schema: CampaignSchema;
   contactsOf: (orgId: string) => Row[];
   onAction: (a: "pause" | "resume" | "stop") => void;
@@ -30,7 +31,13 @@ export function RunProgress({ run, rows, schema, contactsOf, onAction, onReview,
   const pct = run.total ? Math.round((finished / run.total) * 100) : 0;
   const live = isLiveStatus(run.status);
   const [label, tone] = STATUS[run.status];
-  const byId = new Map(rows.map((r) => [r.id, r]));
+  const orgTitle = (org: Row) => prospectTitle(org, primaryOf(contactsOf(org.id), schema), schema).title;
+  /** A row's line: a prospect's title, or a contact's name and its prospect's. */
+  const titleOf = (row: Row) => {
+    if (!row.parentId) return orgTitle(row);
+    const org = rowById.get(row.parentId);
+    return [contactLabel(row, schema), org && orgTitle(org)].filter(Boolean).join(" · ");
+  };
 
   return (
     <div className="rounded-2xl border border-rim/40 bg-paper p-4">
@@ -62,11 +69,11 @@ export function RunProgress({ run, rows, schema, contactsOf, onAction, onReview,
       <ul className="mt-3 max-h-64 space-y-0.5 overflow-y-auto scroll-thin">
         {run.rowIds.map((id) => {
           const rs = run.rows[id]!;
-          const row = byId.get(id);
-          const t = row ? prospectTitle(row, primaryOf(contactsOf(id), schema), schema).title : "Deleted row";
+          const row = rowById.get(id);
+          const t = row ? titleOf(row) : "Deleted row";
           return (
             <li key={id}>
-              <button onClick={() => row && onOpenRow(id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-paper-deep/60">
+              <button onClick={() => row && onOpenRow(row.parentId ?? id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-paper-deep/60">
                 <RowIcon state={rs.state} />
                 <span className="w-44 shrink-0 truncate font-medium">{t}</span>
                 <span className={cn("min-w-0 flex-1 truncate", rs.state === "error" ? "text-rose-700" : "text-mud-faint")}>

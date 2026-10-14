@@ -4,7 +4,8 @@
  * A run is a list of prospects worked by a few parallel workers. Each is one research turn on
  * the user's CLI, which sees the prospect with its primary contact; or, for a recipe that fills
  * in people's details, one turn per contact, each seeing the prospect with that person (see
- * recipeMode). Pause lets the in-flight prospects finish and starts no more; Stop aborts them.
+ * recipeMode). An intro run is a list of contacts instead: each gets its own message, written
+ * seeing its prospect with that person. Pause lets the in-flight prospects finish and starts no more; Stop aborts them.
  * An answer never overwrites a cell on its own: it becomes a SUGGESTION to accept or reject,
  * except with auto-fill on, which fills cells that are EMPTY and nothing else. A person's
  * findings go on the contact the turn was about, or, from a recipe that finds someone, on the
@@ -21,7 +22,7 @@ import { enrichRequest, introRequest } from "./prompts";
 import * as store from "./store";
 import { publish, publishCampaign } from "./hub";
 import { mergeSources, recipeMode, SOURCES_HEADER, sourcesColumn, type EnrichRun, type IntroOptions, type ProviderId, type RunKind, type Source, type Suggestion } from "../../shared/ai";
-import { allColumns, columnOf, isContactKey, makeKey } from "../../shared/schema";
+import { allColumns, columnOf, introColumn, isContactKey, makeKey } from "../../shared/schema";
 import { CHECKED, isScreened, type CampaignSchema, type CellEdit, type CellValue, type Column, type Row } from "../../shared/types";
 import { contactLabel, parseFlag, primaryOf, prospectCells, researchedContacts, sameValue, samePerson, toNumber } from "../../shared/values";
 import { generateStructured } from "../ai";
@@ -250,7 +251,7 @@ interface Turn {
 }
 
 /**
- * A prospect's turns: one, seeing it with its primary contact (an intro; a recipe that fills the
+ * A prospect's turns: one, seeing it with its primary contact (a recipe that fills the
  * prospect's columns or finds someone), or one per person, primary first, for a recipe that
  * fills in people's details. A channel (a main line, an inbox) is no person to research, nor is
  * a contact with nothing in it to research them by (see researchedContacts).
@@ -283,10 +284,13 @@ async function processRow(ctrl: Controller, rowId: string): Promise<void> {
   };
   const campaign = db.getCampaign(run.campaignId);
   const found = campaign ? db.getRow(run.campaignId, rowId) : null;
-  // Runs are on prospects; a contact is researched as part of its prospect.
-  const row = found?.parentId ? null : found;
-  if (!campaign || !row || isScreened(row, campaign.schema)) return skip(found?.parentId ? "Not a prospect." : row ? "Screened out" : "Row was deleted.");
-  const turns = turnsOf(run, campaign.schema, row);
+  // Enrichment runs on prospects, a contact researched as part of its prospect; an intro is
+  // written to one contact, seeing its prospect.
+  const intro = run.kind === "intro";
+  const misplaced = !!found && intro !== !!found.parentId;
+  const row = !found || misplaced ? null : intro ? db.getRow(run.campaignId, found.parentId!) : found;
+  if (!campaign || !row || isScreened(row, campaign.schema)) return skip(misplaced ? (intro ? "Not a contact." : "Not a prospect.") : row ? "Screened out" : "Row was deleted.");
+  const turns = intro ? [{ cells: prospectCells(row, found), contact: found! }] : turnsOf(run, campaign.schema, row);
   if (!turns.length) return skip("No contacts to research.");
   state.state = "running";
   state.step = "Starting";
@@ -342,7 +346,7 @@ async function runTurn(ctrl: Controller, rowId: string, schema: CampaignSchema, 
   const state = run.rows[rowId]!;
   const result = await retryTurn({
     attempt: () => (run.kind === "intro"
-      ? doIntro(run, schema, turn.cells, rowId, ctrl.abort.signal, onStep)
+      ? doIntro(run, schema, turn, ctrl.abort.signal, onStep)
       : doEnrich(run, schema, turn, rowId, ctrl.abort.signal, onStep)),
     signal: ctrl.abort.signal,
     label: `enrich row ${rowId}`,
@@ -504,25 +508,29 @@ async function doEnrich(run: EnrichRun, schema: CampaignSchema, turn: Turn, rowI
   return recordResults(run, rowId, results, turn.contact?.id);
 }
 
-async function doIntro(run: EnrichRun, schema: CampaignSchema, cells: Record<string, CellValue>, rowId: string, signal: AbortSignal, onStep: (s: string) => void): Promise<number | null> {
-  if (!schema.introKey) throw new Error("This campaign has no Intro message column.");
+/** One contact's intro: a suggestion on that contact, its hooks' sources on the prospect. */
+async function doIntro(run: EnrichRun, schema: CampaignSchema, turn: Turn, signal: AbortSignal, onStep: (s: string) => void): Promise<number | null> {
+  const col = introColumn(schema);
+  if (!col) throw new Error("This campaign has no Intro message column.");
+  const { cells, contact } = turn;
+  const orgId = contact!.parentId!;
   const templates = db.listTemplates(run.campaignId);
   const choice = run.intro?.templateId ?? "auto";
-  const sourceOf = (key: string) => store.sourceOfValue(run.campaignId, rowId, key, cells[key] ?? null);
+  // The Hook is the prospect's.
+  const sourceOf = (key: string) => store.sourceOfValue(run.campaignId, orgId, key, cells[key] ?? null);
   const req = introRequest(templates, choice, run.intro?.guidance, schema, cells, true, sourceOf);
   if (!req.templates.length) throw new Error("That template no longer exists.");
   const { data, costUsd } = await generateStructured({ ...req, webSearch: true, signal, onStep });
   if (costUsd !== null) run.costUsd = (run.costUsd ?? 0) + costUsd;
   const used = req.templates.find((t) => t.id === data.templateId) ?? req.templates[0]!;
-  const col = schema.columns.find((c) => c.key === schema.introKey)!;
   // One line each: the note lists them by line, and the page matches each to its source by text.
   const hooks = data.hooks.map((h) => ({ ...h, text: h.text.replace(/\s+/g, " ").trim() })).filter((h) => h.text);
   const note = [`Template: ${used.name}`, ...hooks.map((h) => `Hook: ${h.text}`)].join("\n");
-  return recordResults(run, rowId, [{
+  return recordResults(run, orgId, [{
     col,
     value: data.message.trim(),
     sources: hooks.filter((h) => h.source).map((h) => ({ url: h.source!, title: h.text })),
     confidence: null,
     note,
-  }]);
+  }], contact!.id);
 }

@@ -77,6 +77,8 @@ export interface ContactSchema {
   lastContactedKey?: string;
   /** Date: when this person last replied. */
   lastReplyKey?: string;
+  /** Long text: the intro message written to this person. */
+  introKey?: string;
 }
 
 export interface CampaignSchema {
@@ -86,7 +88,6 @@ export interface CampaignSchema {
   screenedKey?: string;
   /** Why the prospect was screened out. */
   reasonKey?: string;
-  introKey?: string;
   meetingUrlKey?: string;
   meetingAtKey?: string;
   /** A person's name. On a prospect schema only in `prospectSchema`'s merged view, from `contacts`. */

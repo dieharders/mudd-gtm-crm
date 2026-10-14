@@ -95,11 +95,10 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
     });
   }
 
-  // Not contacted yet, and missing what outreach needs: someone to address, or the intro itself.
-  // Someone is whoever an intro would greet (primaryOf), Primary ticked or not.
-  const { introKey } = schema;
-  const people = !!schema.contacts;
-  if (introKey || people) {
+  // Not contacted yet, and missing what outreach needs: someone to address, or an intro to them.
+  // Someone is whoever is reached first (primaryOf), Primary ticked or not.
+  const introKey = schema.contacts?.introKey;
+  if (schema.contacts) {
     const before = contacted ? stageIndex(contacted, stages) : stages.length;
     out.push({
       id: "notReady",
@@ -113,7 +112,8 @@ export function prospectFilters(schema: CampaignSchema, stages: string[], recipe
           const i = stageIndex(s, stages);
           if (i < 0 || i >= before) return false;
         }
-        return (!!introKey && blank(r.cells[introKey])) || (people && !primaryOf(contactsOf(r.id), schema));
+        const primary = primaryOf(contactsOf(r.id), schema);
+        return !primary || (!!introKey && blank(primary.cells[introKey]));
       },
     });
   }
