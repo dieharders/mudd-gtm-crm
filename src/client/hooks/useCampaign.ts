@@ -399,12 +399,11 @@ export function useCampaign(id: string) {
   const importContacts = useCallback(async (src: File | { path: string }) => {
     await flush();
     const r = await api.importContacts(id, src);
-    if (!r.ids.length) return r;
-    const b = await api.campaign(id);
-    const added = new Set(r.ids);
-    setCampaign(b.campaign);
-    applyRemoteRows((b.contacts ?? []).filter((c) => added.has(c.id)));
-    pushUndo({ kind: "insert", label: r.ids.length === 1 ? "Import contact" : `Import ${r.ids.length} contacts`, ids: r.ids });
+    const n = r.contacts.length;
+    if (!n) return r;
+    setCampaign(r.campaign);
+    applyRemoteRows(r.contacts);
+    pushUndo({ kind: "insert", label: n === 1 ? "Import contact" : `Import ${n} contacts`, ids: r.contacts.map((c) => c.id) });
     return r;
   }, [applyRemoteRows, flush, id, pushUndo]);
 

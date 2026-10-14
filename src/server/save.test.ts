@@ -199,6 +199,10 @@ describe("Export CSV", () => {
     ws.addRow(["ID", "Company", "Status", "Notes"]);
     ws.addRow(["P-001", "Acme, Inc.", "Contacted", 'Said "maybe"\nCall back']);
     ws.addRow(["P-002", "Beta", "Replied", "=HYPERLINK(\"x\")"]);
+    ws.addRow(["P-003", "Theta", "Replied", "+1 (555) 123-4567"]);
+    ws.addRow(["P-004", "Delta", "Replied", "- call Tue"]);
+    ws.addRow(["P-005", "Eps", "Replied", "'=SUM is literal"]);
+    ws.addRow(["P-006", "Zeta", "Replied", "-2+3+cmd|' /C calc'!A0"]);
     const people = wb.addWorksheet("Contacts");
     people.addRow(["Prospect ID", "Company", "Name", "Contact type", "Primary"]);
     people.addRow(["P-001", "Acme, Inc.", "Ann Lee", "Economic Buyer", true]);
@@ -215,6 +219,11 @@ describe("Export CSV", () => {
     expect(text).toContain('"Acme, Inc."');
     expect(text).toContain('"Said ""maybe""\nCall back"');
     expect(text).toContain(`"'=HYPERLINK(""x"")"`);
+    expect(text).toContain(",'-2+3+cmd|' /C calc'!A0,");
+    // Text that runs nothing goes as it is; text that looks guarded already gets one more.
+    expect(text).toContain(",+1 (555) 123-4567,");
+    expect(text).toContain(",- call Tue,");
+    expect(text).toContain(",''=SUM is literal,");
     // Exporting again never replaces the first file.
     expect((await call<{ path: string }>("POST", `/api/campaigns/${id}/csv`, { kind: "prospects" })).json.path).toBe(path.join(tmp, "Downloads", "Leads prospects (2).csv"));
     // Save file still has no link to change: the campaign is linked to its workbook as before.
@@ -251,11 +260,11 @@ describe("Export CSV", () => {
     const id = (await call<Campaign>("POST", "/api/import", { token: inspected.json.token, prospects: inspected.json.sheets[0]!.name, name: "From CSV" })).json.id;
     expect((await call<CampaignBundle>("GET", `/api/campaigns/${id}`)).json.contacts).toHaveLength(0);
 
-    type Result = { ids: string[]; skipped: number; duplicates: number; mismatched: number };
+    type Result = { campaign: Campaign; contacts: Row[]; skipped: number; duplicates: number; mismatched: number };
     const first = await call<Result>("POST", `/api/campaigns/${id}/contacts/import`, upload(contactsCsv));
     expect(first.status).toBe(200);
     expect(first.json).toMatchObject({ skipped: 0, duplicates: 0, mismatched: 0 });
-    expect(first.json.ids).toHaveLength(2);
+    expect(first.json.contacts).toHaveLength(2);
     const b = (await call<CampaignBundle>("GET", `/api/campaigns/${id}`)).json;
     const { companyKey } = b.campaign.schema;
     const { nameKey, primaryKey } = b.campaign.schema.contacts!;
@@ -264,7 +273,7 @@ describe("Export CSV", () => {
 
     // The same file again adds no one.
     const again = await call<Result>("POST", `/api/campaigns/${id}/contacts/import`, upload(contactsCsv));
-    expect(again.json).toMatchObject({ ids: [], duplicates: 2 });
+    expect(again.json).toMatchObject({ contacts: [], duplicates: 2 });
 
     // By Company when there is no Prospect ID; someone at no prospect is skipped; a new column joins the contacts'.
     const loose = path.join(tmp, "docs", "loose.csv");
@@ -276,6 +285,70 @@ describe("Export CSV", () => {
     const bea = after.contacts.find((c) => c.cells[nameKey!] === "Bea Ray")!;
     expect(after.rows.find((r) => r.id === bea.parentId)!.cells[companyKey!]).toBe("Beta");
     expect(bea.cells[twitter.key]).toBe("@bea");
+    // The response is the campaign and rows as stored: the app takes them without fetching again.
+    expect(third.json.campaign.schema).toEqual(after.campaign.schema);
+    expect(third.json.contacts.map((c) => c.id)).toEqual([bea.id]);
+  });
+
+  test("contacts from another campaign go to their own Company, whatever P-### they carry, with one Primary each", async () => {
+    const send = (campaignId: string, text: string) => {
+      const fd = new FormData();
+      fd.append("file", new File([text], "people.csv"));
+      return call<{ contacts: Row[]; skipped: number; duplicates: number; mismatched: number }>("POST", `/api/campaigns/${campaignId}/contacts/import`, fd);
+    };
+    const fd = new FormData();
+    fd.append("file", new File(["ID,Company\nP-001,Beta\nP-007,Acme\n"], "other.csv"));
+    const inspected = await call<InspectResult>("POST", "/api/import/inspect", fd);
+    const id = (await call<Campaign>("POST", "/api/import", { token: inspected.json.token, prospects: inspected.json.sheets[0]!.name, name: "Other" })).json.id;
+
+    const r = await send(id, [
+      "Prospect ID,Company,Name,Primary",
+      "P-001,\"Acme\",Ann Lee,TRUE", // P-001 is Beta here: Acme's own prospect takes her
+      "P-999,Acme,Al Moe,", // no P-999 here: by Company
+      "P-001,Old Name,Bo Chen,TRUE", // a Company no prospect has: the ID, flagged
+      "P-007,Acme,Cy Dee,TRUE", // Acme's Primary is Ann already
+    ].join("\n"));
+    expect(r.json).toMatchObject({ skipped: 0, duplicates: 0, mismatched: 1 });
+    const b = (await call<CampaignBundle>("GET", `/api/campaigns/${id}`)).json;
+    const { companyKey } = b.campaign.schema;
+    const { nameKey, primaryKey } = b.campaign.schema.contacts!;
+    const at = (company: string) => {
+      const p = b.rows.find((x) => x.cells[companyKey!] === company)!;
+      return b.contacts.filter((c) => c.parentId === p.id).map((c) => `${c.cells[nameKey!]}${c.cells[primaryKey!] === "TRUE" ? " *" : ""}`);
+    };
+    expect(at("Acme")).toEqual(["Ann Lee *", "Al Moe", "Cy Dee"]);
+    expect(at("Beta")).toEqual(["Bo Chen *"]);
+
+    // A tick for a prospect that has its Primary is dropped in a later file too.
+    await send(id, "Company,Name,Primary\nBeta,Dee Fox,TRUE\n");
+    const later = (await call<CampaignBundle>("GET", `/api/campaigns/${id}`)).json;
+    expect(later.contacts.filter((c) => c.cells[primaryKey!] === "TRUE").map((c) => c.cells[nameKey!])).toEqual(["Ann Lee", "Bo Chen"]);
+  });
+
+  test("a contact is a duplicate by name and details, or a channel by its details or its own cells", async () => {
+    const { campaign } = await importPath(path.join(tmp, "docs", "csv.xlsx"));
+    const send = (text: string) => {
+      const fd = new FormData();
+      fd.append("file", new File([text], "people.csv"));
+      return call<{ contacts: Row[]; duplicates: number }>("POST", `/api/campaigns/${campaign.id}/contacts/import`, fd);
+    };
+    // Two people of one name, told apart by their email; the second line of one of them adds no one.
+    const smiths = await send("Company,Name,Email\nBeta,J. Smith,j1@beta.com\nBeta,J. Smith,j2@beta.com\nBeta,J. Smith,j1@beta.com\n");
+    expect(smiths.json).toMatchObject({ duplicates: 1 });
+    expect(smiths.json.contacts).toHaveLength(2);
+
+    // A channel, by its phone, though the one here holds more.
+    expect((await send("Company,Phone,Notes\nBeta,+1 555 0100,main line\n")).json.contacts).toHaveLength(1);
+    expect((await send("Company,Phone\nBeta,+1 555 0100\nBeta,+1 555 0199\n")).json).toMatchObject({ duplicates: 1 });
+
+    // A channel with nothing but a note, given an intro, then exported and imported back: still one.
+    const added = (await send("Company,Notes\nBeta,front desk\n")).json.contacts[0]!;
+    const b = (await call<CampaignBundle>("GET", `/api/campaigns/${campaign.id}`)).json;
+    const { introKey } = b.campaign.schema.contacts!;
+    await call("PATCH", `/api/campaigns/${campaign.id}/rows`, { edits: [{ rowId: added.id, key: introKey!, value: "Hello there" }] });
+    const csv = (await call<{ path: string }>("POST", `/api/campaigns/${campaign.id}/csv`, { kind: "contacts" })).json.path;
+    const again = await send(fs.readFileSync(csv, "utf8"));
+    expect(again.json.contacts).toHaveLength(0);
   });
 
   test("contacts import refuses a file it can't link, or one that isn't a CSV", async () => {

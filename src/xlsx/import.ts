@@ -15,9 +15,9 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { norm } from "../shared/merge";
-import { allColumns, columnByHeaders, COMPANY_HEADER, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds, STATUS_HEADER } from "../shared/schema";
+import { allColumns, columnByHeaders, COMPANY_HEADER, contactRecordKeys, EMPLOYEES_HEADER, ensureAppColumns, isEmployeesHeader, looksLikeScreenedTab, makeKey, PROSPECT_ID_HEADER, prospectIds, STATUS_HEADER } from "../shared/schema";
 import { questionByLabel } from "../shared/thesis";
-import { ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole, type Thesis, type ThesisId } from "../shared/types";
+import { isChecked, ORG_ID_KEY, ORG_KEY, type CampaignSchema, type CellValue, type Column, type InspectSheet, type Row, type SheetMeta, type SheetRole, type Thesis, type ThesisId } from "../shared/types";
 import { colLetter, readCellValue } from "./cells";
 import { charsToPx, detectType, parseListFormula, type ColumnSample } from "./layouts";
 import {
@@ -30,6 +30,13 @@ export const TEMPLATES_SHEET = "Intro templates";
 export function isCsvName(name: string): boolean {
   return /\.(csv|tsv|txt)$/i.test(name);
 }
+
+/**
+ * A guarded CSV field: `'` before text a spreadsheet would run as a formula. Reading one takes
+ * the first `'` off. Mudd's export also guards text that already looks guarded (a stored `'=x`
+ * goes as `''=x`), so what it writes comes back exactly.
+ */
+export const CSV_GUARDED = /^'+[=+\-@\t\r]/;
 
 // ---------- CSV ----------
 
@@ -108,8 +115,8 @@ function csvWorkbook(buf: Uint8Array, fileName: string): ExcelJS.Workbook {
   });
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Prospects");
-  // The `'` Mudd's CSV export puts before text Excel would run as a formula comes off again.
-  const unguard = (v: string) => (/^'[=+\-@\t\r]/.test(v) ? v.slice(1) : v);
+  // Any file's: a `'` up front is how a CSV keeps a formula from running, Mudd's export's included.
+  const unguard = (v: string) => (CSV_GUARDED.test(v) ? v.slice(1) : v);
   rows.forEach((r, i) => ws.addRow(r.map((v, c) => (i > 0 && numeric[c] && v.trim() ? Number(v.trim()) : unguard(v)))));
   return wb;
 }
@@ -649,10 +656,29 @@ export interface ImportedContacts {
   contacts: { parentId: string; cells: Record<string, CellValue> }[];
   /** Rows that match no prospect in the campaign. */
   skipped: number;
-  /** Rows for someone the prospect already has: the same name, or the same cells when unnamed. */
+  /** Rows for someone the prospect already has (sameContact). */
   duplicates: number;
-  /** Linked by Prospect ID, but their Company names another company than that prospect's. */
+  /** Linked by Prospect ID, but their Company names another company than that prospect's, and no prospect of this campaign. */
   mismatched: number;
+}
+
+/**
+ * Whether two of a prospect's contacts are one: the same name (or both none) and no email, phone
+ * or link that differs. Without a name (a channel) they also need one of those in common, or,
+ * with none, the same cells in `keys`: the file's columns, the user's own record aside.
+ */
+function sameContact(a: Record<string, CellValue>, b: Record<string, CellValue>, nameKey: string | undefined, details: string[], keys: string[]): boolean {
+  const name = (c: Record<string, CellValue>) => (nameKey ? linkKey(c[nameKey]) : "");
+  if (name(a) !== name(b)) return false;
+  let shared = false;
+  for (const k of details) {
+    const x = linkKey(a[k]);
+    const y = linkKey(b[k]);
+    if (x && y && x !== y) return false;
+    if (x && x === y) shared = true;
+  }
+  if (name(a) || shared) return true;
+  return keys.every((k) => linkKey(a[k]) === linkKey(b[k]));
 }
 
 /**
@@ -660,6 +686,11 @@ export interface ImportedContacts {
  * Contacts tab's do, by Prospect ID, or by Company when it has none. A column is the contacts'
  * column of that header when there is one, otherwise a new contact column. `taken` holds the
  * keys any row has a value for (db.allCellKeys), which a new column must not take.
+ *
+ * Each campaign numbers its own prospects P-001 up, so a file from another campaign can name
+ * the wrong one by ID: a row whose ID points at a prospect of another Company goes to the
+ * prospect of its own Company instead, when there is one, and so does one whose ID is not here.
+ * A prospect keeps at most one Primary: a tick in the file is dropped when it has one already.
  */
 export function readContactsCsv(book: LoadedBook, schema: CampaignSchema, prospects: Row[], existing: Row[], taken: Iterable<string>): ImportedContacts {
   const ws = book.wb.worksheets[0];
@@ -694,20 +725,35 @@ export function readContactsCsv(book: LoadedBook, schema: CampaignSchema, prospe
     if (company && !byCompany.has(company)) byCompany.set(company, p);
   }
 
-  // Who each prospect already has, by name, or by every cell for someone with none (a main line).
-  const nameKey = cs.nameKey;
-  const signature = (cells: Record<string, CellValue>) => {
-    const name = nameKey ? linkKey(cells[nameKey]) : "";
-    return name ? `name:${name}` : `cells:${JSON.stringify(Object.keys(cells).sort().map((k) => [k, String(cells[k])]))}`;
+  // Who each prospect already has, and which of them have a Primary.
+  const { nameKey, primaryKey } = cs;
+  const record = new Set(contactRecordKeys(next));
+  const details = cs.columns.filter((c) => c.type === "email" || c.type === "phone" || c.type === "url").map((c) => c.key);
+  const compared = Object.keys(map).filter((k) => !record.has(k));
+  const known = new Map<string, Record<string, CellValue>[]>();
+  const know = (parentId: string, cells: Record<string, CellValue>) => {
+    const list = known.get(parentId);
+    if (list) list.push(cells);
+    else known.set(parentId, [cells]);
   };
-  const known = new Set(existing.filter((c) => c.parentId).map((c) => `${c.parentId}\u0000${signature(c.cells)}`));
+  const hasPrimary = new Set<string>();
+  for (const c of existing) {
+    if (!c.parentId) continue;
+    know(c.parentId, c.cells);
+    if (primaryKey && isChecked(c.cells[primaryKey])) hasPrimary.add(c.parentId);
+  }
 
+  const companyOf = (p: Row) => (next.companyKey ? linkKey(p.cells[next.companyKey]) : "");
   const out: ImportedContacts = { schema: next, contacts: [], skipped: 0, duplicates: 0, mismatched: 0 };
   for (const r of t.rows) {
     const id = link.id >= 0 ? linkKey(readCellValue(r.values[link.id] ?? null)) : "";
     const company = link.company >= 0 ? linkKey(readCellValue(r.values[link.company] ?? null)) : "";
-    // The ID when there is one: a company name can be stale, or shared.
-    const parent = id ? byId.get(id) : byCompany.get(company);
+    const atId = id ? byId.get(id) : undefined;
+    const atCompany = company ? byCompany.get(company) : undefined;
+    // The ID when its prospect is this Company: else the Company's prospect, then the ID after all
+    // (a renamed company leaves the file's name stale).
+    const agrees = !!atId && (!company || !companyOf(atId) || companyOf(atId) === company);
+    const parent = agrees ? atId : (atCompany ?? atId);
     if (!parent) {
       out.skipped++;
       continue;
@@ -719,14 +765,16 @@ export function readContactsCsv(book: LoadedBook, schema: CampaignSchema, prospe
       const v = readCellValue(r.values[idx - 1] ?? null, col.type, { preferLink: col.type === "url" || col.type === "email" });
       if (v !== null) cells[col.key] = v;
     }
-    const sig = `${parent.id}\u0000${signature(cells)}`;
-    if (known.has(sig)) {
+    if (known.get(parent.id)?.some((c) => sameContact(c, cells, nameKey, details, compared))) {
       out.duplicates++;
       continue;
     }
-    known.add(sig);
-    const theirs = next.companyKey ? linkKey(parent.cells[next.companyKey]) : "";
-    if (id && company && theirs && company !== theirs) out.mismatched++;
+    know(parent.id, cells);
+    if (primaryKey && isChecked(cells[primaryKey])) {
+      if (hasPrimary.has(parent.id)) delete cells[primaryKey];
+      else hasPrimary.add(parent.id);
+    }
+    if (!agrees && parent === atId) out.mismatched++;
     out.contacts.push({ parentId: parent.id, cells });
   }
   return out;

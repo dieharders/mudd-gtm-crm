@@ -2,7 +2,7 @@
 import type { AiSettings, EnrichRun, IntroOptions, ProviderId, ProviderStatus, Recipe, RecipeDraft, RunKind, SetupEvent, Suggestion, SuggestionStatus } from "../../shared/ai";
 import type { Candidate, DiscoveryKind, DiscoveryRun, EnrichChoice } from "../../shared/sourcing";
 import type {
-  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, InspectResult, Meeting, ReleaseNotes, Row, Template, Thesis, ThesisId, UpdateInfo,
+  Campaign, CampaignBundle, CampaignSchema, CampaignSummary, CellEdit, DialogKind, InspectResult, Meeting, ReleaseNotes, Row, Template, Thesis, ThesisId, UpdateInfo,
 } from "../../shared/types";
 
 export type { RecipeDraft };
@@ -103,8 +103,10 @@ export type DialogResult = { path: string } | { cancelled: true } | { unsupporte
 
 export interface ImportContactsResult {
   fileName: string;
+  /** The campaign as it now is: the file's new columns joined the contacts'. */
+  campaign: Campaign;
   /** The contacts added. */
-  ids: string[];
+  contacts: Row[];
   skipped: number;
   duplicates: number;
   mismatched: number;
@@ -179,7 +181,7 @@ export const api = {
   /** Show the campaign's linked file in its folder. */
   revealFile: (id: string) => call<{ ok: true }>("POST", `/api/campaigns/${id}/reveal`),
 
-  openDialog: () => call<DialogResult>("POST", "/api/dialog/open"),
+  openDialog: (kind: DialogKind) => call<DialogResult>("POST", "/api/dialog/open", { kind }),
   openUrl: (url: string) => call<{ ok: true }>("POST", "/api/open-url", { url }),
   meetings: () => call<Meeting[]>("GET", "/api/meetings"),
 

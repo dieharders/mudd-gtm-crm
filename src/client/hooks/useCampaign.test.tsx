@@ -14,8 +14,6 @@ import type { CampaignState } from "./useCampaign";
 const saved: { id: string; edits: CellEdit[] }[] = [];
 const deleted: string[][] = [];
 const inserted: Partial<Row>[][] = [];
-/** Contacts the server has besides the bundle's: what a contacts import added. */
-const imported: Row[] = [];
 
 const people: CampaignSchema = {
   columns: [{ key: "id", header: "ID", type: "text", hidden: true }, { key: "company", header: "Company", type: "text" }],
@@ -35,7 +33,6 @@ const bundle = (id: string): CampaignBundle =>
       contacts: [
         { id: "ann", position: 2, parentId: "acme", cells: { name: "Ann", primary: CHECKED } },
         { id: "al", position: 3, parentId: "acme", cells: { name: "Al" } },
-        ...imported,
       ],
       templates: [],
       thesis: null,
@@ -59,9 +56,12 @@ void mock.module("../lib/api", () => ({
       inserted.push(rows);
       return Promise.resolve(rows);
     },
+    // What the server added, and the campaign with the file's new column: nothing is fetched again.
     importContacts: () => {
-      imported.push({ id: "bo", position: 4, parentId: "beta", cells: { name: "Bo" } }, { id: "bea", position: 5, parentId: "beta", cells: { name: "Bea" } });
-      return Promise.resolve({ fileName: "people.csv", ids: ["bo", "bea"], skipped: 0, duplicates: 0, mismatched: 0 });
+      const campaign = bundle("P").campaign;
+      const schema = { ...people, contacts: { ...people.contacts!, columns: [...people.contacts!.columns, { key: "twitter", header: "Twitter", type: "text" as const }] } };
+      const contacts: Row[] = [{ id: "bo", position: 4, parentId: "beta", cells: { name: "Bo" } }, { id: "bea", position: 5, parentId: "beta", cells: { name: "Bea", twitter: "@bea" } }];
+      return Promise.resolve({ fileName: "people.csv", campaign: { ...campaign, schema }, contacts, skipped: 0, duplicates: 0, mismatched: 0 });
     },
     deleteRows: (_id: string, ids: string[]) => {
       deleted.push(ids);
@@ -79,7 +79,6 @@ beforeEach(() => {
   saved.length = 0;
   deleted.length = 0;
   inserted.length = 0;
-  imported.length = 0;
 });
 
 let current: CampaignState | null = null;
@@ -246,6 +245,7 @@ test("contacts imported from a CSV are shown, and one undo step takes them all o
     });
     expect(s().contactsOf("beta").map((c) => c.id)).toEqual(["bo", "bea"]);
     expect(s().contactsOf("acme").map((c) => c.id)).toEqual(["ann", "al"]);
+    expect(s().campaign!.schema.contacts!.columns.map((c) => c.header)).toContain("Twitter");
     await act(() => {
       expect(s().undo()).toBe("Import 2 contacts");
     });

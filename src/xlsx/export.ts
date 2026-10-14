@@ -29,7 +29,7 @@ import { THESIS_QUESTIONS, THESIS_SHEET } from "../shared/thesis";
 import { ORG_ID_KEY, ORG_KEY, type Campaign, type CampaignSchema, type CellValue, type Column, type Row, type SheetMeta, type Template, type Thesis } from "../shared/types";
 import { orderedContacts, parseFlag, sameValue } from "../shared/values";
 import { colLetter, hrefFor, numFmtFor, parseAppDate, toExcelValue, toNumber } from "./cells";
-import { TEMPLATES_SHEET, THESIS_DRAFT_MARK } from "./import";
+import { CSV_GUARDED, TEMPLATES_SHEET, THESIS_DRAFT_MARK } from "./import";
 import {
   dataStyle, isYours, LIST_FORMULA_MAX, listFormula, pxToChars, STYLE, styleGeneratedSheet, VALIDATION_ROWS, YOURS_FILL,
 } from "./layouts";
@@ -70,18 +70,24 @@ export async function exportCampaign(
 
 // ---------- CSV ----------
 
-/** Text Excel would run as a formula: `=`, `+`, `-`, `@`, or a tab or CR before one. */
-const FORMULA_START = /^[=+\-@\t\r]/;
+/** Text a spreadsheet would run as a formula: `=` or `@` up front, or a tab or CR. */
+const FORMULA_START = /^[=@\t\r]/;
+/**
+ * `+` or `-` up front runs as a formula too, but only one that calls something can do harm: a
+ * function, a DDE link (`cmd|`) or another sheet (`!`). A phone number or a "- call Tue" note
+ * calls nothing, so it goes as it is, with no `'` for other apps to show.
+ */
+const SIGNED_CALL = /^[+-].*(?:[A-Za-z_][\w.]*\s*\(|[|!])/s;
 
 /**
  * One CSV field. Values go as Mudd stores them (ISO dates, TRUE for a tick), which its CSV
- * import reads back as they were. Text Excel would run as a formula gets a leading `'`, which
- * the import takes off again.
+ * import reads back as they were. Text a spreadsheet would run as a formula gets a leading `'`
+ * (CSV_GUARDED), which the import takes off again.
  */
 function csvField(v: CellValue | undefined): string {
   if (v === null || v === undefined) return "";
   let s = String(v);
-  if (typeof v === "string" && FORMULA_START.test(s) && toNumber(s) === null) s = `'${s}`;
+  if (typeof v === "string" && (FORMULA_START.test(s) || SIGNED_CALL.test(s) || CSV_GUARDED.test(s))) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

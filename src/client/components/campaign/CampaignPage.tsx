@@ -965,8 +965,8 @@ function EmptyContacts({ onImport, busy }: { onImport: () => void; busy: boolean
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
       <Users className="text-clay" size={40} strokeWidth={2.2} />
       <p className="font-display text-xl font-bold">No contacts yet</p>
-      <p className="max-w-sm text-[14px] text-mud-faint">Open a prospect and add its people there: who holds the budget, who evaluates, who uses it. Everyone you add is listed here.</p>
-      <p className="max-w-sm text-[14px] text-mud-faint">Or bring them in from a contacts CSV, each linked to a prospect by its Prospect ID or Company.</p>
+      <p className="max-w-sm text-[0.875rem] text-mud-faint">Open a prospect and add its people there: who holds the budget, who evaluates, who uses it. Everyone you add is listed here.</p>
+      <p className="max-w-sm text-[0.875rem] text-mud-faint">Or bring them in from a contacts CSV, each linked to a prospect by its Prospect ID or Company.</p>
       <Button className="mt-2" onClick={onImport} disabled={busy}><UserPlus size={15} /> {busy ? "Importing…" : "Import contacts"}</Button>
     </div>
   );

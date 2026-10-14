@@ -138,7 +138,8 @@ async function doImport(req: Request) {
 
 /**
  * Import contacts: a contacts CSV (as Export contacts as CSV writes one) into a campaign, each
- * person linked to their prospect. New columns join the contacts'; nothing else changes.
+ * person linked to their prospect. New columns join the contacts'; nothing else changes. Sends
+ * back the contacts added and the campaign as it now is, so the app needs nothing else.
  */
 async function importContacts(id: string, req: Request) {
   const c = mustCampaign(id);
@@ -150,9 +151,10 @@ async function importContacts(id: string, req: Request) {
   } catch (err) {
     throw new HttpError(400, (err as Error).message);
   }
-  if (imp.contacts.length && JSON.stringify(imp.schema) !== JSON.stringify(c.schema)) db.updateCampaign(id, { schema: imp.schema });
-  const rows = db.insertRows(id, imp.contacts);
-  return json({ fileName, ids: rows.map((r) => r.id), skipped: imp.skipped, duplicates: imp.duplicates, mismatched: imp.mismatched });
+  const changed = imp.contacts.length > 0 && JSON.stringify(imp.schema) !== JSON.stringify(c.schema);
+  const campaign = (changed && db.updateCampaign(id, { schema: imp.schema })) || c;
+  const contacts = db.insertRows(id, imp.contacts);
+  return json({ fileName, campaign, contacts, skipped: imp.skipped, duplicates: imp.duplicates, mismatched: imp.mismatched });
 }
 
 // ---------- Save file ----------
@@ -336,7 +338,10 @@ on("POST", "/api/campaigns/:id/reveal", (_req, [id]) => {
   return c.sourcePath && revealInFolder(c.sourcePath) ? json({ ok: true }) : fail(404, "The file is no longer where it was saved.");
 });
 
-on("POST", "/api/dialog/open", async () => json(await openDialog()));
+on("POST", "/api/dialog/open", async (req) => {
+  const { kind } = await body<{ kind?: string }>(req);
+  return json(await openDialog(kind === "contacts" ? "contacts" : "spreadsheet"));
+});
 on("POST", "/api/open-url", async (req) => {
   const b = await body<{ url: string }>(req);
   return openExternal(b.url) ? json({ ok: true }) : fail(400, "Only web and mailto links can be opened.");
