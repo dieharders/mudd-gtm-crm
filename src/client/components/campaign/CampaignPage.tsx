@@ -1,5 +1,5 @@
 import {
-  ArchiveRestore, Building2, Columns3, FileSpreadsheet, FolderOpen, Inbox, ListChecks, Loader2, MessageSquareText, MoreHorizontal, Plus,
+  ArchiveRestore, Building2, Columns3, FileSpreadsheet, FolderOpen, Inbox, ListChecks, ListFilter, Loader2, MessageSquareText, MoreHorizontal, Plus,
   Loader2 as Spinner, Radar, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -22,9 +22,8 @@ import { ReviewPanel } from "../enrich/ReviewPanel";
 import { cn } from "../../lib/cn";
 import { stageEdits, stageIndex } from "../../lib/pipeline";
 import { contactFilters, prospectFilters, runsThrough, type FilterContext, type QuickFilter } from "../../lib/quickFilters";
-import { campaignTileFor, toneFor } from "../../lib/stages";
+import { toneFor } from "../../lib/stages";
 import { useCampaignList } from "../../lib/campaignList";
-import { Tile } from "../ui/Logo";
 import { display } from "../grid/cells";
 import { Grid, type GridHandle, type SortState } from "../grid/Grid";
 import { ProspectList } from "../list/ProspectList";
@@ -34,7 +33,7 @@ import { TemplatesPanel } from "../templates/TemplatesPanel";
 import { Button } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Menu";
 import { PanelGate } from "../ui/Panel";
-import { PinCard, Pinboard, PinGroup, type PinCardProps } from "../ui/Pinboard";
+import { PinCard, Pinboard, PinGroup, PinToggle, type PinCardProps, type PinToggleProps } from "../ui/Pinboard";
 import { undoToast } from "../ui/Toaster";
 import { RemoveCampaignDialog } from "../campaigns/RemoveCampaignDialog";
 import { ColumnsDialog } from "./ColumnsDialog";
@@ -50,11 +49,23 @@ const SCREENED = "\u0000screened";
 const IN_PLAY = "\u0000inplay";
 /** A filter that is one of the quick filters (Needs follow-up…), by its id. */
 const QUICK = "\u0000quick:";
+/** All's card, keyed apart from every status a sheet could hold. */
+const ALL = "\u0000all";
 const NO_PICKS: ReadonlySet<string> = new Set();
-/** A chip that is a status: a stage, another status the sheet holds, or No status. */
+/** A filter that is a status: a stage, another status the sheet holds, or No status. */
 const isStatusPick = (p: string) => p !== IN_PLAY && p !== SCREENED && !p.startsWith(QUICK);
+/**
+ * The names of the filters that aren't a status the sheet holds or a quick filter. A Map, not an
+ * object: a status the sheet holds may be called "constructor".
+ */
+const FIXED_LABELS = new Map([[ALL, "All"], [IN_PLAY, "Prospects only"], [NOT_SET, "No status"], [SCREENED, "Screened out"]]);
 
-/** Turn a chip on or off. Prospects only and Screened out rule each other out: one turns the other off. */
+/** What a filter is called on its card: a status as the sheet has it, a quick filter by its label. */
+function pickLabel(id: string, quick: QuickFilter[]): string {
+  return FIXED_LABELS.get(id) ?? (id.startsWith(QUICK) ? quick.find((f) => QUICK + f.id === id)?.label : undefined) ?? id;
+}
+
+/** Turn a filter on or off. Prospects only and Screened out rule each other out: one turns the other off. */
 function togglePick(picked: ReadonlySet<string>, id: string): ReadonlySet<string> {
   const next = new Set(picked);
   if (next.delete(id)) return next;
@@ -74,7 +85,15 @@ function keepOffered(picked: ReadonlySet<string>, offered: QuickFilter[]): Reado
 }
 
 /**
- * Let go of the selected rows that leave the list (an edit moving them past the chips, a delete),
+ * The names of the filters on. A quick filter no longer offered is left out: keepOffered lets go
+ * of it in an effect, after the render that finds it gone.
+ */
+function namesOn(picked: ReadonlySet<string>, quick: QuickFilter[]): string[] {
+  return [...keepOffered(picked, quick)].map((p) => pickLabel(p, quick));
+}
+
+/**
+ * Let go of the selected rows that leave the list (an edit moving them past the filters, a delete),
  * so none of the selection is left out of sight and out of the header checkbox's reach. The rest
  * stays selected, through rows joining the list, a new order, or a run filling in cells.
  */
@@ -93,7 +112,7 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
 const NO_KEYS = new Set<string>();
 const NO_ROWS: Row[] = [];
 const NO_IDS: string[] = [];
-/** What a chip that reads no context is tested with: it never looks. */
+/** What a filter that reads no context is tested with: it never looks. */
 const NO_CONTEXT: FilterContext = { contactsOf: () => NO_ROWS, ran: () => false };
 /** The Contacts grid's Company column comes from the prospect: read-only there. */
 const CONTACT_FIXED = new Set([ORG_KEY]);
@@ -161,7 +180,7 @@ function CampaignView({ state }: { state: CampaignState }) {
   const initialRow = params.get("row");
   const initialDiscover = params.get("discover");
   const [query, setQuery] = useState("");
-  // The chips that are on, none being All. Statuses (and Screened out) widen each other, as a
+  // The filters that are on, none being All. Statuses (and Screened out) widen each other, as a
   // prospect has one status; Prospects only and the quick filters each narrow what those leave.
   const [picked, setPicked] = useState<ReadonlySet<string>>(NO_PICKS);
   const pick = (id: string) => setPicked((p) => togglePick(p, id));
@@ -185,6 +204,9 @@ function CampaignView({ state }: { state: CampaignState }) {
   // The overflow drawer: the campaign's workspaces and file actions, pinned up as cards.
   const [showMore, setShowMore] = useState(false);
   const closeMore = useCallback(() => setShowMore(false), []);
+  // The filter drawer: the current tab's filters, pinned up as cards that turn on and off.
+  const [showFilters, setShowFilters] = useState(false);
+  const closeFilters = useCallback(() => setShowFilters(false), []);
   const navigate = useNavigate();
   // One consent dialog for both: enrichment and Discovery each ask the same thing once.
   const consent = useConsentGate();
@@ -234,37 +256,16 @@ function CampaignView({ state }: { state: CampaignState }) {
 
   // One list: screened-out prospects stay in it, greyed out, so every visible column shows.
   const columns = useMemo(() => schema.columns.filter((c) => !c.hidden), [schema]);
-  // A status as its chip: the stage it names, in any case ("contacted" is Contacted).
-  const chipOf = useMemo(() => {
+  // A status as its filter: the stage it names, in any case ("contacted" is Contacted).
+  const statusPickOf = useMemo(() => {
     const byLower = new Map([...stages, DEAD].map((s) => [s.toLowerCase(), s]));
     return (row: Row) => {
       const s = statusKey ? display(row.cells[statusKey]).trim() : "";
       return s ? byLower.get(s.toLowerCase()) ?? s : NOT_SET;
     };
   }, [stages, statusKey]);
-  // All counts every prospect, as the list shows them; a status chip counts only those of its
-  // status still in play, and the screened-out ones have a chip of their own.
-  const counts = useMemo(() => {
-    const byStatus: Record<string, number> = {};
-    let screened = 0;
-    for (const r of state.rows) {
-      if (screenedKey && isChecked(r.cells[screenedKey])) {
-        screened++;
-        continue;
-      }
-      if (!statusKey) continue;
-      const s = chipOf(r);
-      byStatus[s] = (byStatus[s] ?? 0) + 1;
-    }
-    return { byStatus, screened };
-  }, [state.rows, statusKey, screenedKey, chipOf]);
-
-  // The statuses the sheet holds beyond the pipeline's, and any picked one no prospect holds any
-  // more: like a stage's, its chip stays while it is on.
-  const otherStatuses = useMemo(() => {
-    const known = new Set([...stages, DEAD, NOT_SET]);
-    return [...new Set([...Object.keys(counts.byStatus), ...[...picked].filter(isStatusPick)])].filter((s) => !known.has(s));
-  }, [counts, picked, stages]);
+  // What the filter board counts the statuses by, while it is shown.
+  const statusSource = useMemo<StatusSource>(() => ({ stages, statusKey, screenedKey, pickOf: statusPickOf }), [stages, statusKey, screenedKey, statusPickOf]);
 
   const { contactsOf } = state;
   const { recipes, runs, finished } = enrich;
@@ -275,13 +276,13 @@ function CampaignView({ state }: { state: CampaignState }) {
   // Read only while searching: a contact's edit then leaves the prospect list (and its sort) be.
   const searchedContactsOf = q ? contactsOf : null;
   const quick = useMemo(() => prospectFilters(schema, stages, recipes, today), [schema, stages, recipes, today]);
-  // The same for the chips: only one that is on and reads the contacts (or the runs) filters the
+  // The same for the filters: only one that is on and reads the contacts (or the runs) filters the
   // list again on a contact's edit (or a run's progress).
   const reading = new Set(quick.filter((f) => f.reads && picked.has(QUICK + f.id)).map((f) => f.reads));
   const readContactsOf = reading.has("contactsOf") ? contactsOf : null;
   const readRan = reading.has("ran") ? ran : null;
-  // Whether a prospect passes the chips that are on; null when All is. The chips are the
-  // Prospects tab's: hidden on the Contacts tab, they filter nothing there.
+  // Whether a prospect passes the filters that are on; null when All is. The filters are the
+  // Prospects tab's: out of reach on the Contacts tab, they filter nothing there.
   const passes = useMemo(() => {
     if (onContacts || !picked.size) return null;
     const statuses = new Set([...picked].filter(isStatusPick));
@@ -292,10 +293,10 @@ function CampaignView({ state }: { state: CampaignState }) {
     return (r: Row) => {
       const screened = isScreened(r, schema);
       if (inPlayOnly && screened) return false;
-      if ((statuses.size || screenedOn) && !(screened ? screenedOn : !!statusKey && statuses.has(chipOf(r)))) return false;
+      if ((statuses.size || screenedOn) && !(screened ? screenedOn : !!statusKey && statuses.has(statusPickOf(r)))) return false;
       return tests.every((t) => t(r, ctx));
     };
-  }, [onContacts, picked, quick, schema, statusKey, chipOf, readContactsOf, readRan]);
+  }, [onContacts, picked, quick, schema, statusKey, statusPickOf, readContactsOf, readRan]);
   const filtered = useMemo(() => {
     let list = state.rows;
     if (passes) list = list.filter(passes);
@@ -324,13 +325,17 @@ function CampaignView({ state }: { state: CampaignState }) {
     });
   }, [onContacts, state.contacts, rowById, schema]);
   const contactQuick = useMemo(() => contactFilters(schema), [schema]);
-  // The contacts' chips read only the contact.
+  // The contacts' filters read only the contact.
   const filteredContacts = useMemo(() => {
     const on = contactQuick.filter((f) => contactPicked.has(QUICK + f.id));
     const list = contactRows.filter((r) => on.every((f) => f.test(r, NO_CONTEXT)) && (!q || cellsHit(r.cells, q)));
     return sortRows(list, contactSort, contactGridSchema, stages);
   }, [contactRows, contactQuick, contactPicked, q, contactSort, contactGridSchema, stages]);
-  // A chip no longer offered can't stay on unseen, filtering by nothing while All shows off.
+  // Screened out is a filter while any prospect is: looked for only when nothing else is one.
+  const hasFilters = onContacts ? contactQuick.length > 0 : !!statusKey || quick.length > 0 || state.rows.some((r) => isScreened(r, schema));
+  // The current tab's filters that are on, by name: their cards are out of sight once the drawer closes.
+  const onNames = onContacts ? namesOn(contactPicked, contactQuick) : namesOn(picked, quick);
+  // A filter no longer offered can't stay on unseen, filtering by nothing while All shows off.
   useEffect(() => setPicked((p) => keepOffered(p, quick)), [quick]);
   useEffect(() => setContactPicked((p) => keepOffered(p, contactQuick)), [contactQuick]);
   usePruneSelection(filtered, setSelected);
@@ -410,7 +415,7 @@ function CampaignView({ state }: { state: CampaignState }) {
     const row = state.addRow(cells);
     setQuery("");
     setSort(null);
-    // A blank prospect may still miss the chips that are on (a quick filter, Screened out):
+    // A blank prospect may still miss the filters that are on (a quick filter, Screened out):
     // back to All, rather than have it vanish as soon as it is added.
     if (passes && !passes(row)) setPicked(NO_PICKS);
     if (view === "reading") showRow(row.id);
@@ -457,7 +462,6 @@ function CampaignView({ state }: { state: CampaignState }) {
       {/* header. It, the toolbar and the sheet each rise in, not the page: a transform on the page
           would pin the panels and dialogs below to it while it runs. */}
       <div className="flex flex-wrap items-center gap-3 px-6 pt-6 pb-3 motion-safe:animate-page-in">
-        <Tile size="lg" className={cn("text-lg", campaignTileFor(campaign.id))}>{campaign.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>
         <div className="min-w-0 flex-1">
           <NameInput value={campaign.name} onCommit={(n) => { state.rename(n); setTimeout(refreshList, 400); }} />
         </div>
@@ -535,35 +539,18 @@ function CampaignView({ state }: { state: CampaignState }) {
               />
               {query && <button className="absolute top-1/2 right-3 -translate-y-1/2 text-mud-faint hover:text-mud" onClick={() => setQuery("")}><X size={15} /></button>}
             </div>
-            {!onContacts && (statusKey || counts.screened > 0 || quick.length > 0) && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Chip active={!picked.size} onClick={() => setPicked(NO_PICKS)} label="All" count={state.rows.length} />
-                {counts.screened > 0 || picked.has(IN_PLAY) ? (
-                  <Chip active={picked.has(IN_PLAY)} onClick={() => pick(IN_PLAY)} label="Prospects only" count={state.rows.length - counts.screened} title="Everything but the screened-out prospects" />
-                ) : null}
-                {[...stages, DEAD].map((s) => (counts.byStatus[s] || picked.has(s) ? (
-                  <Chip key={s} active={picked.has(s)} onClick={() => pick(s)} label={s} count={counts.byStatus[s] ?? 0} />
-                ) : null))}
-                {otherStatuses.map((s) => (
-                  <Chip key={s} active={picked.has(s)} onClick={() => pick(s)} label={s} count={counts.byStatus[s] ?? 0} />
-                ))}
-                {counts.byStatus[NOT_SET] || picked.has(NOT_SET) ? <Chip active={picked.has(NOT_SET)} onClick={() => pick(NOT_SET)} label="No status" count={counts.byStatus[NOT_SET] ?? 0} /> : null}
-                {/* Kept while it is on: restoring the last one leaves an empty list, still explained. */}
-                {counts.screened > 0 || picked.has(SCREENED) ? (
-                  <Chip active={picked.has(SCREENED)} onClick={() => pick(SCREENED)} label="Screened out" count={counts.screened} />
-                ) : null}
-                <QuickChips filters={quick} rows={state.rows} ctx={filterContext} picked={picked} onPick={pick} />
-              </div>
-            )}
-            {onContacts && contactQuick.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Chip active={!contactPicked.size} onClick={() => setContactPicked(NO_PICKS)} label="All" count={state.contacts.length} />
-                <QuickChips filters={contactQuick} rows={state.contacts} ctx={NO_CONTEXT} picked={contactPicked} onPick={pickContact} />
-              </div>
-            )}
+            {hasFilters && <FilterButton open={showFilters} on={onNames} onClick={() => setShowFilters(true)} />}
           </>
         )}
       </div>
+      {/* The board is drawn (and its filters counted) only while it is shown. */}
+      <Pinboard open={showFilters} title={onContacts ? "Filter contacts" : "Filter prospects"} onClose={closeFilters}>
+        {onContacts ? (
+          <FilterBoard key="contacts" rows={state.contacts} filters={contactQuick} ctx={NO_CONTEXT} picked={contactPicked} onPick={pickContact} onAll={() => setContactPicked(NO_PICKS)} />
+        ) : (
+          <FilterBoard key="prospects" rows={state.rows} filters={quick} ctx={filterContext} picked={picked} onPick={pick} onAll={() => setPicked(NO_PICKS)} status={statusSource} />
+        )}
+      </Pinboard>
 
       {/* the sheet: one card, its view controls on top and the grid below */}
       <div className="card mx-6 mb-6 flex min-h-0 flex-1 flex-col motion-safe:animate-page-in">
@@ -617,9 +604,7 @@ function CampaignView({ state }: { state: CampaignState }) {
                   readOnlyKeys={CONTACT_FIXED}
                   openLabel="Open contact"
                 />
-                {filteredContacts.length === 0 && (
-                  <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-[15px] text-mud-faint">No contacts match.</div>
-                )}
+                {filteredContacts.length === 0 && <NoMatch what="contacts" search={query.trim()} on={onNames} onClear={() => { setQuery(""); setContactPicked(NO_PICKS); }} />}
               </>
             )
           ) : state.rows.length === 0 ? (
@@ -651,9 +636,7 @@ function CampaignView({ state }: { state: CampaignState }) {
                 readOnlyKeys={idFixed}
               />
               )}
-              {filtered.length === 0 && (
-                <div className="pointer-events-none absolute inset-x-0 top-24 text-center text-[15px] text-mud-faint">No rows match.</div>
-              )}
+              {filtered.length === 0 && <NoMatch what="rows" search={query.trim()} on={onNames} onClear={() => { setQuery(""); setPicked(NO_PICKS); }} />}
             </>
           )}
           </div>
@@ -797,43 +780,146 @@ function useStoredState<T extends string>(key: string, initial: T): [T, (v: T) =
   return [value, set];
 }
 
-/** A filter chip: grey at rest, yellow while it is on. */
-function Chip({ active, onClick, label, count, title }: { active: boolean; onClick: () => void; label: string; count: number; title?: string }) {
+/**
+ * Opens the filter drawer: grey at rest, yellow with how many filters are on, as their cards are.
+ * `on` names them, for its tooltip.
+ */
+function FilterButton({ open, on, onClick }: { open: boolean; on: string[]; onClick: () => void }) {
+  const n = on.length;
   return (
     <button
+      type="button"
       onClick={onClick}
-      title={title}
-      aria-pressed={active}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      // Read out as "Filter, 2 on", not "Filter2".
+      aria-label={n ? `Filter, ${n} on` : "Filter"}
+      title={n ? `On: ${on.join(", ")}` : "Filter the list"}
       className={cn(
-        "inline-flex h-9 items-center gap-1.5 rounded-lg border-2 px-3 font-label text-[13px] transition",
-        active ? "border-rim bg-note font-bold text-mud shadow-hard-sm" : "border-rim/40 bg-paper-deep text-mud-soft hover:border-rim hover:text-mud",
+        "inline-flex h-10 items-center gap-1.5 rounded-lg border-2 px-3 font-label text-[13px] transition",
+        n ? "border-rim bg-note font-bold text-mud shadow-hard-sm" : "border-rim/40 bg-paper-deep text-mud-soft hover:border-rim hover:text-mud",
       )}
     >
-      {label}
-      <span className="opacity-70 tabular-nums">{count}</span>
+      <ListFilter size={15} /> Filter
+      {n > 0 && <span className="opacity-70 tabular-nums">{n}</span>}
     </button>
   );
 }
 
+/** What the filter board counts the prospects' statuses by: the pipeline's stages, and a prospect's status as its filter. */
+interface StatusSource { stages: string[]; statusKey?: string; screenedKey?: string; pickOf: (r: Row) => string }
+/** How many prospects in play hold each status, and how many are screened out. */
+interface StatusCounts { byStatus: Map<string, number>; screened: number }
+/** A card on the filter board, by the filter it turns on and off. */
+type FilterCard = Omit<PinToggleProps, "index" | "onClick"> & { id: string };
+
 /**
- * The quick filters' chips, among the status chips and turned on and off the same way.
- * Like a stage's, a chip with nothing to show is left out, unless it is on.
+ * All counts every prospect, as the list shows them; a status filter counts only those of its
+ * status still in play, and the screened-out ones have a filter of their own.
  */
-function QuickChips({ filters, rows, ctx, picked, onPick }: {
-  filters: QuickFilter[]; rows: Row[]; ctx: FilterContext; picked: ReadonlySet<string>; onPick: (id: string) => void;
+function countStatuses(rows: Row[], { statusKey, screenedKey, pickOf }: StatusSource): StatusCounts {
+  const byStatus = new Map<string, number>();
+  let screened = 0;
+  for (const r of rows) {
+    if (screenedKey && isChecked(r.cells[screenedKey])) {
+      screened++;
+      continue;
+    }
+    if (!statusKey) continue;
+    const s = pickOf(r);
+    byStatus.set(s, (byStatus.get(s) ?? 0) + 1);
+  }
+  return { byStatus, screened };
+}
+
+/**
+ * The filter drawer's board: All and the statuses (the Prospects tab's; the Contacts tab has
+ * none), then the quick filters, each a card turned on and off with how many rows it shows.
+ * Mounted only while the drawer is, afresh at each opening, so its counts are worked out only then.
+ */
+function FilterBoard({ rows, filters, ctx, picked, onPick, onAll, status }: {
+  rows: Row[]; filters: QuickFilter[]; ctx: FilterContext; picked: ReadonlySet<string>; onPick: (id: string) => void; onAll: () => void;
+  status?: StatusSource;
 }) {
-  // Counted apart by what each filter reads beyond the row: a run's progress recounts only the
-  // chip that reads the runs, and a contact's edit only the one that reads the contacts.
+  const counted = useQuickCounts(filters, rows, ctx);
+  const counts = useMemo(() => status && countStatuses(rows, status), [rows, status]);
+  // Like a stage's, a card with nothing to show is left out, unless it is on. A click keeps every
+  // card the board shows on it until the drawer closes, so turning one (or All) on or off takes
+  // none off, shifting the rest (and their lean) under the pointer. `has` is what a card is shown
+  // for, when not its own count.
+  const [kept, setKept] = useState<ReadonlySet<string>>(NO_PICKS);
+  const card = (id: string, count: number, title?: string, has = count): FilterCard[] =>
+    has || picked.has(id) || kept.has(id) ? [{ id, label: pickLabel(id, filters), count, title, active: picked.has(id) }] : [];
+  const todo = filters.flatMap((f, i) => card(QUICK + f.id, counted[i]!, f.title));
+  let statuses: FilterCard[] = [];
+  if (status && counts) {
+    const { byStatus, screened } = counts;
+    // The statuses the sheet holds beyond the pipeline's, and any on (or kept) that no prospect
+    // holds any more, by name: an edit or an undo doesn't move them about.
+    const known = new Set([...status.stages, DEAD, NOT_SET]);
+    const others = [...new Set([...byStatus.keys(), ...picked, ...kept])].filter((s) => isStatusPick(s) && !known.has(s)).sort(collator.compare);
+    statuses = [
+      ...card(IN_PLAY, rows.length - screened, "Everything but the screened-out prospects", screened),
+      ...[...status.stages, DEAD, ...others, NOT_SET].flatMap((s) => card(s, byStatus.get(s) ?? 0)),
+      ...card(SCREENED, screened),
+    ];
+  }
+  const shown = [...statuses, ...todo];
+  const all: FilterCard = { id: ALL, label: pickLabel(ALL, filters), count: rows.length, active: !picked.size };
+  // Numbered across both groups, so no two neighbours lean the same way.
+  const pin = (cards: FilterCard[], from = 0) => cards.map(({ id, ...c }, i) => (
+    <PinToggle key={id} index={from + i} {...c} onClick={() => {
+      setKept(new Set(shown.map((s) => s.id)));
+      if (id === ALL) onAll();
+      else onPick(id);
+    }} />
+  ));
+  if (!status) return <PinGroup label="Contacts">{pin([all, ...todo])}</PinGroup>;
+  return (
+    <>
+      <PinGroup label="Status">{pin([all, ...statuses])}</PinGroup>
+      {todo.length > 0 && <PinGroup label="Quick filters">{pin(todo, statuses.length + 1)}</PinGroup>}
+    </>
+  );
+}
+
+/**
+ * An empty list's note. The filters' cards are out of sight in their drawer: it names the ones on
+ * (restoring the last screened-out prospect leaves Screened out on, over nothing), and the search,
+ * as either may be what leaves nothing, and clears what it names.
+ */
+function NoMatch({ what, search, on, onClear }: { what: string; search: string; on: string[]; onClear: () => void }) {
+  const searching = search !== "";
+  const filtered = on.length > 0;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-24 flex flex-col items-center gap-3 px-6 text-center text-[15px] text-mud-faint">
+      <p>No {what} match.</p>
+      {(searching || filtered) && (
+        <>
+          <div className="font-label text-[13px]">
+            {searching && <p>Searching for <span className="font-bold text-mud-soft">“{search}”</span></p>}
+            {filtered && <p>Filtered by <span className="font-bold text-mud-soft">{on.join(", ")}</span></p>}
+          </div>
+          <Button size="sm" className="pointer-events-auto" onClick={onClear}>
+            {searching && filtered ? "Clear search and filters" : searching ? "Clear search" : "Clear filters"}
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * How many rows pass each quick filter. Counted apart by what each filter reads beyond the row: a
+ * run's progress recounts only the filter that reads the runs, and a contact's edit only the one
+ * that reads the contacts.
+ */
+function useQuickCounts(filters: QuickFilter[], rows: Row[], ctx: FilterContext): number[] {
   const { contactsOf, ran } = ctx;
   const byRow = useMemo(() => countPassing(filters, rows, undefined, NO_CONTEXT), [filters, rows]);
   const byContacts = useMemo(() => countPassing(filters, rows, "contactsOf", { ...NO_CONTEXT, contactsOf }), [filters, rows, contactsOf]);
   const byRuns = useMemo(() => countPassing(filters, rows, "ran", { ...NO_CONTEXT, ran }), [filters, rows, ran]);
-  return filters.map((f, i) => {
-    const id = QUICK + f.id;
-    const count = byRow[i]! + byContacts[i]! + byRuns[i]!;
-    if (!count && !picked.has(id)) return null;
-    return <Chip key={f.id} active={picked.has(id)} onClick={() => onPick(id)} label={f.label} count={count} title={f.title} />;
-  });
+  return useMemo(() => filters.map((_, i) => byRow[i]! + byContacts[i]! + byRuns[i]!), [filters, byRow, byContacts, byRuns]);
 }
 
 /** How many rows pass each filter that reads `reads` (undefined: the row alone); 0 for the others. */

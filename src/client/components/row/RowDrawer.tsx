@@ -20,7 +20,7 @@ import { shouldAdvanceToMeeting, stageEdits, stageIndex } from "../../lib/pipeli
 import { tileFor, toneFor, typeTone } from "../../lib/stages";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
-import { useInert } from "../../hooks/useLeaving";
+import { useFocusReturn, useInert } from "../../hooks/useLeaving";
 import { AiIntro, RowSuggestions } from "./AiSections";
 import { hrefOf, openLink } from "../grid/cells";
 import { Button } from "../ui/Button";
@@ -75,6 +75,9 @@ export function RowDrawer({ row, schema, stages, templates, state, contacts, ope
   );
 
   const layer = useInert<HTMLElement>(!!leaving);
+  // Beside the list, not over it: focus stays where it is as it opens (the grid, for its keys), and
+  // goes back there as it closes from inside it.
+  useFocusReturn(!leaving, layer);
   useEffect(() => {
     if (leaving) return;
     const onKey = (e: KeyboardEvent) => {

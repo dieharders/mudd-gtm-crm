@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
-import { useInert, useLeaving } from "../../hooks/useLeaving";
+import { useEffect, useRef, type ReactNode } from "react";
+import { useFocusReturn, useInert, useLeaving } from "../../hooks/useLeaving";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
@@ -30,6 +30,9 @@ export function Modal({
   // While leaving it shows what it last had open: callers often clear the data it was showing as they close it.
   const { shown, leaving, last: c } = useLeaving<Content>(open, LEAVE_MS, { title, subtitle, children, footer });
   const layer = useInert<HTMLDivElement>(leaving);
+  // Focus goes into it as it opens, and back to what opened it as it closes.
+  const box = useRef<HTMLDivElement>(null);
+  useFocusReturn(open, layer, box);
 
   useEffect(() => {
     if (!open) return;
@@ -55,9 +58,11 @@ export function Modal({
       onMouseDown={locked ? undefined : onClose}
     >
       <div
+        ref={box}
         role="dialog"
         aria-modal="true"
-        className={cn("w-full rounded-2xl border-2 border-rim-deep bg-paper shadow-dialog", leaving ? "animate-pop-out" : "animate-pop", width)}
+        tabIndex={-1}
+        className={cn("w-full rounded-2xl border-2 border-rim-deep bg-paper shadow-dialog outline-none", leaving ? "animate-pop-out" : "animate-pop", width)}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b-2 border-rim/40 px-6 py-5">

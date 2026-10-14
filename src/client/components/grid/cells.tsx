@@ -124,6 +124,17 @@ export function coerce(raw: string, col: Column): CellValue {
   return raw;
 }
 
+/**
+ * Pasted text as the value a column stores. A dropdown takes only what it lists, as when picked
+ * from: an option in any case, in its own spelling; undefined for anything else, which the paste
+ * leaves out.
+ */
+export function coercePasted(raw: string, col: Column): CellValue | undefined {
+  if (col.type !== "select" || !col.options?.length || raw.trim() === "") return coerce(raw, col);
+  const v = raw.trim().toLowerCase();
+  return col.options.find((o) => o.toLowerCase() === v);
+}
+
 export function CellEditor(props: EditorProps) {
   const { col } = props;
   if (col.type === "select") return <SelectEditor {...props} />;
