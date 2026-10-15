@@ -1,5 +1,6 @@
 import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { PageTitle } from "../ui/PageTitle";
 import { NOTES, TOPICS, type GuideNote, type Topic } from "./guideNotes";
 
 /** Each topic's paper, so the notes of one topic read as a set across the wall. */
@@ -90,11 +91,7 @@ export function GuidePage() {
   return (
     <div className="h-full overflow-y-auto bg-board scroll-thin">
       <div className="@container mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
-        <span className="relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-sm shadow-hard-sm select-none">
-          <span className="pin scale-75" />
-          How to
-        </span>
-        <h1 className="font-display text-[2.5rem] leading-none font-bold tracking-tight">Guide</h1>
+        <PageTitle>Guide</PageTitle>
         <p className="mt-3 max-w-xl text-[0.9375rem] text-mud-soft">Short notes on how everything works. Pick a topic, or read the whole wall.</p>
 
         <div className="mt-6 flex flex-wrap gap-2" role="group" aria-label="Topics">
