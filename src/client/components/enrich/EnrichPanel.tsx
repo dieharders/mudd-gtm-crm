@@ -11,7 +11,7 @@ import { presetRecipe, PRESETS, type Preset } from "../../../shared/presets";
 import { isSourcesColumn, recipeMode, type EnrichRun, type Recipe } from "../../../shared/ai";
 import { allColumns, columnOf, contactRecordKeys, contactSchema, typeFromHeader } from "../../../shared/schema";
 import { COLUMN_TYPES, isScreened, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../../shared/types";
-import { primaryOf, researchedContacts } from "../../../shared/values";
+import { isChannel, isEmptyContact, primaryOf, researchedContacts } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
@@ -475,10 +475,16 @@ function RunBox({ draft, schema, rows, contactsOf, selection, filteredIds, ready
   const minutes = Math.max(1, Math.round((turns * 25) / 60 / concurrency));
   const go = async (test: boolean) => {
     setStarting(true);
-    // Only the prospects the run researches: one with no one to research would only be skipped.
-    await onRun(test ? testIds : researched, { test, autoFill, concurrency });
-    setStarting(false);
+    try {
+      // Only the prospects the run researches: one with no one to research would only be skipped.
+      await onRun(test ? testIds : researched, { test, autoFill, concurrency });
+    } finally {
+      setStarting(false);
+    }
   };
+  // With no one to research, whether a run already found someone whose name waits in Review.
+  const found = perContact && n > 0 && !withPeople
+    && chosen.ids.some((id) => contactsOf(id).some((c) => !isChannel(c, schema) && isEmptyContact(c, schema)));
 
   return (
     <div className="rounded-2xl border border-clay bg-clay-soft/30 p-4">
@@ -506,7 +512,10 @@ function RunBox({ draft, schema, rows, contactsOf, selection, filteredIds, ready
         {" "}· usually 10–40 seconds each · about {minutes} min for all at {concurrency} at a time. Counts toward your plan's usage.
       </p>
       {perContact && n > 0 && !withPeople && (
-        <p className="mt-2 text-xs text-clay-deep">{n === 1 ? "This prospect has" : "None of these prospects has"} a contact to research yet. Run a recipe that finds one, like Decision-maker, first.</p>
+        <p className="mt-2 text-xs text-clay-deep">
+          {n === 1 ? "This prospect has" : "None of these prospects has"} a contact to research yet.{" "}
+          {found ? "A name AI found still waits in Review. Accept it first." : "Run a recipe that finds one, like Decision-maker, and accept the name it finds first."}
+        </p>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         {!ready ? (

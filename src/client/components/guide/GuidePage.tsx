@@ -47,8 +47,12 @@ function scatter(notes: readonly GuideNote[], cols: number): GuideNote[] {
       out[p - cols],
     ].filter(Boolean).map((n) => n!.topic));
     const open = [...left].filter(([, ns]) => ns.length);
-    const ok = (strict: boolean) => open.filter(([t]) => !near(strict).has(t));
-    const choices = p === 0 ? open.filter(([t]) => t === "Start here") : ok(true).length ? ok(true) : ok(false).length ? ok(false) : open;
+    const ok = (strict: boolean) => {
+      const taken = near(strict);
+      return open.filter(([t]) => !taken.has(t));
+    };
+    const strict = ok(true), loose = ok(false);
+    const choices = p === 0 ? open.filter(([t]) => t === "Start here") : strict.length ? strict : loose.length ? loose : open;
     choices.sort(([a, x], [b, y]) => y.length - x.length || hash(`${a}${p}`) - hash(`${b}${p}`));
     out.push(choices[0]![1].shift()!);
   }
@@ -90,7 +94,7 @@ export function GuidePage() {
   const shown = useMemo(() => (topic ? NOTES.filter((n) => n.topic === topic) : scatter(NOTES, cols)), [topic, cols]);
   return (
     <div className="h-full overflow-y-auto bg-board scroll-thin">
-      <div className="@container mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
+      <div className="mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
         <PageTitle>Guide</PageTitle>
         <p className="mt-3 max-w-xl text-[0.9375rem] text-mud-soft">Short notes on how everything works. Pick a topic, or read the whole wall.</p>
 
@@ -101,14 +105,11 @@ export function GuidePage() {
           ))}
         </div>
 
-        {/* Flex columns, not CSS columns: those slice a tilted note's corner and shadow at a column's
-            end and paint the rest atop the next. Dealt left to right, so the wall reads across. */}
-        <div ref={wall} className="mt-10 flex items-start gap-7">
-          {Array.from({ length: cols }, (_, c) => (
-            <div key={c} className="min-w-0 flex-1">
-              {shown.map((n, i) => (i % cols === c ? <Note key={n.title} n={n} /> : null))}
-            </div>
-          ))}
+        {/* A grid, not CSS columns (those slice a tilted note's corner and shadow at a column's end
+            and paint the rest atop the next) nor flex columns (those drift apart, so notes scatter
+            kept apart would end up side by side). Its rows line up, so beside is beside. */}
+        <div ref={wall} className="mt-10 grid items-start gap-x-7" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+          {shown.map((n) => <Note key={n.title} n={n} />)}
         </div>
       </div>
     </div>
@@ -137,7 +138,7 @@ function Note({ n }: { n: GuideNote }) {
   const taped = (seed >>> 8) % 3 === 0;
   return (
     <div className={cn("mb-7", pick(NUDGES, seed >>> 4), pick(DROPS, seed >>> 12))}>
-      <article className={cn("relative rounded-xl border-2 border-rim p-5 pt-6 shadow-hard", PAPER[n.topic], pick(TILTS, seed))}>
+      <article className={cn("note pt-6", PAPER[n.topic], pick(TILTS, seed))}>
         {taped
           ? <span aria-hidden className="absolute -top-3 left-1/2 h-6 w-20 -translate-x-1/2 -rotate-3 border border-rim/30 bg-paper/70 shadow-sm" />
           : <span aria-hidden className="pin" />}

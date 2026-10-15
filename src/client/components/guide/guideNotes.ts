@@ -86,7 +86,7 @@ export const NOTES: GuideNote[] = [
   {
     topic: "Your list",
     title: "Oops! Undo",
-    bullets: ["Press `Ctrl+Z` (`Cmd+Z` on a Mac), or click *Undo*.", "Pop-ups after a delete have an *Undo* button too."],
+    bullets: ["Press `Cmd+Z` (`Ctrl+Z` on Windows), or click *Undo*.", "Pop-ups after a delete have an *Undo* button too."],
   },
   {
     topic: "Your list",
@@ -166,7 +166,8 @@ export const NOTES: GuideNote[] = [
   {
     topic: "AI research",
     title: "Why was a row skipped?",
-    bullets: ["It was screened out.", "It was deleted.", "The recipe looks up people, and the company has no contacts. Run *Decision-maker* first."],
+    bullets: ["It was screened out.", "It was deleted.", "You clicked *Stop* before the run got to it."],
+    tip: "A recipe that looks up people leaves out companies with no contacts. Run *Decision-maker* first, and accept the name it finds.",
   },
 
   // ---------- Discover ----------
@@ -225,6 +226,7 @@ export const NOTES: GuideNote[] = [
   {
     topic: "Saving",
     title: "Handy keys",
-    bullets: ["`Space`: open a row", "`Enter`: edit a cell", "Arrow keys: move around", "`Ctrl+C` / `Ctrl+V`: copy and paste", "`Esc`: close", "`Ctrl+Z`: undo"],
+    bullets: ["`Space`: open a row", "`Enter`: edit a cell", "Arrow keys: move around", "`Cmd+C` / `Cmd+V`: copy and paste", "`Esc`: close", "`Cmd+Z`: undo"],
+    tip: "On Windows, press `Ctrl` where it says `Cmd`.",
   },
 ];
