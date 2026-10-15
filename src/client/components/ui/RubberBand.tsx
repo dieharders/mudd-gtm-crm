@@ -16,30 +16,43 @@ export interface RubberBandProps {
   /** Values round to a multiple of this from `min`. */
   step?: number;
   onChange: (value: number) => void;
-  /** Rendered width in px; the band spans it edge to edge. */
+  /** Rendered width in px; the band spans it edge to edge. Narrower than `MIN_WIDTH` is drawn at that. */
   width?: number;
   className?: string;
   "aria-label"?: string;
+  /** What a screen reader says for the value, since the band shows none. */
+  "aria-valuetext"?: string;
 }
 
 /** How far past either end the thumb can be pulled, with the pull resisting more the further it goes. */
 const OVER = 40;
 const PIN_R = 9;
 const BAND_W = 5.5;
-/** The track ends this far from the right edge; pulled past it, the band draws outside the box. */
-const EDGE = 22;
+/** The track ends this far from the right edge, so a tack at max is flush with it; pulled past, the band draws outside the box. */
+const EDGE = PIN_R + 1;
+/**
+ * The fixed tack sits flush with the left edge and is the band's true left end; the thumb's track
+ * starts just to its right so the two never overlap.
+ */
+const FIXED_X = PIN_R + 1;
+const TRACK_START = FIXED_X + PIN_R * 2 + 4;
+/** Below this the track would be too short to drag along, or run backwards. */
+const MIN_WIDTH = TRACK_START + EDGE + PIN_R * 4;
+/** How far a tack draws past its centre: lifted, it grows and its shadow shifts right. */
+const TACK_REACH = Math.ceil(PIN_R * 1.3 + 3);
+/** The invisible grab target around the thumb. */
+const GRAB_R = PIN_R + 10;
 /**
  * The component's layout box is only as tall as a tack. The drawing surface is bigger than that
- * box in every direction, placed over it, so the droop, an overpull and a lifted tack all draw past
- * the box over the page without depending on the webview honouring overflow on an svg.
+ * box, placed over it, so the droop, an overpull and a lifted tack all draw past the box over the
+ * page without depending on the webview honouring overflow on an svg. On the left it bleeds as far
+ * as an overpull past min can reach, which never scrolls; on the right it reaches only as far as the
+ * thumb is drawn right now, so a band at rest adds no scrollable overflow to its container.
  */
 const HEIGHT = PIN_R * 2 + 16;
 const BAND_Y = HEIGHT / 2;
-const BLEED_X = OVER + PIN_R * 2 + 8;
+const BLEED_LEFT = Math.max(0, OVER - TRACK_START) + GRAB_R;
 const BLEED_TOP = 28;
-/** The fixed tack sits here; the thumb's track starts just to its right so the two never overlap. */
-const FIXED_X = 24;
-const TRACK_START = FIXED_X + 30;
 
 // Springs: the thumb snaps home with a little overshoot, the droop lags behind and wobbles.
 const X_STIFF = 320;
@@ -76,8 +89,9 @@ function resist(over: number): number {
   return OVER * (1 - Math.exp(-over / OVER));
 }
 
-export function RubberBand({ value, min, max, step = 1, onChange, width = 320, className, "aria-label": ariaLabel = "Rubber band slider" }: RubberBandProps) {
+export function RubberBand({ value, min, max, step = 1, onChange, width: asked = 320, className, "aria-label": ariaLabel = "Rubber band slider", "aria-valuetext": valueText }: RubberBandProps) {
   const gradId = useId();
+  const width = Math.max(asked, MIN_WIDTH);
   const trackEnd = width - EDGE;
   const trackLen = trackEnd - TRACK_START;
   /** The band's unstretched length: taut from a bit under halfway, slack before that. */
@@ -202,6 +216,10 @@ export function RubberBand({ value, min, max, step = 1, onChange, width = 320, c
   const bandW = clamp(BAND_W / Math.sqrt(stretch), 3, BAND_W);
   const midX = (FIXED_X + frame.x) / 2;
   const path = `M ${FIXED_X} ${BAND_Y} Q ${midX} ${BAND_Y + 2 * frame.sag} ${frame.x} ${BAND_Y}`;
+  // While lifted the pointer is captured, so only the tack's drawing needs room, not its grab target.
+  const bleedRight = Math.max(0, Math.ceil(frame.x + (frame.lifted ? TACK_REACH : GRAB_R) - width));
+  const svgW = BLEED_LEFT + width + bleedRight;
+  const svgH = BLEED_TOP + HEIGHT + bleedBottom;
 
   return (
     <span
@@ -211,15 +229,16 @@ export function RubberBand({ value, min, max, step = 1, onChange, width = 320, c
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={value}
+      aria-valuetext={valueText}
       onKeyDown={onKeyDown}
       style={{ width, height: HEIGHT }}
       className={cn("relative z-10 block rounded-xl outline-none select-none focus-visible:ring-2 focus-visible:ring-lake/60", className)}
     >
       <svg
-        width={width + 2 * BLEED_X}
-        height={BLEED_TOP + HEIGHT + bleedBottom}
-        viewBox={`${-BLEED_X} ${-BLEED_TOP} ${width + 2 * BLEED_X} ${BLEED_TOP + HEIGHT + bleedBottom}`}
-        style={{ left: -BLEED_X, top: -BLEED_TOP }}
+        width={svgW}
+        height={svgH}
+        viewBox={`${-BLEED_LEFT} ${-BLEED_TOP} ${svgW} ${svgH}`}
+        style={{ left: -BLEED_LEFT, top: -BLEED_TOP }}
         className="pointer-events-none absolute max-w-none touch-none"
       >
         <defs>
@@ -230,10 +249,10 @@ export function RubberBand({ value, min, max, step = 1, onChange, width = 320, c
           </radialGradient>
         </defs>
 
-        {/* A pencilled guide along the track, min to max, with a short tick at each end. */}
+        {/* A pencilled guide from the fixed tack out to max, with a short tick at the far end. */}
         <g stroke="var(--color-rim)" strokeWidth={1.5} strokeLinecap="round" opacity={0.4} fill="none">
-          <path d={`M ${TRACK_START} ${BAND_Y} L ${trackEnd} ${BAND_Y}`} strokeDasharray="1 6" />
-          <path d={`M ${TRACK_START} ${BAND_Y - 5} V ${BAND_Y + 5} M ${trackEnd} ${BAND_Y - 5} V ${BAND_Y + 5}`} />
+          <path d={`M ${FIXED_X} ${BAND_Y} L ${trackEnd} ${BAND_Y}`} strokeDasharray="1 6" />
+          <path d={`M ${trackEnd} ${BAND_Y - 5} V ${BAND_Y + 5}`} />
         </g>
 
         {frame.hole !== null && (

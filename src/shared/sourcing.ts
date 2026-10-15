@@ -144,8 +144,9 @@ export interface DiscoveryRun {
   error: string | null;
 }
 
-export const TARGET_OPTIONS = [5, 10, 25];
-export const PER_COMPANY_OPTIONS = [3, 5, 8];
+/** What the Find box's sliders offer: the most the runner allows, and where both start. */
+export const TARGET_RANGE = { min: 1, max: 50, default: 5 };
+export const PER_COMPANY_RANGE = { min: 1, max: 10, default: 1 };
 
 /** How many angles a run of this size plans: 3 for a handful, 6 for a long list. */
 export const angleCount = (target: number): number => (target <= 5 ? 3 : target <= 10 ? 4 : 6);

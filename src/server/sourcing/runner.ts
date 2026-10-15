@@ -16,7 +16,7 @@
 import type { ProviderId } from "../../shared/ai";
 import type { Candidate, CandidateContact, DiscoveryKind, DiscoveryRun, EnrichChoice, SearchAngle } from "../../shared/sourcing";
 import { websiteColumn } from "../../shared/schema";
-import { DEAL_ROLES, DEFAULT_ENRICH, FIT_OPTIONS } from "../../shared/sourcing";
+import { DEAL_ROLES, DEFAULT_ENRICH, FIT_OPTIONS, PER_COMPANY_RANGE, TARGET_RANGE } from "../../shared/sourcing";
 import { canFind, THESIS_IDS } from "../../shared/thesis";
 import { isScreened, STAGES, type Thesis, type ThesisId } from "../../shared/types";
 import { CompanyIndex, hrefFor } from "../../shared/values";
@@ -191,8 +191,8 @@ export function startDiscovery(input: StartDiscoveryInput): DiscoveryRun {
   if (input.kind === "find" && liveDiscovery(input.campaignId).some((r) => r.kind === "find")) throw new Error(FIND_RUNNING);
   const candidateIds = [...new Set(input.candidateIds ?? [])];
   if (input.kind === "map" && !candidateIds.length) throw new Error("Nothing to map.");
-  const target = Math.max(1, Math.min(50, Math.round(input.target ?? 10) || 10));
-  const perCompany = Math.max(1, Math.min(10, Math.round(input.perCompany ?? 5) || 5));
+  const target = Math.max(TARGET_RANGE.min, Math.min(TARGET_RANGE.max, Math.round(input.target ?? TARGET_RANGE.default) || TARGET_RANGE.default));
+  const perCompany = Math.max(PER_COMPANY_RANGE.min, Math.min(PER_COMPANY_RANGE.max, Math.round(input.perCompany ?? PER_COMPANY_RANGE.default) || PER_COMPANY_RANGE.default));
   const model = settings.model[provider] ?? "default";
 
   const run: DiscoveryRun = {

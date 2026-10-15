@@ -80,7 +80,7 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
       subtitle="Companies that fit your ideal customer, with who to talk to at each. You review every one before it joins the list."
     >
         <div className="flex min-h-0 flex-1">
-          <aside className="w-64 shrink-0 space-y-5 overflow-y-auto border-r-2 border-rim/40 bg-paper-deep/40 p-3 scroll-thin">
+          <aside className="w-64 shrink-0 space-y-5 overflow-y-auto border-r-2 border-rim/40 bg-paper-deep/40 p-3 scroll-thin select-none">
             <div className="space-y-0.5">
               {rail("thesis", <ScrollText size={16} />, "Thesis", thesis ? `${answeredCount(thesis)} of ${THESIS_QUESTIONS.length} answered` : "")}
               {rail("find", <Radar size={16} />, "Find", findRun && isLiveStatus(findRun.status) ? "Running…" : firstRun ? "Not run yet" : `Last run ${timeAgo(findRun!.startedAt)}`)}
@@ -112,7 +112,7 @@ export function DiscoverPanel({ state, enrich, discovery, initial = "thesis", on
             ) : sel.kind === "thesis" ? (
               <ThesisEditor discovery={discovery} ready={ready} onSetup={() => ai.setOpen(true)} onNext={firstRun ? () => setSel({ kind: "find" }) : undefined} />
             ) : sel.kind === "find" ? (
-              <div className="space-y-5">
+              <div className="space-y-5 select-none">
                 <FindBox discovery={discovery} recipes={enrich.recipes} ready={ready} onSetup={() => ai.setOpen(true)} />
                 {findRun && <DiscoveryProgress run={findRun} candidates={discovery.candidates} onAction={(a) => fire(discovery.action(findRun.id, a))} />}
                 {findRun && findRun.ready > 0 && inbox.length > 0 && (

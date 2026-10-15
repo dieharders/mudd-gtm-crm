@@ -143,6 +143,30 @@ function shutdownWorker(timeoutMs = 3_000): Promise<void> {
   });
 }
 
+// The native webview still acts like a browser: its right-click menu (Back, Reload), reload and
+// history keys, the mouse's back/forward buttons, zoom, print, and dropping a link or text onto
+// the window would all reload the app or navigate away from it. Text fields keep their menu
+// (Cut/Copy/Paste) and still take dropped text. File drops are the import flow's to handle.
+const SHELL_GUARD = `(() => {
+  const editable = (t) => t instanceof Element && !!t.closest("input, textarea, [contenteditable]");
+  const block = (e) => e.preventDefault();
+  document.addEventListener("contextmenu", (e) => { if (!editable(e.target)) block(e); });
+  document.addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
+    if (k === "f5" || k === "browserback" || k === "browserforward" || k === "browserrefresh"
+      || (mod && ["r", "p", "=", "+", "-", "0"].includes(k))
+      || (e.altKey && (k === "arrowleft" || k === "arrowright"))) block(e);
+  }, true);
+  for (const type of ["mousedown", "mouseup", "auxclick"]) {
+    document.addEventListener(type, (e) => { if (e.button === 3 || e.button === 4) block(e); }, true);
+  }
+  window.addEventListener("wheel", (e) => { if (e.ctrlKey) block(e); }, { passive: false });
+  const files = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files");
+  for (const type of ["dragover", "drop"]) {
+    window.addEventListener(type, (e) => { if (!files(e) && !editable(e.target)) block(e); });
+  }
+})();`;
+
 const printHeadless = (reason?: string) => {
   console.log(`\n  Mudd is running at:\n\n  -> ${url}\n`);
   if (reason) console.log(`  (${reason})\n`);
@@ -160,6 +184,7 @@ if (process.argv.includes("--headless")) {
     webview.size = { width: 1400, height: 900, hint: 0 };
     setWindowIcon(webview);
     webview.init(`window.__MUDD_SHELL__ = ${JSON.stringify(process.platform)};`);
+    webview.init(SHELL_GUARD);
     // After an update is installed. This thread is inside webview.run() until the window closes,
     // so the worker can't be asked to stop (the install already stopped its AI work): just go.
     webview.bind("__muddRestart", () => {
