@@ -475,7 +475,8 @@ function RunBox({ draft, schema, rows, contactsOf, selection, filteredIds, ready
   const minutes = Math.max(1, Math.round((turns * 25) / 60 / concurrency));
   const go = async (test: boolean) => {
     setStarting(true);
-    await onRun(test ? testIds : chosen.ids, { test, autoFill, concurrency });
+    // Only the prospects the run researches: one with no one to research would only be skipped.
+    await onRun(test ? testIds : researched, { test, autoFill, concurrency });
     setStarting(false);
   };
 
@@ -501,16 +502,19 @@ function RunBox({ draft, schema, rows, contactsOf, selection, filteredIds, ready
       </label>
       <p className="mt-3 text-xs text-mud-soft">
         {turns} research turn{turns === 1 ? "" : "s"}
-        {perContact && <> (one per contact{withPeople < n ? `; ${n - withPeople} prospect${n - withPeople === 1 ? " has" : "s have"} none, and ${n - withPeople === 1 ? "is" : "are"} skipped` : ""})</>}
+        {perContact && <> (one per contact{withPeople < n ? `; ${n - withPeople} prospect${n - withPeople === 1 ? " has" : "s have"} none, and ${n - withPeople === 1 ? "is" : "are"} left out` : ""})</>}
         {" "}· usually 10–40 seconds each · about {minutes} min for all at {concurrency} at a time. Counts toward your plan's usage.
       </p>
+      {perContact && n > 0 && !withPeople && (
+        <p className="mt-2 text-xs text-clay-deep">{n === 1 ? "This prospect has" : "None of these prospects has"} a contact to research yet. Run a recipe that finds one, like Decision-maker, first.</p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {!ready ? (
           <Button variant="primary" onClick={onSetup}>Set up AI first</Button>
         ) : (
           <>
             <Button onClick={() => fire(go(true))} disabled={!testIds.length || busy || starting}><FlaskConical size={14} /> Test on {testIds.length} row{testIds.length === 1 ? "" : "s"}</Button>
-            <Button variant="primary" onClick={() => fire(go(false))} disabled={!n || busy || starting}><Rocket size={14} /> Run on {n} row{n === 1 ? "" : "s"}</Button>
+            <Button variant="primary" onClick={() => fire(go(false))} disabled={!withPeople || busy || starting}><Rocket size={14} /> Run on {withPeople} row{withPeople === 1 ? "" : "s"}</Button>
           </>
         )}
         {busy && <span className="self-center text-xs text-clay-deep">This recipe is running…</span>}
