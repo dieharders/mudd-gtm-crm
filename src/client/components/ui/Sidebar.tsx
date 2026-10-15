@@ -1,7 +1,7 @@
 /** The left rail: brand, primary actions, and every campaign one click away. Folds to icons below `wide`. */
 import confetti from "@hiseb/confetti";
 import { useState } from "react";
-import { CalendarClock, FolderOpen, Gift, Home, Plus, Sparkles, X } from "lucide-react";
+import { BookOpen, CalendarClock, FolderOpen, Gift, Home, Plus, Sparkles, X } from "lucide-react";
 import { PROVIDERS } from "../../../shared/ai";
 import { api } from "../../lib/api";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
@@ -102,6 +102,9 @@ export function Sidebar({ onNewCampaign }: { onNewCampaign: () => void }) {
               {upcoming}
             </span>
           )}
+        </NavLink>
+        <NavLink to="/guide" className={item} title="Guide">
+          <BookOpen size={18} /> <span className="hidden wide:inline">Guide</span>
         </NavLink>
       </nav>
 

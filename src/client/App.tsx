@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes, useParams } from "react-router-dom";
 import { CampaignPage } from "./components/campaign/CampaignPage";
 import { HomePage, MeetingsPage } from "./components/campaigns/HomePage";
 import { ImportProvider } from "./components/campaigns/ImportFlow";
+import { GuidePage } from "./components/guide/GuidePage";
 import { NewCampaignDialog } from "./components/campaigns/NewCampaignDialog";
 import { Sidebar } from "./components/ui/Sidebar";
 import { AppToaster } from "./components/ui/Toaster";
@@ -27,6 +28,7 @@ function Shell() {
           <Route path="/" element={<HomePage onNewCampaign={() => setCreating(true)} />} />
           <Route path="/c/:id" element={<CampaignRoute />} />
           <Route path="/meetings" element={<MeetingsPage />} />
+          <Route path="/guide" element={<GuidePage />} />
           <Route path="*" element={<HomePage onNewCampaign={() => setCreating(true)} />} />
         </Routes>
       </main>
