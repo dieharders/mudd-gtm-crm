@@ -11,7 +11,7 @@ import { presetRecipe, PRESETS, type Preset } from "../../../shared/presets";
 import { isSourcesColumn, recipeMode, type EnrichRun, type Recipe } from "../../../shared/ai";
 import { allColumns, columnOf, contactRecordKeys, contactSchema, typeFromHeader } from "../../../shared/schema";
 import { COLUMN_TYPES, isScreened, type CampaignSchema, type CellValue, type ColumnType, type Row } from "../../../shared/types";
-import { primaryOf, researchedContacts } from "../../../shared/values";
+import { isChannel, isEmptyContact, primaryOf, researchedContacts } from "../../../shared/values";
 import type { CampaignState } from "../../hooks/useCampaign";
 import type { EnrichmentState } from "../../hooks/useEnrichment";
 import { useActiveProvider, useAi } from "../../lib/aiStatus";
@@ -475,9 +475,16 @@ function RunBox({ draft, schema, rows, contactsOf, selection, filteredIds, ready
   const minutes = Math.max(1, Math.round((turns * 25) / 60 / concurrency));
   const go = async (test: boolean) => {
     setStarting(true);
-    await onRun(test ? testIds : chosen.ids, { test, autoFill, concurrency });
-    setStarting(false);
+    try {
+      // Only the prospects the run researches: one with no one to research would only be skipped.
+      await onRun(test ? testIds : researched, { test, autoFill, concurrency });
+    } finally {
+      setStarting(false);
+    }
   };
+  // With no one to research, whether a run already found someone whose name waits in Review.
+  const found = perContact && n > 0 && !withPeople
+    && chosen.ids.some((id) => contactsOf(id).some((c) => !isChannel(c, schema) && isEmptyContact(c, schema)));
 
   return (
     <div className="rounded-2xl border border-clay bg-clay-soft/30 p-4">
@@ -501,16 +508,22 @@ function RunBox({ draft, schema, rows, contactsOf, selection, filteredIds, ready
       </label>
       <p className="mt-3 text-xs text-mud-soft">
         {turns} research turn{turns === 1 ? "" : "s"}
-        {perContact && <> (one per contact{withPeople < n ? `; ${n - withPeople} prospect${n - withPeople === 1 ? " has" : "s have"} none, and ${n - withPeople === 1 ? "is" : "are"} skipped` : ""})</>}
+        {perContact && <> (one per contact{withPeople < n ? `; ${n - withPeople} prospect${n - withPeople === 1 ? " has" : "s have"} none, and ${n - withPeople === 1 ? "is" : "are"} left out` : ""})</>}
         {" "}· usually 10–40 seconds each · about {minutes} min for all at {concurrency} at a time. Counts toward your plan's usage.
       </p>
+      {perContact && n > 0 && !withPeople && (
+        <p className="mt-2 text-xs text-clay-deep">
+          {n === 1 ? "This prospect has" : "None of these prospects has"} a contact to research yet.{" "}
+          {found ? "A name AI found still waits in Review. Accept it first." : "Run a recipe that finds one, like Decision-maker, and accept the name it finds first."}
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {!ready ? (
           <Button variant="primary" onClick={onSetup}>Set up AI first</Button>
         ) : (
           <>
             <Button onClick={() => fire(go(true))} disabled={!testIds.length || busy || starting}><FlaskConical size={14} /> Test on {testIds.length} row{testIds.length === 1 ? "" : "s"}</Button>
-            <Button variant="primary" onClick={() => fire(go(false))} disabled={!n || busy || starting}><Rocket size={14} /> Run on {n} row{n === 1 ? "" : "s"}</Button>
+            <Button variant="primary" onClick={() => fire(go(false))} disabled={!withPeople || busy || starting}><Rocket size={14} /> Run on {withPeople} row{withPeople === 1 ? "" : "s"}</Button>
           </>
         )}
         {busy && <span className="self-center text-xs text-clay-deep">This recipe is running…</span>}

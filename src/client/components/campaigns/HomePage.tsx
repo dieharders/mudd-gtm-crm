@@ -11,6 +11,7 @@ import { formatDateTime, isSameDay, parseLocal, relative, timeAgo } from "../../
 import { campaignTileFor, toneFor } from "../../lib/stages";
 import { Button } from "../ui/Button";
 import { Tile } from "../ui/Logo";
+import { PageTitle } from "../ui/PageTitle";
 import { MenuItem, Popover } from "../ui/Menu";
 import { useImport } from "./ImportFlow";
 import { RemoveCampaignDialog } from "./RemoveCampaignDialog";
@@ -20,16 +21,6 @@ import { toggleFidget } from "../../lib/fidget";
 function greeting(): string {
   const h = new Date().getHours();
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-}
-
-/** A small sticky note pinned above a page title. */
-function PinnedNote({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
-  return (
-    <span onClick={onClick} className={cn("relative mb-5 inline-block -rotate-1 rounded-lg border-2 border-rim bg-note px-4 py-1.5 font-label text-sm shadow-hard-sm select-none", onClick && "cursor-pointer")}>
-      <span className="pin scale-75" />
-      {children}
-    </span>
-  );
 }
 
 /** The home screen: a board with pinned cards. */
@@ -50,8 +41,7 @@ export function HomePage({ onNewCampaign }: { onNewCampaign: () => void }) {
       <div className="@container mx-auto max-w-6xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
         <div className="mb-10 flex flex-wrap items-end gap-x-4 gap-y-8">
           <div className="mr-auto">
-            <PinnedNote onClick={toggleFidget}>{greeting()} 👋</PinnedNote>
-            <h1 className="font-display text-[40px] leading-none font-bold tracking-tight">Your campaigns</h1>
+            <PageTitle kicker={`${greeting()} 👋`} onClick={toggleFidget}>Campaigns</PageTitle>
           </div>
           <div className="flex flex-wrap gap-4">
             <Button onClick={startImport} disabled={busy}>
@@ -98,8 +88,7 @@ export function MeetingsPage() {
   return (
     <div className="h-full overflow-y-auto bg-board scroll-thin">
       <div className="mx-auto max-w-3xl px-6 py-8 motion-safe:animate-page-in md:px-10 md:py-10">
-        <PinnedNote>Calendar</PinnedNote>
-        <h1 className="mb-8 font-display text-[40px] leading-none font-bold tracking-tight">Meetings</h1>
+        <PageTitle className="mb-8">Meetings</PageTitle>
         <MeetingsCard meetings={meetings} />
       </div>
     </div>
