@@ -1,5 +1,5 @@
 import {
-  ArchiveRestore, Building2, Columns3, FileSpreadsheet, FolderOpen, Inbox, ListChecks, ListFilter, Loader2, MessageSquareText, MoreHorizontal, Plus,
+  ArchiveRestore, Building2, Columns3, FileSpreadsheet, FolderOpen, Inbox, ListChecks, LayoutGrid, ListFilter, Loader2, MessageSquareText, Plus,
   Loader2 as Spinner, Radar, Rows3, Search, Sparkles, Table2, Trash2, TriangleAlert, Undo2, UserPlus, Users, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -483,7 +483,7 @@ function CampaignView({ state }: { state: CampaignState }) {
         )}
         <ExportMenu campaign={campaign} state={state} />
         <span className="relative inline-flex">
-          <Button size="icon" variant="ghost" onClick={() => setShowMore(true)} title="More" aria-label="Campaign menu"><MoreHorizontal size={20} /></Button>
+          <Button onClick={() => setShowMore(true)} title="Review, Discover, Templates, Columns, Import contacts and more"><LayoutGrid size={15} /> Tools</Button>
           {waiting > 0 && (
             <span className="pointer-events-none absolute -top-1 -right-1 rounded-full border border-rim bg-clay px-1.5 font-label text-[11px] leading-5 font-bold text-paper tabular-nums" title={`${waiting} waiting for you`}>
               {waiting}
