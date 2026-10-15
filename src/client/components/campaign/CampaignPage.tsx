@@ -312,12 +312,16 @@ function CampaignView({ state }: { state: CampaignState }) {
   // ----- the Contacts tab: every prospect's people, with the prospect's company beside them -----
   // Worked out only while the tab is open: every contact is copied to add its company. The
   // contacts' own keys come along: the grid flags a Pattern email by their Email source.
+  // The person's name leads, pinned on its own, and their company comes next.
   const contactGridSchema = useMemo<CampaignSchema & ContactSchema>(() => {
     const org = orgColumn(schema);
     const cs = contactSchema(schema);
-    return { ...cs, columns: org ? [org, ...cs.columns] : cs.columns };
+    const name = cs.columns.find((c) => c.key === cs.nameKey);
+    const rest = cs.columns.filter((c) => c !== name);
+    return { ...cs, columns: [...(name ? [name] : []), ...(org ? [org] : []), ...rest] };
   }, [schema]);
   const contactColumns = useMemo(() => contactGridSchema.columns.filter((c) => !c.hidden), [contactGridSchema]);
+  const contactPinned = contactColumns[0]?.key === contactGridSchema.nameKey ? 1 : 0;
   const { rowById } = state;
   const contactRows = useMemo(() => {
     const { companyKey } = schema;
@@ -593,7 +597,7 @@ function CampaignView({ state }: { state: CampaignState }) {
                   rows={filteredContacts}
                   schema={contactGridSchema}
                   stages={stages}
-                  pinned={Math.min(2, contactColumns.length)}
+                  pinned={contactPinned}
                   selected={selectedContacts}
                   onSelect={setSelectedContacts}
                   onEdit={state.editContacts}
