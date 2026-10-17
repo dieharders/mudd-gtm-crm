@@ -90,7 +90,13 @@ async function mount(id: string) {
   const button = (text: string) => [...el.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
   // The overflow drawer's cards: a label, then a hint under it.
   const card = (label: string) => [...el.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.startsWith(label));
-  const openMore = () => act(() => (el.querySelector('[aria-label="Campaign menu"]') as HTMLButtonElement).click());
+  // The toolbar's Tools button, which opens the overflow drawer.
+  const toolsButton = () => {
+    const b = button("Tools");
+    if (!b) throw new Error("No Tools button in the toolbar");
+    return b;
+  };
+  const openTools = () => act(() => toolsButton().click());
   const click = (b: Element | null | undefined) => act(() => (b as HTMLElement).click());
   const selectAll = () => click(el.querySelector('[aria-label="Select all rows"]'));
   // How many rows the grid lists, as its header counts them.
@@ -130,7 +136,7 @@ async function mount(id: string) {
     input.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
   });
   return {
-    el, button, card, openMore, click, selectAll, listed, tab, filterButton, cardsIn, cardIn, inFilters, pickFilter, filterCards, search,
+    el, button, card, toolsButton, openTools, click, selectAll, listed, tab, filterButton, cardsIn, cardIn, inFilters, pickFilter, filterCards, search,
     unmount: async () => { await act(() => root.unmount()); el.remove(); },
   };
 }
@@ -337,21 +343,21 @@ test("an empty list names the search as well as the filters, and clears both", a
   }
 });
 
-test("a card on the More drawer hands focus to the dialog it opens, and it goes back to More once that closes", async () => {
+test("a card on the Tools drawer hands focus to the dialog it opens, and it goes back to Tools once that closes", async () => {
   const restoreConsole = failOnConsoleError();
   const page = await mount("pipeline");
   try {
-    const more = page.el.querySelector<HTMLButtonElement>('[aria-label="Campaign menu"]')!;
-    more.focus();
-    await page.openMore();
+    const tools = page.toolsButton();
+    tools.focus();
+    await page.openTools();
     const card = page.card("Remove from App") as HTMLButtonElement;
     card.focus();
     await page.click(card);
-    // In the dialog, not on the More button under it, where Enter would open the drawer again.
+    // In the dialog, not on the Tools button under it, where Enter would open the drawer again.
     const dialog = [...page.el.querySelectorAll('[role="dialog"]')].find((d) => d.textContent?.includes("from the app?"))!;
     expect(dialog.contains(document.activeElement)).toBe(true);
     await page.click(page.button("Cancel"));
-    expect(document.activeElement).toBe(more);
+    expect(document.activeElement).toBe(tools);
   } finally {
     await page.unmount();
     restoreConsole();
@@ -410,7 +416,7 @@ test("the Discover card shows only on a Discovery campaign, whose empty list poi
   try {
     expect((plain.el.querySelector('input[aria-label="Campaign name"]') as HTMLInputElement).value).toBe("Plain");
     expect(plain.el.textContent).toContain("Add your first prospect");
-    await plain.openMore();
+    await plain.openTools();
     expect(plain.card("Templates")).toBeDefined();
     expect(plain.card("Discover")).toBeUndefined();
   } finally {
@@ -420,7 +426,7 @@ test("the Discover card shows only on a Discovery campaign, whose empty list poi
   try {
     expect((disco.el.querySelector('input[aria-label="Campaign name"]') as HTMLInputElement).value).toBe("Disco");
     expect(disco.el.textContent).toContain("once you accept them from the Discovery inbox");
-    await disco.openMore();
+    await disco.openTools();
     expect(disco.card("Discover")).toBeDefined();
     await act(() => (disco.el.querySelector('[role="dialog"] [aria-label="Close"]') as HTMLButtonElement).click());
     // It slides out before it goes.
