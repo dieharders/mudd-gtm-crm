@@ -35,7 +35,7 @@ function BandField({ label, readout, value, min, max, onChange }: {
   const focusBand = () => box.current?.querySelector<HTMLElement>("[role=slider]")?.focus();
   return (
     <div ref={box} className="min-w-0">
-      <span className="label cursor-default" onClick={focusBand}>{label} <span className="font-bold tabular-nums text-clay-deep">{readout}</span></span>
+      <span className="label" onClick={focusBand}>{label} <span className="font-bold tabular-nums text-clay-deep">{readout}</span></span>
       {width > 0 && <RubberBand value={value} min={min} max={max} onChange={onChange} width={width} aria-label={label} aria-valuetext={readout} />}
     </div>
   );

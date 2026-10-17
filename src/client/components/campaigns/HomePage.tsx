@@ -153,7 +153,7 @@ function CampaignCard({ c, onRemove }: { c: CampaignSummary; onRemove: () => voi
       tabIndex={0}
       onClick={() => void navigate(`/c/${c.id}`)}
       onKeyDown={(e) => { if (e.key === "Enter") void navigate(`/c/${c.id}`); }}
-      className="card group cursor-pointer p-6 transition hover:-translate-y-0.5 hover:shadow-hard-lg"
+      className="card group p-6 transition hover:-translate-y-0.5 hover:shadow-hard-lg"
     >
       <div className="flex items-start gap-4">
         <Tile size="lg" className={cn("text-lg", campaignTileFor(c.id))}>{c.name.trim()[0]?.toUpperCase() ?? "?"}</Tile>

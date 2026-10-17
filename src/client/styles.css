@@ -157,6 +157,14 @@
   }
 }
 
+/* The drag cursors from cursors/ in place of the system's: Tailwind writes both declarations into
+   `cursor-grab` and `cursor-grabbing`, the keyword first, so the image wins and the keyword is the
+   fallback. Inline, so the url() lands in the utility itself rather than in a custom property. */
+@theme inline {
+  --cursor-grab: url("./cursors/grab.svg") 16 17, grab;
+  --cursor-grabbing: url("./cursors/pull.svg") 16 16, grabbing;
+}
+
 @layer base {
   html, body, #root { height: 100%; }
   body {
@@ -164,7 +172,17 @@
     font-size: 15px;
   }
   ::selection { background: var(--color-clay-soft); }
-  button { cursor: pointer; }
+  /* A cartoon glove for the cursor (cursors/): it points everywhere, so nothing needs
+     `cursor-pointer`, and presses while the mouse button is down. Links, buttons and controls name
+     it again over the browser's own cursor for them; text fields keep the text caret. The keyword
+     after each image is the fallback. */
+  html { cursor: url("./cursors/pointer.svg") 9 2, auto; }
+  a, button, select, input { cursor: url("./cursors/pointer.svg") 9 2, pointer; }
+  :active { cursor: url("./cursors/click.svg") 9 7, pointer; }
+  /* :is() lifts both to the specificity of input:not(), above :active, so a press keeps the caret. */
+  :is(textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"])) {
+    cursor: text;
+  }
   button:disabled { cursor: not-allowed; }
   input, textarea, select { font: inherit; color: inherit; }
   :focus-visible { outline: 2px solid var(--color-clay); outline-offset: 2px; }

@@ -143,7 +143,7 @@ const ProspectCard = memo(function ProspectCard({ row, contacts, schema, stages,
       onKeyDown={(e) => e.target === e.currentTarget && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 220px" }}
       className={cn(
-        "group grid cursor-pointer gap-3 rounded-2xl border-2 bg-paper p-5 transition",
+        "group grid gap-3 rounded-2xl border-2 bg-paper p-5 transition",
         active ? "border-clay shadow-hard-sm-clay" : "border-rim/40 hover:border-clay hover:shadow-hard-sm-clay",
         screened ? "bg-paper-deep/40 opacity-60 hover:opacity-80" : dead && "opacity-70",
       )}
