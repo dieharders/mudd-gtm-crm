@@ -12,7 +12,7 @@ export function PageTitle({ children, kicker, onClick, className }: { children: 
       {kicker && <div className="mb-1.5 font-label text-sm">{kicker}</div>}
       <h1 className="font-display text-[2.5rem] leading-none font-bold tracking-tight">
         {onClick ? (
-          <button type="button" onClick={onClick} className="cursor-pointer outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-lake/60">
+          <button type="button" onClick={onClick} className="outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-lake/60">
             {children}
           </button>
         ) : children}
