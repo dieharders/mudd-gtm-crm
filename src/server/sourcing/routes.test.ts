@@ -8,7 +8,7 @@ import type { Candidate } from "../../shared/sourcing";
 import type { Campaign, CampaignBundle, InspectResult, Row, Thesis } from "../../shared/types";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mudd-discovery-routes-"));
-const saved = { data: process.env.MUDD_DATA_DIR, home: process.env.HOME, profile: process.env.USERPROFILE };
+const saved = Object.fromEntries(["MUDD_DATA_DIR", "HOME", "USERPROFILE"].map((k) => [k, process.env[k]]));
 let handler: (req: Request) => Promise<Response>;
 let db: typeof import("../db");
 let store: typeof import("./store");
@@ -28,9 +28,12 @@ beforeAll(async () => {
 });
 afterAll(() => {
   db.closeDb();
-  process.env.MUDD_DATA_DIR = saved.data;
-  process.env.HOME = saved.home;
-  process.env.USERPROFILE = saved.profile;
+  // One that was unset is unset again: assigned undefined, it would read "undefined", and a later
+  // test's database would land in ./undefined.
+  for (const [k, v] of Object.entries(saved)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
